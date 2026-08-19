@@ -29,4 +29,4 @@ COPY --chown=node:node --from=compilacion /app/back/dist back/dist
 COPY --chown=node:node --from=compilacion /app/back/prisma back/prisma
 USER node
 EXPOSE 4000
-CMD ["node", "back/dist/servidor.js"]
+CMD ["node", "back/dist/src/servidor.js"]

@@ -43,4 +43,10 @@ describe("imagen de producción del backend", () => {
   it("ejecuta el servidor como usuario sin privilegios", () => {
     expect(dockerfileBackend).toMatch(/USER node\s+EXPOSE 4000/);
   });
+
+  it("inicia el artefacto en la ruta realmente generada por TypeScript", () => {
+    expect(dockerfileBackend).toContain(
+      'CMD ["node", "back/dist/src/servidor.js"]',
+    );
+  });
 });
