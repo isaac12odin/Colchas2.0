@@ -1,0 +1,749 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RolUsuario {
+  ADMINISTRADOR
+  CONTABLE
+  VENDEDOR
+  ALMACENISTA
+  COBRADOR
+}
+
+enum DiaSemana {
+  LUNES
+  MARTES
+  MIERCOLES
+  JUEVES
+  VIERNES
+  SABADO
+  DOMINGO
+}
+
+enum TipoVenta {
+  CREDITO
+  CONTADO
+  PUBLICO
+}
+
+enum EstadoVenta {
+  BORRADOR
+  CONFIRMADA
+  CANCELADA
+}
+
+enum PeriodicidadPago {
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+}
+
+enum EstadoCuota {
+  PENDIENTE
+  PARCIAL
+  PAGADA
+  VENCIDA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TRANSFERENCIA
+  TARJETA
+  OTRO
+}
+
+enum TipoMovimientoInventario {
+  ENTRADA_COMPRA
+  SALIDA_VENTA
+  ENTRADA_DEVOLUCION
+  SALIDA_MERMA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  RESERVA_PEDIDO
+  LIBERACION_RESERVA
+}
+
+enum EstadoPedido {
+  PENDIENTE_PEDIR
+  PEDIDO_PROVEEDOR
+  RECIBIDO_ALMACEN
+  LISTO_ENTREGA
+  ENTREGADO
+  CANCELADO
+}
+
+enum ResultadoVisita {
+  PAGO
+  NO_PAGO
+  AUSENTE
+  REPROGRAMADO
+  ENTREGA
+}
+
+enum NivelRiesgo {
+  BAJO
+  MEDIO
+  ALTO
+  CRITICO
+}
+
+enum TipoMovimientoSaldo {
+  CARGO_VENTA
+  ABONO
+  AJUSTE_CARGO
+  AJUSTE_ABONO
+  CANCELACION_VENTA
+}
+
+enum TipoDevolucion {
+  PARCIAL
+  TOTAL
+  CAMBIO
+}
+
+enum EstadoDevolucion {
+  REGISTRADA
+  CANCELADA
+}
+
+model Usuario {
+  id                         String                      @id @default(uuid()) @db.Uuid
+  nombre                     String                      @db.VarChar(120)
+  correo                     String                      @unique @db.VarChar(180)
+  hashContrasena             String
+  rol                        RolUsuario
+  activo                     Boolean                     @default(true)
+  debeCambiarContrasena      Boolean                     @default(false)
+  ultimoAcceso               DateTime?
+  intentosFallidos           Int                         @default(0)
+  bloqueadoHasta             DateTime?
+  mfaHabilitado              Boolean                     @default(false)
+  mfaSecretoCifrado          String?
+  mfaUltimoContador          BigInt?
+  creadoEn                   DateTime                    @default(now())
+  actualizadoEn              DateTime                    @updatedAt
+  sesiones                   Sesion[]
+  ventas                     Venta[]
+  abonos                     Abono[]
+  compras                    Compra[]
+  movimientosInventario      MovimientoInventario[]
+  visitas                    VisitaCobranza[]
+  auditorias                 Auditoria[]
+  lotesSincronizacion        LoteSincronizacion[]
+  operacionesSincronizadas   OperacionSincronizada[]
+  abonosAnulados             Abono[]                     @relation("AbonoAnuladoPor")
+  pedidosEntregados          PedidoVenta[]               @relation("PedidoEntregadoPor")
+  devolucionesAutorizadas    Devolucion[]                @relation("DevolucionAutorizadaPor")
+  devolucionesOperadas       Devolucion[]                @relation("DevolucionOperador")
+  cortesOperados             CorteCaja[]                 @relation("CorteOperador")
+  cortesCerrados             CorteCaja[]                 @relation("CorteCerradoPor")
+  rutasAsignadas             Ruta[]                      @relation("RutaCobrador")
+  dispositivosSincronizacion DispositivoSincronizacion[]
+
+  @@index([rol, activo])
+  @@map("usuarios")
+}
+
+model Sesion {
+  id            String    @id @default(uuid()) @db.Uuid
+  usuarioId     String    @db.Uuid
+  hashToken     String    @unique
+  agenteUsuario String?
+  ip            String?
+  expiraEn      DateTime
+  revocadaEn    DateTime?
+  creadoEn      DateTime  @default(now())
+  usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, expiraEn])
+  @@map("sesiones")
+}
+
+model Localidad {
+  id            String          @id @default(uuid()) @db.Uuid
+  nombre        String          @db.VarChar(120)
+  estado        String          @db.VarChar(120)
+  activo        Boolean         @default(true)
+  creadoEn      DateTime        @default(now())
+  actualizadoEn DateTime        @updatedAt
+  clientes      Cliente[]
+  rutas         RutaLocalidad[]
+
+  @@unique([nombre, estado])
+  @@index([estado, nombre])
+  @@map("localidades")
+}
+
+model Ruta {
+  id            String           @id @default(uuid()) @db.Uuid
+  nombre        String           @unique @db.VarChar(120)
+  diaSemana     DiaSemana
+  activa        Boolean          @default(true)
+  notas         String?
+  creadoEn      DateTime         @default(now())
+  actualizadoEn DateTime         @updatedAt
+  cobradorId    String?          @db.Uuid
+  cobrador      Usuario?         @relation("RutaCobrador", fields: [cobradorId], references: [id], onDelete: SetNull)
+  localidades   RutaLocalidad[]
+  clientes      RutaCliente[]
+  visitas       VisitaCobranza[]
+
+  @@index([diaSemana, activa])
+  @@index([cobradorId, activa, diaSemana])
+  @@map("rutas")
+}
+
+model RutaLocalidad {
+  rutaId      String    @db.Uuid
+  localidadId String    @db.Uuid
+  orden       Int       @default(0)
+  ruta        Ruta      @relation(fields: [rutaId], references: [id], onDelete: Cascade)
+  localidad   Localidad @relation(fields: [localidadId], references: [id], onDelete: Restrict)
+
+  @@id([rutaId, localidadId])
+  @@map("rutas_localidades")
+}
+
+model RutaCliente {
+  rutaId    String  @db.Uuid
+  clienteId String  @db.Uuid
+  orden     Int     @default(0)
+  activo    Boolean @default(true)
+  ruta      Ruta    @relation(fields: [rutaId], references: [id], onDelete: Cascade)
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@id([rutaId, clienteId])
+  @@index([rutaId, orden])
+  @@map("rutas_clientes")
+}
+
+model Cliente {
+  id                 String             @id @default(uuid()) @db.Uuid
+  nombreCompleto     String             @db.VarChar(180)
+  telefonoCifrado    String
+  telefonoHash       String?            @db.VarChar(64)
+  telefonoUltimos4   String?            @db.VarChar(4)
+  direccionCifrada   String
+  numeroTarjeta      String?            @unique @db.VarChar(30)
+  localidadId        String             @db.Uuid
+  activo             Boolean            @default(true)
+  limiteCredito      Decimal            @default(0) @db.Decimal(12, 2)
+  notas              String?
+  creadoEn           DateTime           @default(now())
+  actualizadoEn      DateTime           @updatedAt
+  localidad          Localidad          @relation(fields: [localidadId], references: [id], onDelete: Restrict)
+  saldo              SaldoCliente?
+  ventas             Venta[]
+  abonos             Abono[]
+  movimientosSaldo   MovimientoSaldo[]
+  pedidos            PedidoVenta[]
+  rutas              RutaCliente[]
+  visitas            VisitaCobranza[]
+  evaluacionesRiesgo EvaluacionRiesgo[]
+  devoluciones       Devolucion[]
+
+  @@index([localidadId, activo])
+  @@index([nombreCompleto])
+  @@index([telefonoHash])
+  @@map("clientes")
+}
+
+model SaldoCliente {
+  id            String   @id @default(uuid()) @db.Uuid
+  clienteId     String   @unique @db.Uuid
+  saldoActual   Decimal  @default(0) @db.Decimal(12, 2)
+  totalCargos   Decimal  @default(0) @db.Decimal(12, 2)
+  totalAbonos   Decimal  @default(0) @db.Decimal(12, 2)
+  vencidoActual Decimal  @default(0) @db.Decimal(12, 2)
+  actualizadoEn DateTime @updatedAt
+  cliente       Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([saldoActual])
+  @@map("saldos_clientes")
+}
+
+model MovimientoSaldo {
+  id            String              @id @default(uuid()) @db.Uuid
+  clienteId     String              @db.Uuid
+  tipo          TipoMovimientoSaldo
+  monto         Decimal             @db.Decimal(12, 2)
+  saldoAnterior Decimal             @db.Decimal(12, 2)
+  saldoNuevo    Decimal             @db.Decimal(12, 2)
+  referenciaId  String?             @db.Uuid
+  concepto      String              @db.VarChar(200)
+  creadoEn      DateTime            @default(now())
+  cliente       Cliente             @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+
+  @@index([clienteId, creadoEn])
+  @@map("movimientos_saldo")
+}
+
+model Producto {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  sku                String                 @unique @db.VarChar(60)
+  nombre             String                 @db.VarChar(180)
+  marca              String                 @db.VarChar(120)
+  categoria          String?                @db.VarChar(100)
+  codigoBarras       String?                @unique @db.VarChar(100)
+  codigoQr           String?                @unique @db.VarChar(200)
+  existencia         Int                    @default(0)
+  existenciaMinima   Int                    @default(0)
+  precioVenta        Decimal                @db.Decimal(12, 2)
+  precioCompra       Decimal                @db.Decimal(12, 2)
+  activo             Boolean                @default(true)
+  creadoEn           DateTime               @default(now())
+  actualizadoEn      DateTime               @updatedAt
+  detallesVenta      DetalleVenta[]
+  detallesCompra     DetalleCompra[]
+  movimientos        MovimientoInventario[]
+  itemsPedido        ItemPedidoVenta[]
+  detallesDevolucion DetalleDevolucion[]
+
+  @@index([nombre, marca])
+  @@index([existencia, existenciaMinima])
+  @@map("productos")
+}
+
+model Venta {
+  id               String         @id @default(uuid()) @db.Uuid
+  folio            String         @unique @db.VarChar(40)
+  idOperacionMovil String?        @unique @db.VarChar(100)
+  clienteId        String?        @db.Uuid
+  usuarioId        String         @db.Uuid
+  tipo             TipoVenta
+  estado           EstadoVenta    @default(BORRADOR)
+  subtotal         Decimal        @db.Decimal(12, 2)
+  descuento        Decimal        @default(0) @db.Decimal(12, 2)
+  total            Decimal        @db.Decimal(12, 2)
+  anticipo         Decimal        @default(0) @db.Decimal(12, 2)
+  metodoPago       MetodoPago     @default(EFECTIVO)
+  fechaVenta       DateTime       @default(now())
+  confirmadaEn     DateTime?
+  canceladaEn      DateTime?
+  notas            String?
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+  cliente          Cliente?       @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  usuario          Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  detalles         DetalleVenta[]
+  planPago         PlanPago?
+  abonos           Abono[]
+  pedido           PedidoVenta?
+  devoluciones     Devolucion[]
+
+  @@index([clienteId, fechaVenta])
+  @@index([fechaVenta, estado])
+  @@map("ventas")
+}
+
+model DetalleVenta {
+  id             String              @id @default(uuid()) @db.Uuid
+  ventaId        String              @db.Uuid
+  productoId     String              @db.Uuid
+  productoNombre String              @db.VarChar(180)
+  productoSku    String              @db.VarChar(60)
+  productoMarca  String              @db.VarChar(120)
+  cantidad       Int
+  precioUnitario Decimal             @db.Decimal(12, 2)
+  costoUnitario  Decimal             @db.Decimal(12, 2)
+  descuento      Decimal             @default(0) @db.Decimal(12, 2)
+  total          Decimal             @db.Decimal(12, 2)
+  venta          Venta               @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  producto       Producto            @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  devoluciones   DetalleDevolucion[]
+
+  @@index([ventaId])
+  @@index([productoId])
+  @@map("detalles_venta")
+}
+
+model PlanPago {
+  id                String           @id @default(uuid()) @db.Uuid
+  ventaId           String           @unique @db.Uuid
+  periodicidad      PeriodicidadPago
+  numeroCuotas      Int
+  montoCuota        Decimal          @db.Decimal(12, 2)
+  primerVencimiento DateTime
+  venta             Venta            @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  cuotas            Cuota[]
+
+  @@map("planes_pago")
+}
+
+model Cuota {
+  id           String            @id @default(uuid()) @db.Uuid
+  planPagoId   String            @db.Uuid
+  numero       Int
+  fechaVence   DateTime
+  monto        Decimal           @db.Decimal(12, 2)
+  montoPagado  Decimal           @default(0) @db.Decimal(12, 2)
+  estado       EstadoCuota       @default(PENDIENTE)
+  pagadaEn     DateTime?
+  planPago     PlanPago          @relation(fields: [planPagoId], references: [id], onDelete: Cascade)
+  aplicaciones AplicacionAbono[]
+
+  @@unique([planPagoId, numero])
+  @@index([fechaVence, estado])
+  @@map("cuotas")
+}
+
+model Abono {
+  id               String            @id @default(uuid()) @db.Uuid
+  clienteId        String            @db.Uuid
+  ventaId          String?           @db.Uuid
+  usuarioId        String            @db.Uuid
+  visitaId         String?           @db.Uuid
+  idOperacionMovil String?           @unique @db.VarChar(100)
+  monto            Decimal           @db.Decimal(12, 2)
+  metodo           MetodoPago        @default(EFECTIVO)
+  fechaAbono       DateTime          @default(now())
+  referencia       String?           @db.VarChar(120)
+  notas            String?
+  anuladoEn        DateTime?
+  anuladoPorId     String?           @db.Uuid
+  motivoAnulacion  String?           @db.VarChar(500)
+  creadoEn         DateTime          @default(now())
+  cliente          Cliente           @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  venta            Venta?            @relation(fields: [ventaId], references: [id], onDelete: Restrict)
+  usuario          Usuario           @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  visita           VisitaCobranza?   @relation(fields: [visitaId], references: [id], onDelete: SetNull)
+  aplicaciones     AplicacionAbono[]
+  anuladoPor       Usuario?          @relation("AbonoAnuladoPor", fields: [anuladoPorId], references: [id], onDelete: Restrict)
+
+  @@index([clienteId, fechaAbono])
+  @@index([usuarioId, fechaAbono])
+  @@map("abonos")
+}
+
+model AplicacionAbono {
+  abonoId String  @db.Uuid
+  cuotaId String  @db.Uuid
+  monto   Decimal @db.Decimal(12, 2)
+  abono   Abono   @relation(fields: [abonoId], references: [id], onDelete: Cascade)
+  cuota   Cuota   @relation(fields: [cuotaId], references: [id], onDelete: Restrict)
+
+  @@id([abonoId, cuotaId])
+  @@map("aplicaciones_abono")
+}
+
+model Proveedor {
+  id            String            @id @default(uuid()) @db.Uuid
+  nombre        String            @unique @db.VarChar(180)
+  contacto      String?           @db.VarChar(180)
+  telefono      String?           @db.VarChar(30)
+  correo        String?           @db.VarChar(180)
+  rfc           String?           @db.VarChar(20)
+  notas         String?
+  activo        Boolean           @default(true)
+  creadoEn      DateTime          @default(now())
+  actualizadoEn DateTime          @updatedAt
+  compras       Compra[]
+  itemsPedido   ItemPedidoVenta[]
+
+  @@index([nombre, activo])
+  @@map("proveedores")
+}
+
+model Compra {
+  id              String          @id @default(uuid()) @db.Uuid
+  folio           String          @unique @db.VarChar(40)
+  proveedorId     String          @db.Uuid
+  proveedorNombre String          @db.VarChar(180)
+  usuarioId       String          @db.Uuid
+  total           Decimal         @db.Decimal(12, 2)
+  fechaCompra     DateTime        @default(now())
+  notas           String?
+  creadoEn        DateTime        @default(now())
+  usuario         Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  proveedor       Proveedor       @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  detalles        DetalleCompra[]
+
+  @@index([fechaCompra])
+  @@map("compras")
+}
+
+model DetalleCompra {
+  id            String            @id @default(uuid()) @db.Uuid
+  compraId      String            @db.Uuid
+  productoId    String            @db.Uuid
+  cantidad      Int
+  costoUnitario Decimal           @db.Decimal(12, 2)
+  total         Decimal           @db.Decimal(12, 2)
+  compra        Compra            @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  producto      Producto          @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  itemsPedido   ItemPedidoVenta[]
+
+  @@index([compraId])
+  @@map("detalles_compra")
+}
+
+model MovimientoInventario {
+  id                String                   @id @default(uuid()) @db.Uuid
+  productoId        String                   @db.Uuid
+  usuarioId         String                   @db.Uuid
+  tipo              TipoMovimientoInventario
+  cantidad          Int
+  existenciaAntes   Int
+  existenciaDespues Int
+  referenciaTipo    String?                  @db.VarChar(40)
+  referenciaId      String?                  @db.Uuid
+  notas             String?
+  creadoEn          DateTime                 @default(now())
+  producto          Producto                 @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  usuario           Usuario                  @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([productoId, creadoEn])
+  @@index([referenciaTipo, referenciaId])
+  @@map("movimientos_inventario")
+}
+
+model PedidoVenta {
+  id              String            @id @default(uuid()) @db.Uuid
+  folio           String            @unique @db.VarChar(40)
+  clienteId       String            @db.Uuid
+  ventaId         String?           @unique @db.Uuid
+  estado          EstadoPedido      @default(PENDIENTE_PEDIR)
+  fechaCompromiso DateTime?
+  recibidoEn      DateTime?
+  entregadoEn     DateTime?
+  entregadoPorId  String?           @db.Uuid
+  notas           String?
+  creadoEn        DateTime          @default(now())
+  actualizadoEn   DateTime          @updatedAt
+  cliente         Cliente           @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  venta           Venta?            @relation(fields: [ventaId], references: [id], onDelete: SetNull)
+  items           ItemPedidoVenta[]
+  entregadoPor    Usuario?          @relation("PedidoEntregadoPor", fields: [entregadoPorId], references: [id], onDelete: Restrict)
+  devoluciones    Devolucion[]
+
+  @@index([estado, fechaCompromiso])
+  @@index([clienteId, estado])
+  @@map("pedidos_venta")
+}
+
+model ItemPedidoVenta {
+  id              String         @id @default(uuid()) @db.Uuid
+  pedidoId        String         @db.Uuid
+  productoId      String?        @db.Uuid
+  proveedorId     String?        @db.Uuid
+  detalleCompraId String?        @db.Uuid
+  descripcion     String         @db.VarChar(200)
+  cantidad        Int
+  precioEstimado  Decimal        @db.Decimal(12, 2)
+  pedido          PedidoVenta    @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  producto        Producto?      @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  proveedor       Proveedor?     @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  detalleCompra   DetalleCompra? @relation(fields: [detalleCompraId], references: [id], onDelete: SetNull)
+
+  @@index([pedidoId])
+  @@index([proveedorId])
+  @@map("items_pedido_venta")
+}
+
+model Devolucion {
+  id                 String              @id @default(uuid()) @db.Uuid
+  folio              String              @unique @db.VarChar(40)
+  ventaId            String              @db.Uuid
+  pedidoId           String?             @db.Uuid
+  clienteId          String?             @db.Uuid
+  autorizadoPorId    String              @db.Uuid
+  usuarioOperadorId  String?             @db.Uuid
+  tipo               TipoDevolucion
+  estado             EstadoDevolucion    @default(REGISTRADA)
+  motivo             String              @db.VarChar(500)
+  totalDevuelto      Decimal             @db.Decimal(12, 2)
+  aplicadoSaldo      Decimal             @default(0) @db.Decimal(12, 2)
+  montoReembolsado   Decimal             @default(0) @db.Decimal(12, 2)
+  metodoReembolso    MetodoPago?
+  evidenciaContenido Bytes?
+  evidenciaMime      String?             @db.VarChar(80)
+  evidenciaNombre    String?             @db.VarChar(180)
+  evidenciaHash      String?             @db.VarChar(64)
+  creadoEn           DateTime            @default(now())
+  venta              Venta               @relation(fields: [ventaId], references: [id], onDelete: Restrict)
+  pedido             PedidoVenta?        @relation(fields: [pedidoId], references: [id], onDelete: Restrict)
+  cliente            Cliente?            @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  autorizadoPor      Usuario             @relation("DevolucionAutorizadaPor", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+  usuarioOperador    Usuario?            @relation("DevolucionOperador", fields: [usuarioOperadorId], references: [id], onDelete: Restrict)
+  detalles           DetalleDevolucion[]
+
+  @@index([ventaId, creadoEn])
+  @@index([clienteId, creadoEn])
+  @@index([usuarioOperadorId, creadoEn])
+  @@map("devoluciones")
+}
+
+model DetalleDevolucion {
+  id             String       @id @default(uuid()) @db.Uuid
+  devolucionId   String       @db.Uuid
+  detalleVentaId String       @db.Uuid
+  productoId     String       @db.Uuid
+  productoNombre String       @db.VarChar(180)
+  cantidad       Int
+  precioUnitario Decimal      @db.Decimal(12, 2)
+  total          Decimal      @db.Decimal(12, 2)
+  devolucion     Devolucion   @relation(fields: [devolucionId], references: [id], onDelete: Cascade)
+  detalleVenta   DetalleVenta @relation(fields: [detalleVentaId], references: [id], onDelete: Restrict)
+  producto       Producto     @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@index([devolucionId])
+  @@index([detalleVentaId])
+  @@map("detalles_devolucion")
+}
+
+model CorteCaja {
+  id                     String   @id @default(uuid()) @db.Uuid
+  folio                  String   @unique @db.VarChar(40)
+  usuarioOperadorId      String   @db.Uuid
+  cerradoPorId           String   @db.Uuid
+  fechaOperativa         DateTime @db.Date
+  efectivoSistema        Decimal  @db.Decimal(12, 2)
+  transferenciaSistema   Decimal  @db.Decimal(12, 2)
+  tarjetaSistema         Decimal  @db.Decimal(12, 2)
+  otroSistema            Decimal  @db.Decimal(12, 2)
+  efectivoDeclarado      Decimal  @db.Decimal(12, 2)
+  transferenciaDeclarada Decimal  @db.Decimal(12, 2)
+  tarjetaDeclarada       Decimal  @db.Decimal(12, 2)
+  otroDeclarado          Decimal  @db.Decimal(12, 2)
+  diferencia             Decimal  @db.Decimal(12, 2)
+  cantidadAbonos         Int
+  totalVentasContado     Decimal  @db.Decimal(12, 2)
+  cantidadVentasContado  Int
+  cantidadEntregas       Int
+  totalReembolsos        Decimal  @default(0) @db.Decimal(12, 2)
+  cantidadReembolsos     Int      @default(0)
+  firmaNombre            String   @db.VarChar(180)
+  hashIntegridad         String   @db.VarChar(64)
+  notas                  String?
+  cerradoEn              DateTime @default(now())
+  usuarioOperador        Usuario  @relation("CorteOperador", fields: [usuarioOperadorId], references: [id], onDelete: Restrict)
+  cerradoPor             Usuario  @relation("CorteCerradoPor", fields: [cerradoPorId], references: [id], onDelete: Restrict)
+
+  @@unique([usuarioOperadorId, fechaOperativa])
+  @@index([fechaOperativa, cerradoEn])
+  @@map("cortes_caja")
+}
+
+model VisitaCobranza {
+  id               String           @id @default(uuid()) @db.Uuid
+  rutaId           String           @db.Uuid
+  clienteId        String           @db.Uuid
+  usuarioId        String           @db.Uuid
+  idOperacionMovil String?          @unique @db.VarChar(100)
+  fechaProgramada  DateTime
+  fechaVisita      DateTime?
+  resultado        ResultadoVisita?
+  promesaPagoFecha DateTime?
+  latitud          Decimal?         @db.Decimal(10, 7)
+  longitud         Decimal?         @db.Decimal(10, 7)
+  notas            String?
+  fueraDeRuta      Boolean          @default(false)
+  creadoEn         DateTime         @default(now())
+  actualizadoEn    DateTime         @updatedAt
+  ruta             Ruta             @relation(fields: [rutaId], references: [id], onDelete: Restrict)
+  cliente          Cliente          @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  usuario          Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  abonos           Abono[]
+
+  @@unique([rutaId, clienteId, fechaProgramada])
+  @@index([rutaId, fechaProgramada])
+  @@index([usuarioId, fechaProgramada])
+  @@index([rutaId, fechaProgramada, fueraDeRuta])
+  @@map("visitas_cobranza")
+}
+
+model EvaluacionRiesgo {
+  id               String      @id @default(uuid()) @db.Uuid
+  clienteId        String      @db.Uuid
+  puntuacion       Int
+  nivel            NivelRiesgo
+  cuotasVencidas   Int
+  diasMoraMaximos  Int
+  porcentajePagado Decimal     @db.Decimal(5, 2)
+  visitasSinPago   Int
+  razon            String
+  calculadaEn      DateTime    @default(now())
+  cliente          Cliente     @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId, calculadaEn])
+  @@index([nivel, puntuacion])
+  @@map("evaluaciones_riesgo")
+}
+
+model LoteSincronizacion {
+  id               String                  @id @default(uuid()) @db.Uuid
+  dispositivoId    String                  @db.VarChar(120)
+  usuarioId        String                  @db.Uuid
+  idLoteCliente    String                  @unique @db.VarChar(100)
+  totalOperaciones Int
+  exitosas         Int
+  fallidas         Int
+  detalleError     Json?
+  huellaIntegridad String?                 @db.VarChar(128)
+  recibidoEn       DateTime                @default(now())
+  usuario          Usuario                 @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  operaciones      OperacionSincronizada[]
+
+  @@index([dispositivoId, recibidoEn])
+  @@map("lotes_sincronizacion")
+}
+
+model DispositivoSincronizacion {
+  id                     String    @id @default(uuid()) @db.Uuid
+  usuarioId              String    @db.Uuid
+  dispositivoId          String    @db.VarChar(120)
+  claveIntegridadCifrada String
+  ultimaSecuencia        Int       @default(0)
+  ultimoHash             String    @default("GENESIS") @db.VarChar(128)
+  activo                 Boolean   @default(true)
+  registradoEn           DateTime  @default(now())
+  ultimoUsoEn            DateTime?
+  usuario                Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, dispositivoId])
+  @@index([usuarioId, activo])
+  @@map("dispositivos_sincronizacion")
+}
+
+model OperacionSincronizada {
+  id              String             @id @default(uuid()) @db.Uuid
+  idOperacion     String             @unique @db.VarChar(100)
+  loteId          String             @db.Uuid
+  usuarioId       String             @db.Uuid
+  dispositivoId   String             @db.VarChar(120)
+  tipo            String             @db.VarChar(30)
+  entidadId       String?            @db.Uuid
+  secuencia       Int
+  hashAnterior    String             @db.VarChar(128)
+  hashContenido   String             @db.VarChar(128)
+  creadaEnCliente DateTime
+  procesadaEn     DateTime           @default(now())
+  lote            LoteSincronizacion @relation(fields: [loteId], references: [id], onDelete: Cascade)
+  usuario         Usuario            @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@unique([usuarioId, dispositivoId, secuencia])
+  @@index([dispositivoId, procesadaEn])
+  @@map("operaciones_sincronizadas")
+}
+
+model Auditoria {
+  id           String   @id @default(uuid()) @db.Uuid
+  usuarioId    String?  @db.Uuid
+  accion       String   @db.VarChar(80)
+  entidad      String   @db.VarChar(80)
+  entidadId    String?
+  datosAntes   Json?
+  datosDespues Json?
+  ip           String?
+  creadoEn     DateTime @default(now())
+  usuario      Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([entidad, entidadId])
+  @@index([usuarioId, creadoEn])
+  @@map("auditoria")
+}

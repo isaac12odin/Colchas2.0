@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+.postgres-data
+.postgres-socket
+.postgres.log
+.env
+back/.env
+front/.env.local
+movil/.env
+respaldos
+.git
+.DS_Store

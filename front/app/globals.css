@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --fondo: #f4f7fb;
+  --panel: #ffffff;
+  --texto: #161616;
+  --texto-suave: #525252;
+  --borde: #dde1e6;
+}
+
+.dark {
+  color-scheme: dark;
+  --fondo: #0b1220;
+  --panel: #121a2a;
+  --texto: #f4f4f4;
+  --texto-suave: #c6c6c6;
+  --borde: #334155;
+}
+
+* {
+  border-color: var(--borde);
+}
+html {
+  background: var(--fondo);
+}
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: Arial, Helvetica, sans-serif;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(15, 98, 254, 0.35);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border bg-white shadow-panel dark:bg-slate-900;
+  }
+  .boton-primario {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-marca-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-marca-600 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .boton-secundario {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800;
+  }
+  .campo {
+    @apply min-h-11 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-marca-500 dark:bg-slate-950 dark:text-white;
+  }
+  .etiqueta {
+    @apply mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200;
+  }
+}

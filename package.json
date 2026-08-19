@@ -1,0 +1,51 @@
+{
+  "name": "nexo-cobranza",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "back",
+    "front",
+    "movil"
+  ],
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c blue,cyan \"npm run dev -w back\" \"npm run dev -w front\"",
+    "dev:movil": "npm run start -w movil",
+    "build": "npm run build -w back && npm run build -w front",
+    "typecheck": "npm run typecheck -w back && npm run typecheck -w front && npm run typecheck -w movil",
+    "test": "npm run test -w back && npm run test -w movil",
+    "test:web": "npm run test:ui -w front",
+    "test:robustas": "npm run test:robustas -w back",
+    "validar:todo": "npm run typecheck && npm test && npm run test:robustas && npm run test:web && npm run build",
+    "format": "prettier --write .",
+    "db:migrate": "npm run db:migrate -w back",
+    "db:seed": "npm run db:seed -w back",
+    "datos:demo": "npm run db:demo -w back",
+    "datos:demo:limpiar": "npm run db:demo:limpiar -w back",
+    "db:studio": "npm run db:studio -w back",
+    "db:start:local": "sh scripts/postgres-local.sh start",
+    "db:stop:local": "sh scripts/postgres-local.sh stop",
+    "db:status:local": "sh scripts/postgres-local.sh status",
+    "backup": "sh scripts/respaldo-postgres.sh",
+    "backup:verify": "sh scripts/verificar-respaldo.sh",
+    "backup:restore-test": "sh scripts/probar-restauracion.sh"
+  },
+  "devDependencies": {
+    "concurrently": "9.1.2",
+    "prettier": "3.5.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "exceljs@3.10.0": {
+      "uuid": "11.1.1"
+    },
+    "xcode@3.0.1": {
+      "uuid": "11.1.1"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

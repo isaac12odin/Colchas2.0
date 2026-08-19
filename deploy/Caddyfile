@@ -1,0 +1,19 @@
+{$DOMINIO} {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  # Los monitores externos deben consultar a la API, no una ruta inexistente
+  # de Next.js. Se conserva el URI para soportar /salud y /salud/listo.
+  @salud path /salud /salud/*
+  handle @salud {
+    reverse_proxy api:4000
+  }
+
+  handle {
+    reverse_proxy front:3000
+  }
+}

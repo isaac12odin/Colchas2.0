@@ -1,0 +1,52 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4000/salud/listo"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks: [privada]
+
+  front:
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+      args:
+        INTERNAL_API_URL: http://api:4000
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "3000"
+    networks: [privada]
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      DOMINIO: ${DOMINIO}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_datos:/data
+      - caddy_config:/config
+    depends_on: [front]
+    networks: [privada]
+
+networks:
+  privada:
+    internal: false
+
+volumes:
+  caddy_datos:
+  caddy_config:

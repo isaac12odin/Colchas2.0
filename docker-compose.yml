@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: nexo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexo_cobranza
+      POSTGRES_USER: nexo
+      POSTGRES_PASSWORD: nexo_local_seguro
+    ports:
+      - "55433:5432"
+    volumes:
+      - nexo_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexo -d nexo_cobranza"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  nexo_postgres:

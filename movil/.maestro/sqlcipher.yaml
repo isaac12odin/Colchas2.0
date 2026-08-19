@@ -1,0 +1,12 @@
+appId: com.nexo.cobranza.e2e
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "PRUEBA NATIVA APROBADA"
+    timeout: 30000
+- assertVisible: ".*SQLCipher activo.*"
+- assertVisible: ".*Clave incorrecta rechazada.*"
+- assertVisible: ".*Bitácora persistente.*"
+- assertVisible: ".*Integridad válida.*"
+- assertVisible: "PRUEBA NATIVA APROBADA"
