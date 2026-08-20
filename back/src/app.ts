@@ -8,6 +8,7 @@ import { entorno } from "./configuracion/entorno.js";
 import { registro } from "./infraestructura/registro.js";
 import { prisma } from "./infraestructura/prisma.js";
 import { protegerCsrf } from "./seguridad/middlewares.js";
+import { requiereHttps } from "./seguridad/https.js";
 import { manejarError, manejarNoEncontrado } from "./compartido/errores.js";
 import { rutasAutenticacion } from "./modulos/autenticacion/rutas.js";
 import { rutasUsuarios } from "./modulos/usuarios/rutas.js";
@@ -34,11 +35,11 @@ app.set("trust proxy", 1);
 app.use(pinoHttp({ logger: registro }));
 app.use(helmet({ crossOriginResourcePolicy: { policy: "same-site" } }));
 app.use((req, res, next) => {
-  if (
-    entorno.NODE_ENV === "production" &&
-    !req.secure &&
-    req.path !== "/salud"
-  ) {
+  if (requiereHttps({
+    produccion: entorno.NODE_ENV === "production",
+    conexionSegura: req.secure,
+    ruta: req.path,
+  })) {
     res.status(426).json({
       error: {
         codigo: "HTTPS_REQUERIDO",
