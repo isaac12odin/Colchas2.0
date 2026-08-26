@@ -35,7 +35,6 @@ npm run dev:movil
 
 En un teléfono real, cambie `EXPO_PUBLIC_API_URL` por la IP HTTPS o la IP local de la computadora; `localhost` en el teléfono apunta al propio teléfono. SQLCipher requiere un development build (`npx expo run:android` o `npx expo run:ios`), no Expo Go.
 
-Los perfiles instalables ya apuntan a `https://nexo.deadcode.cloud/api/v1`:
 
 ```bash
 npm run build:android:preview -w movil  # APK interno para probar
