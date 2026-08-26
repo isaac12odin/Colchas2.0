@@ -1,7 +1,10 @@
 {
+ 
   "name": "nexo-cobranza",
   "version": "1.0.0",
   "private": true,
+  "license": "UNLICENSED"
+
   "workspaces": [
     "back",
     "front",
