@@ -1,0 +1,1959 @@
+openapi: 3.1.0
+info:
+  title: Vektra API
+  version: 1.1.0
+  description:
+    Contrato público de Vektra. Toda mutación valida rol, alcance, CSRF cuando usa cookies
+    y reglas de negocio en PostgreSQL.
+  license:
+    name: Propietaria; consulte LICENSE.md
+    identifier: LicenseRef-Nexo-Proprietary
+servers:
+  - url: https://nexo.deadcode.cloud/api
+    description: Producción (Nginx traduce a /api/v1)
+  - url: http://localhost:4000/api/v1
+    description: Desarrollo local
+security:
+  - cookieSesion: []
+  - bearerMovil: []
+tags:
+  - name: Autenticación
+    description: Inicio, renovación, cierre, contraseña y MFA.
+  - name: Usuarios
+    description: Administración de cuentas, roles y credenciales.
+  - name: Clientes
+    description: Directorio, expediente, saldo y cartera.
+  - name: Localidades
+    description: Catálogo territorial para clientes y rutas.
+  - name: Rutas
+    description: Planeación y ejecución de cobranza por localidad.
+  - name: Ventas
+    description: Ventas de contado, crédito y público general.
+  - name: Abonos
+    description: Cobros, aplicación a cuotas y anulaciones auditadas.
+  - name: Inventario
+    description: Productos, fotografías, existencias y movimientos.
+  - name: Compras
+    description: Entradas de mercancía y facturas de proveedor.
+  - name: Proveedores
+    description: Directorio completo y opciones minimizadas por rol.
+  - name: Pedidos
+    description: Solicitud, surtido, almacén y entrega al cliente.
+  - name: Devoluciones
+    description: Devolución, evidencia, autorización y reembolso.
+  - name: Cortes
+    description: Previsualización y cierre firmado de caja.
+  - name: Sincronización
+    description: Bitácora offline, dispositivos, lotes y revisiones.
+  - name: Reportes
+    description: Balances, Excel y documentos operativos.
+  - name: Alertas
+    description: Señales empresariales que requieren atención.
+  - name: Auditoría
+    description: Historial inmutable de acciones sensibles.
+  - name: Importaciones
+    description: Carga transaccional inicial mediante Excel.
+  - name: Reconciliación
+    description: Comparación de libros contra proyecciones.
+paths:
+  /auth/iniciar-sesion:
+    post:
+      tags:
+        - Autenticación
+      security: []
+      summary: Inicia sesión web o móvil
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InicioSesion"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "401":
+          $ref: "#/components/responses/Error"
+        "423":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+      operationId: postAuthIniciarSesion
+  /auth/renovar:
+    post:
+      tags:
+        - Autenticación
+      summary: Consume una sola vez el refresh token y rota la sesión
+      description:
+        Web usa cookie+CSRF; móvil envía refreshToken. Renovaciones concurrentes sólo permiten
+        una sucesora.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+      operationId: postAuthRenovar
+  /auth/cerrar-sesion:
+    post:
+      tags:
+        - Autenticación
+      summary: Revoca la sesión
+      responses:
+        "204":
+          description: Sesión cerrada
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: postAuthCerrarSesion
+  /auth/sesion:
+    get:
+      tags:
+        - Autenticación
+      summary: Devuelve la identidad actual
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getAuthSesion
+  /auth/cambiar-contrasena:
+    post:
+      tags:
+        - Autenticación
+      summary: Cambia contraseña propia y revoca sesiones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - contrasenaActual
+                - nuevaContrasena
+              properties:
+                contrasenaActual:
+                  type: string
+                nuevaContrasena:
+                  type: string
+                  minLength: 6
+      responses:
+        "204":
+          description: Contraseña cambiada
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postAuthCambiarContrasena
+  /auth/mfa/iniciar:
+    post:
+      tags:
+        - Autenticación
+      x-roles:
+        - ADMINISTRADOR
+      summary: Genera secreto MFA temporal
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "403":
+          $ref: "#/components/responses/Error"
+      operationId: postAuthMfaIniciar
+  /auth/mfa/confirmar:
+    post:
+      tags:
+        - Autenticación
+      x-roles:
+        - ADMINISTRADOR
+      summary: Confirma MFA con TOTP
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postAuthMfaConfirmar
+  /auth/mfa/deshabilitar:
+    post:
+      tags:
+        - Autenticación
+      x-roles:
+        - ADMINISTRADOR
+      summary: Deshabilita MFA con contraseña y TOTP
+      responses:
+        "204":
+          description: MFA deshabilitado
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postAuthMfaDeshabilitar
+  /usuarios:
+    get:
+      tags:
+        - Usuarios
+      x-roles:
+        - ADMINISTRADOR
+      summary: Lista usuarios
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getUsuarios
+    post:
+      tags:
+        - Usuarios
+      x-roles:
+        - ADMINISTRADOR
+      summary: Crea usuario con contraseña final sin cambio forzado
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+      operationId: postUsuarios
+  /usuarios/{id}:
+    patch:
+      tags:
+        - Usuarios
+      x-roles:
+        - ADMINISTRADOR
+      summary: Edita rol/estado sin permitir eliminar al último administrador
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: patchUsuariosId
+  /usuarios/{id}/restablecer-contrasena:
+    post:
+      tags:
+        - Usuarios
+      x-roles:
+        - ADMINISTRADOR
+      summary: Asigna una contraseña nueva y revoca sesiones
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Restablecida
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postUsuariosIdRestablecerContrasena
+  /clientes:
+    get:
+      tags:
+        - Clientes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+        - COBRADOR
+      summary: Lista/busca clientes dentro del alcance
+      parameters:
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Limite"
+        - $ref: "#/components/parameters/Buscar"
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getClientes
+    post:
+      tags:
+        - Clientes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+      summary: Crea cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClienteEntrada"
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+      operationId: postClientes
+  /clientes/{id}:
+    get:
+      tags:
+        - Clientes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+        - COBRADOR
+      summary: Expediente completo según alcance
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "404":
+          $ref: "#/components/responses/Error"
+      operationId: getClientesId
+    patch:
+      tags:
+        - Clientes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+      summary: Edita contacto/localidad y campos permitidos
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: patchClientesId
+  /clientes/{id}/tarjeta:
+    patch:
+      tags:
+        - Clientes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+      summary: Asigna tarjeta manual a cliente con saldo
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: patchClientesIdTarjeta
+  /clientes/{id}/saldo:
+    patch:
+      tags:
+        - Clientes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Ajusta saldo con valor esperado, motivo y contraseña
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: patchClientesIdSaldo
+  /clientes/{id}/estado-cuenta:
+    get:
+      tags:
+        - Clientes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+        - COBRADOR
+      summary: Descarga/consulta estado de cuenta
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Estado de cuenta
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getClientesIdEstadoCuenta
+  /localidades:
+    get:
+      tags:
+        - Localidades
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+        - COBRADOR
+      summary: Lista localidades
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getLocalidades
+    post:
+      tags:
+        - Localidades
+      x-roles:
+        - ADMINISTRADOR
+      summary: Crea localidad
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: postLocalidades
+  /localidades/{id}:
+    patch:
+      tags:
+        - Localidades
+      x-roles:
+        - ADMINISTRADOR
+      summary: Edita localidad
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: patchLocalidadesId
+  /rutas:
+    get:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Lista rutas permitidas
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getRutas
+    post:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+      summary: Crea ruta multilocalidad, con cobrador móvil opcional
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: postRutas
+  /rutas/{id}:
+    patch:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+      summary: Reconfigura ruta/asignaciones
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: patchRutasId
+  /rutas/clientes-con-saldo:
+    get:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+      summary: Lista clientas activas con saldo disponibles para asignar y ordenar
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getRutasClientesConSaldo
+  /rutas/{id}/visitas:
+    post:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Registra visita en línea
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: postRutasIdVisitas
+  /rutas/directorio-cobranza:
+    get:
+      tags:
+        - Rutas
+      x-roles:
+        - COBRADOR
+      summary: Directorio offline limitado al cobrador
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getRutasDirectorioCobranza
+  /rutas/{id}/clientes-extraordinarios:
+    get:
+      tags:
+        - Rutas
+      x-roles:
+        - COBRADOR
+      summary: Busca clientas de otra ruta del mismo cobrador
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/Buscar"
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getRutasIdClientesExtraordinarios
+  /rutas/{id}/jornada:
+    get:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Descarga jornada para trabajo offline
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getRutasIdJornada
+  /rutas/{id}/hoja.pdf:
+    get:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Hoja imprimible con orden exacto y monto a cobrar por cliente
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/Fecha"
+      responses:
+        "200":
+          description: PDF de la hoja de cobranza
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getRutasIdHoja.pdf
+  /rutas/{id}/resultado.pdf:
+    get:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Reporte PDF con cobros, diferencias y compromisos de la jornada
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/Fecha"
+      responses:
+        "200":
+          description: PDF de resultados de cobranza
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getRutasIdResultado.pdf
+  /rutas/{id}/historial:
+    get:
+      tags:
+        - Rutas
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Historial de visitas/abonos
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getRutasIdHistorial
+  /ventas:
+    get:
+      tags:
+        - Ventas
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+        - COBRADOR
+      summary: Lista ventas dentro del alcance
+      parameters:
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Limite"
+        - $ref: "#/components/parameters/Buscar"
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getVentas
+    post:
+      tags:
+        - Ventas
+      x-roles:
+        - ADMINISTRADOR
+        - VENDEDOR
+        - COBRADOR
+      summary: Confirma venta de contado o crédito
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VentaEntrada"
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postVentas
+  /ventas/{id}:
+    get:
+      tags:
+        - Ventas
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - VENDEDOR
+        - COBRADOR
+      summary: Detalle histórico de venta
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getVentasId
+  /abonos:
+    get:
+      tags:
+        - Abonos
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - COBRADOR
+      summary: Lista abonos permitidos
+      parameters:
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Limite"
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getAbonos
+    post:
+      tags:
+        - Abonos
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - COBRADOR
+      summary: Aplica abono a saldo/cuotas/caja
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AbonoEntrada"
+      responses:
+        "200":
+          description: Reintento idempotente
+        "201":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postAbonos
+  /abonos/agenda:
+    get:
+      tags:
+        - Abonos
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - COBRADOR
+      summary: Resume qué cobrar hoy, esta semana y lo vencido
+      responses:
+        "200":
+          description: Agenda de cuotas y cobros dentro del alcance del usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgendaCobranza"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getAbonosAgenda
+  /abonos/riesgo/recalcular:
+    post:
+      tags:
+        - Abonos
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Recalcula evaluación de riesgo
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: postAbonosRiesgoRecalcular
+  /abonos/{id}/anular:
+    post:
+      tags:
+        - Abonos
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Compensa un abono sin borrarlo
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+      operationId: postAbonosIdAnular
+  /inventario/productos:
+    get:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+        - VENDEDOR
+        - COBRADOR
+      summary: Lista productos; oculta costos por rol
+      parameters:
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Limite"
+        - $ref: "#/components/parameters/Buscar"
+        - name: categoriaId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getInventarioProductos
+    post:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Crea producto, existencia y foto opcional
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductoEntrada"
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postInventarioProductos
+  /inventario/catalogos-producto:
+    get:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+        - VENDEDOR
+        - COBRADOR
+      summary: Lista marcas y categorías activas para reutilizarlas al capturar
+      responses:
+        "200":
+          description: Catálogos activos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogosProducto"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getInventarioCatalogosProducto
+  /inventario/categorias-producto:
+    post:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Agrega o reactiva una agrupación del catálogo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nombre
+              properties:
+                nombre:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "201":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: postInventarioCategoriasProducto
+  /inventario/productos/codigo/{codigo}:
+    get:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+        - VENDEDOR
+        - COBRADOR
+      summary: Busca por código de barras/QR/SKU
+      parameters:
+        - name: codigo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "404":
+          $ref: "#/components/responses/Error"
+      operationId: getInventarioProductosCodigoCodigo
+  /inventario/productos/{id}:
+    patch:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Edita catálogo/foto
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Campos de ProductoEntrada que deban modificarse.
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: patchInventarioProductosId
+    delete:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Baja lógica conservando historial
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Baja aplicada
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: deleteInventarioProductosId
+  /inventario/productos/{id}/foto:
+    get:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+        - VENDEDOR
+        - COBRADOR
+      summary: Foto privada con ETag
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: JPEG, PNG o WebP
+        "304":
+          description: No modificada
+        "404":
+          $ref: "#/components/responses/Error"
+      operationId: getInventarioProductosIdFoto
+  /inventario/productos/{id}/ajuste:
+    post:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Ajuste auditado de existencia
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postInventarioProductosIdAjuste
+  /inventario/movimientos:
+    get:
+      tags:
+        - Inventario
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Libro paginado de inventario
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getInventarioMovimientos
+  /compras:
+    get:
+      tags:
+        - Compras
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Historial de compras
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getCompras
+    post:
+      tags:
+        - Compras
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Registra factura/entrada y aumenta stock
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postCompras
+  /proveedores:
+    get:
+      tags:
+        - Proveedores
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - ALMACENISTA
+      summary: Lista fichas de proveedor autorizadas
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getProveedores
+    post:
+      tags:
+        - Proveedores
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Crea proveedor
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: postProveedores
+  /proveedores/opciones:
+    get:
+      tags:
+        - Proveedores
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - ALMACENISTA
+      summary: Lista mínima para selectores de pedidos y compras
+      description: Devuelve exclusivamente id y nombre; nunca RFC, contacto, teléfono, correo ni notas.
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "403":
+          $ref: "#/components/responses/Error"
+      operationId: getProveedoresOpciones
+  /proveedores/{id}:
+    patch:
+      tags:
+        - Proveedores
+      x-roles:
+        - ADMINISTRADOR
+        - ALMACENISTA
+      summary: Edita proveedor
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: patchProveedoresId
+  /pedidos:
+    get:
+      tags:
+        - Pedidos
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - ALMACENISTA
+        - VENDEDOR
+        - COBRADOR
+      summary: Lista pedidos por alcance/cliente
+      parameters:
+        - name: clienteId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Limite"
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getPedidos
+    post:
+      tags:
+        - Pedidos
+      x-roles:
+        - ADMINISTRADOR
+        - VENDEDOR
+        - COBRADOR
+      summary: Captura pedido sólo con productos registrados
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: postPedidos
+  /pedidos/{id}/estado:
+    patch:
+      tags:
+        - Pedidos
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - ALMACENISTA
+      summary: Asigna proveedor/avanza surtido
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+      operationId: patchPedidosIdEstado
+  /pedidos/{id}/entregar:
+    post:
+      tags:
+        - Pedidos
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Entrega y crea venta/saldo/stock atómicamente
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postPedidosIdEntregar
+  /devoluciones:
+    get:
+      tags:
+        - Devoluciones
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - ALMACENISTA
+      summary: Lista devoluciones según permiso
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getDevoluciones
+    post:
+      tags:
+        - Devoluciones
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Autoriza devolución/cambio/reembolso
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+      operationId: postDevoluciones
+  /devoluciones/{id}/evidencia:
+    get:
+      tags:
+        - Devoluciones
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - ALMACENISTA
+      summary: Evidencia privada de devolución
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Imagen privada
+        "404":
+          $ref: "#/components/responses/Error"
+      operationId: getDevolucionesIdEvidencia
+  /cortes/operadores:
+    get:
+      tags:
+        - Cortes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - COBRADOR
+      summary: Operadores visibles para corte
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getCortesOperadores
+  /cortes/previsualizar:
+    get:
+      tags:
+        - Cortes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - COBRADOR
+      summary: Calcula corte sin cerrarlo
+      parameters:
+        - name: usuarioOperadorId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: fecha
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getCortesPrevisualizar
+  /cortes:
+    get:
+      tags:
+        - Cortes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - COBRADOR
+      summary: Historial de cortes permitidos
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getCortes
+    post:
+      tags:
+        - Cortes
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Sella jornada y diferencias de caja
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+      operationId: postCortes
+  /sincronizacion/catalogo:
+    get:
+      tags:
+        - Sincronización
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Catálogo móvil sin costo
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getSincronizacionCatalogo
+  /sincronizacion/dispositivos/registrar:
+    post:
+      tags:
+        - Sincronización
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Enrola clave HMAC de dispositivo
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+      operationId: postSincronizacionDispositivosRegistrar
+  /sincronizacion/dispositivos:
+    get:
+      tags:
+        - Sincronización
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Lista dispositivos propios o administrables
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getSincronizacionDispositivos
+  /sincronizacion/dispositivos/{id}/revocar:
+    patch:
+      tags:
+        - Sincronización
+      x-roles:
+        - ADMINISTRADOR
+      summary: Revoca dispositivo
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: patchSincronizacionDispositivosIdRevocar
+  /sincronizacion/dispositivos/{id}/reemplazar:
+    post:
+      tags:
+        - Sincronización
+      x-roles:
+        - ADMINISTRADOR
+      summary: Revoca un dispositivo y enrola su reemplazo con cadena GENESIS
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postSincronizacionDispositivosIdReemplazar
+  /sincronizacion/revisiones:
+    get:
+      tags:
+        - Sincronización
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Lista recibos offline que necesitan resolución administrativa
+      parameters:
+        - name: pendientes
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getSincronizacionRevisiones
+  /sincronizacion/revisiones/{id}/resolver:
+    patch:
+      tags:
+        - Sincronización
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Documenta resolución y movimiento compensatorio sin editar el recibo
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: patchSincronizacionRevisionesIdResolver
+  /sincronizacion/lotes:
+    post:
+      tags:
+        - Sincronización
+      x-roles:
+        - ADMINISTRADOR
+        - COBRADOR
+      summary: Procesa 1..500 operaciones encadenadas
+      description:
+        CONFIRMADA aplica efectos. RECHAZADA revierte sólo esa operación, conserva recibo
+        terminal y avanza la cadena. Errores técnicos revierten el lote.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoteOffline"
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postSincronizacionLotes
+  /reportes/resumen:
+    get:
+      tags:
+        - Reportes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Balance mes/bimestre/semestre/año
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getReportesResumen
+  /reportes/ventas.xlsx:
+    get:
+      tags:
+        - Reportes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Excel de ventas con fórmulas
+      responses:
+        "200":
+          description: XLSX
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getReportesVentas.xlsx
+  /reportes/clientes.xlsx:
+    get:
+      tags:
+        - Reportes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Excel de cartera sin PII de contacto
+      responses:
+        "200":
+          description: XLSX
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getReportesClientes.xlsx
+  /reportes/pedidos-pendientes.pdf:
+    get:
+      tags:
+        - Reportes
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - ALMACENISTA
+      summary: PDF de surtido
+      responses:
+        "200":
+          description: PDF
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getReportesPedidosPendientes.pdf
+  /alertas:
+    get:
+      tags:
+        - Alertas
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+        - ALMACENISTA
+        - COBRADOR
+      summary: Alertas filtradas por rol/alcance
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getAlertas
+  /auditoria:
+    get:
+      tags:
+        - Auditoría
+      x-roles:
+        - ADMINISTRADOR
+      summary: Bitácora paginada
+      responses:
+        "200":
+          $ref: "#/components/responses/Pagina"
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getAuditoria
+  /importaciones/plantilla.xlsx:
+    get:
+      tags:
+        - Importaciones
+      x-roles:
+        - ADMINISTRADOR
+      summary: Descarga plantilla inicial
+      responses:
+        "200":
+          description: XLSX
+        4XX:
+          $ref: "#/components/responses/Error"
+      operationId: getImportacionesPlantilla.xlsx
+  /importaciones/excel:
+    post:
+      tags:
+        - Importaciones
+      x-roles:
+        - ADMINISTRADOR
+      summary: Importa clientes/productos/saldos/localidades/rutas atómicamente
+      responses:
+        "201":
+          $ref: "#/components/responses/Exito"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+      operationId: postImportacionesExcel
+  /reconciliacion:
+    get:
+      tags:
+        - Reconciliación
+      x-roles:
+        - ADMINISTRADOR
+        - CONTABLE
+      summary: Reconstruye saldos y existencias sin modificar proyecciones
+      description:
+        Devuelve IDs, valores esperados y actuales. Toda corrección posterior debe ser
+        compensatoria y auditada.
+      responses:
+        "200":
+          $ref: "#/components/responses/Exito"
+        "403":
+          $ref: "#/components/responses/Error"
+      operationId: getReconciliacion
+components:
+  securitySchemes:
+    cookieSesion:
+      type: apiKey
+      in: cookie
+      name: access_token
+    bearerMovil:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Pagina:
+      name: pagina
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limite:
+      name: limite
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Buscar:
+      name: buscar
+      in: query
+      schema:
+        type: string
+        maxLength: 180
+    Fecha:
+      name: fecha
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+  responses:
+    Exito:
+      description: Operación correcta
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    Pagina:
+      description: Página correcta
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Pagina"
+    Error:
+      description: Error estable de aplicación
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    DineroNoNegativo:
+      type: number
+      minimum: 0
+      maximum: 9999999999.99
+      multipleOf: 0.01
+    DineroPositivo:
+      type: number
+      exclusiveMinimum: 0
+      maximum: 9999999999.99
+      multipleOf: 0.01
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - codigo
+            - mensaje
+          properties:
+            codigo:
+              type: string
+            mensaje:
+              type: string
+            detalles: {}
+    Pagina:
+      type: object
+      required:
+        - datos
+        - total
+        - pagina
+        - limite
+      properties:
+        datos:
+          type: array
+          items: {}
+        total:
+          type: integer
+        pagina:
+          type: integer
+        limite:
+          type: integer
+        paginas:
+          type: integer
+    InicioSesion:
+      type: object
+      required:
+        - correo
+        - contrasena
+      properties:
+        correo:
+          type: string
+          format: email
+        contrasena:
+          type: string
+        cliente:
+          type: string
+          enum:
+            - WEB
+            - MOVIL
+          default: WEB
+        codigoMfa:
+          type: string
+          pattern: ^\d{6}$
+    ClienteEntrada:
+      type: object
+      required:
+        - nombreCompleto
+        - telefono
+        - direccion
+        - localidadId
+      properties:
+        nombreCompleto:
+          type: string
+          minLength: 3
+        telefono:
+          type: string
+          minLength: 7
+        direccion:
+          type: string
+          minLength: 5
+        localidadId:
+          type: string
+          format: uuid
+        limiteCredito:
+          $ref: "#/components/schemas/DineroNoNegativo"
+        notas:
+          type: string
+    PlanPago:
+      type: object
+      required:
+        - periodicidad
+        - montoCuota
+        - primerVencimiento
+      properties:
+        periodicidad:
+          type: string
+          enum:
+            - SEMANAL
+            - QUINCENAL
+            - MENSUAL
+        montoCuota:
+          $ref: "#/components/schemas/DineroPositivo"
+        primerVencimiento:
+          type: string
+          format: date-time
+          description: Igual o posterior a fechaVenta/fechaEntrega
+    VentaEntrada:
+      type: object
+      required:
+        - tipo
+        - items
+      properties:
+        clienteId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        numeroTarjeta:
+          type: string
+        tipo:
+          type: string
+          enum:
+            - CONTADO
+            - CREDITO
+            - PUBLICO
+        descuento:
+          $ref: "#/components/schemas/DineroNoNegativo"
+        anticipo:
+          $ref: "#/components/schemas/DineroNoNegativo"
+        metodoAnticipo:
+          type: string
+          enum:
+            - EFECTIVO
+            - TRANSFERENCIA
+            - TARJETA
+            - OTRO
+        fechaVenta:
+          type: string
+          format: date-time
+          description: Máximo 36h atrás y 10m adelante
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - productoId
+              - cantidad
+            properties:
+              productoId:
+                type: string
+                format: uuid
+              cantidad:
+                type: integer
+                minimum: 1
+              precioUnitario:
+                $ref: "#/components/schemas/DineroPositivo"
+        plan:
+          $ref: "#/components/schemas/PlanPago"
+    AbonoEntrada:
+      type: object
+      required:
+        - clienteId
+        - monto
+      properties:
+        clienteId:
+          type: string
+          format: uuid
+        ventaId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        monto:
+          $ref: "#/components/schemas/DineroPositivo"
+        metodo:
+          type: string
+          enum:
+            - EFECTIVO
+            - TRANSFERENCIA
+            - TARJETA
+            - OTRO
+        fechaAbono:
+          type: string
+          format: date-time
+          description: Máximo 36h atrás y 10m adelante
+        referencia:
+          type: string
+        idOperacionMovil:
+          type: string
+    ResumenAgendaCobranza:
+      type: object
+      required:
+        - cantidad
+        - cuotas
+        - total
+      properties:
+        cantidad:
+          type: integer
+          minimum: 0
+          description: Clientas distintas
+        cuotas:
+          type: integer
+          minimum: 0
+          description: Abonos programados
+        total:
+          type: number
+          minimum: 0
+    ResumenCobrado:
+      type: object
+      required:
+        - cantidad
+        - total
+      properties:
+        cantidad:
+          type: integer
+          minimum: 0
+        total:
+          type: number
+          minimum: 0
+    AgendaCobranza:
+      type: object
+      required:
+        - hoy
+        - semana
+        - vencidos
+        - cobrado
+      properties:
+        hoy:
+          allOf:
+            - $ref: "#/components/schemas/ResumenAgendaCobranza"
+            - type: object
+              required:
+                - fecha
+              properties:
+                fecha:
+                  type: string
+                  format: date
+                items:
+                  type: array
+                  items: {}
+        semana:
+          allOf:
+            - $ref: "#/components/schemas/ResumenAgendaCobranza"
+            - type: object
+              required:
+                - inicio
+                - fin
+                - dias
+              properties:
+                inicio:
+                  type: string
+                  format: date
+                fin:
+                  type: string
+                  format: date
+                dias:
+                  type: array
+                  items:
+                    allOf:
+                      - $ref: "#/components/schemas/ResumenAgendaCobranza"
+                      - type: object
+                        properties:
+                          fecha:
+                            type: string
+                            format: date
+        vencidos:
+          $ref: "#/components/schemas/ResumenAgendaCobranza"
+        cobrado:
+          type: object
+          required:
+            - hoy
+            - semana
+          properties:
+            hoy:
+              $ref: "#/components/schemas/ResumenCobrado"
+            semana:
+              $ref: "#/components/schemas/ResumenCobrado"
+    CategoriaProducto:
+      type: object
+      required:
+        - id
+        - nombre
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+    CatalogosProducto:
+      type: object
+      required:
+        - marcas
+        - categorias
+      properties:
+        marcas:
+          type: array
+          items:
+            type: string
+        categorias:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoriaProducto"
+    ProductoEntrada:
+      type: object
+      required:
+        - sku
+        - nombre
+        - marca
+        - categoriaId
+        - existenciaMinima
+        - precioVenta
+        - precioCompra
+      properties:
+        sku:
+          type: string
+          minLength: 2
+          maxLength: 60
+        nombre:
+          type: string
+          minLength: 2
+          maxLength: 180
+        marca:
+          type: string
+          minLength: 1
+          maxLength: 120
+        categoriaId:
+          type: string
+          format: uuid
+        codigoBarras:
+          type:
+            - string
+            - "null"
+        codigoQr:
+          type:
+            - string
+            - "null"
+        existenciaInicial:
+          type: integer
+          minimum: 0
+        existenciaMinima:
+          type: integer
+          minimum: 0
+        precioVenta:
+          $ref: "#/components/schemas/DineroPositivo"
+        precioCompra:
+          $ref: "#/components/schemas/DineroNoNegativo"
+        foto:
+          type: object
+          description: Imagen base64 procesada y almacenada como archivo WebP; PostgreSQL conserva sólo la ruta.
+    OperacionOffline:
+      type: object
+      required:
+        - idOperacion
+        - tipo
+        - secuencia
+        - hashAnterior
+        - creadoEn
+        - hashIntegridad
+        - datos
+      properties:
+        idOperacion:
+          type: string
+        tipo:
+          type: string
+          enum:
+            - VISITA
+            - ABONO
+            - VENTA
+            - ENTREGA
+        secuencia:
+          type: integer
+          minimum: 1
+        hashAnterior:
+          type: string
+        creadoEn:
+          type: string
+          format: date-time
+        hashIntegridad:
+          type: string
+          pattern: ^[a-fA-F0-9]{128}$
+        datos:
+          type: object
+    LoteOffline:
+      type: object
+      required:
+        - idLoteCliente
+        - dispositivoId
+        - huellaIntegridad
+        - operaciones
+      properties:
+        idLoteCliente:
+          type: string
+        dispositivoId:
+          type: string
+        huellaIntegridad:
+          type: string
+          pattern: ^[a-fA-F0-9]{128}$
+        operaciones:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/OperacionOffline"

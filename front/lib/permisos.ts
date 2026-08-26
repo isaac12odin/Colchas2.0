@@ -13,27 +13,33 @@ export type ModuloWeb =
   | "alertas"
   | "configuracion"
   | "reportes"
-  | "usuarios";
+  | "usuarios"
+  | "capacitacion";
 
 /**
  * Matriz de navegación de la web. La API vuelve a validar cada operación;
  * esta capa evita mostrar o abrir pantallas que no corresponden al puesto.
  */
 export const rolesPorModuloWeb: Record<ModuloWeb, readonly Rol[]> = {
-  inicio: ["ADMINISTRADOR", "CONTABLE"],
-  clientes: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR", "COBRADOR"],
+  inicio: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR"],
+  clientes: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR"],
   ventas: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR"],
-  inventario: ["ADMINISTRADOR", "CONTABLE", "ALMACENISTA"],
-  rutas: ["ADMINISTRADOR", "COBRADOR"],
-  pedidos: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR", "ALMACENISTA", "COBRADOR"],
-  compras: ["ADMINISTRADOR", "ALMACENISTA"],
-  devoluciones: ["ADMINISTRADOR", "CONTABLE", "ALMACENISTA"],
-  cortes: ["ADMINISTRADOR", "CONTABLE", "COBRADOR"],
-  alertas: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR", "ALMACENISTA", "COBRADOR"],
+  inventario: ["ADMINISTRADOR", "CONTABLE"],
+  rutas: ["ADMINISTRADOR"],
+  pedidos: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR"],
+  compras: ["ADMINISTRADOR"],
+  devoluciones: ["ADMINISTRADOR", "CONTABLE"],
+  cortes: ["ADMINISTRADOR", "CONTABLE"],
+  alertas: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR"],
   configuracion: ["ADMINISTRADOR"],
   reportes: ["ADMINISTRADOR", "CONTABLE"],
   usuarios: ["ADMINISTRADOR"],
+  capacitacion: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR"],
 };
+
+export function esRolExclusivoMovil(rol: Rol) {
+  return rol === "ALMACENISTA" || rol === "COBRADOR";
+}
 
 const modulosPorRuta: ReadonlyArray<{
   prefijo: `/${ModuloWeb}`;
@@ -57,15 +63,6 @@ export function puedeAccederRutaWeb(rol: Rol, ruta: string) {
 
 /** Primera pantalla útil, nunca una sección prohibida para el rol. */
 export function obtenerRutaInicialWeb(rol: Rol) {
-  switch (rol) {
-    case "ALMACENISTA":
-      return "/inventario";
-    case "COBRADOR":
-      return "/rutas";
-    case "VENDEDOR":
-      return "/ventas";
-    case "ADMINISTRADOR":
-    case "CONTABLE":
-      return "/inicio";
-  }
+  void rol;
+  return "/inicio";
 }

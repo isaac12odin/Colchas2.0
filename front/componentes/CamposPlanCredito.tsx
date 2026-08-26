@@ -1,9 +1,23 @@
-export function CamposPlanCredito({ es }: { es: boolean }) {
+export function CamposPlanCredito({
+  es,
+  prefijoCapacitacion,
+}: {
+  es: boolean;
+  prefijoCapacitacion?: string;
+}) {
   return (
     <>
       <label>
         <span className="etiqueta">{es ? "Periodicidad" : "Frequency"}</span>
-        <select name="periodicidad" className="campo">
+        <select
+          name="periodicidad"
+          className="campo"
+          data-capacitacion={
+            prefijoCapacitacion
+              ? `${prefijoCapacitacion}.periodicidad`
+              : undefined
+          }
+        >
           <option value="SEMANAL">{es ? "Semanal" : "Weekly"}</option>
           <option value="QUINCENAL">{es ? "Quincenal" : "Biweekly"}</option>
           <option value="MENSUAL">{es ? "Mensual" : "Monthly"}</option>
@@ -20,6 +34,9 @@ export function CamposPlanCredito({ es }: { es: boolean }) {
           min="0.01"
           step="0.01"
           required
+          data-capacitacion={
+            prefijoCapacitacion ? `${prefijoCapacitacion}.cuota` : undefined
+          }
         />
       </label>
       <label>
@@ -31,6 +48,9 @@ export function CamposPlanCredito({ es }: { es: boolean }) {
           className="campo"
           type="date"
           required
+          data-capacitacion={
+            prefijoCapacitacion ? `${prefijoCapacitacion}.fecha` : undefined
+          }
         />
       </label>
     </>

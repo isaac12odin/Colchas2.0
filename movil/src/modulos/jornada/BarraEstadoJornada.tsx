@@ -16,8 +16,8 @@ export function BarraEstadoJornada({
   es,
   alVerPendientes,
 }: Propiedades) {
-  const fondo = offline ? "#fff2e8" : "#defbe6";
-  const color = offline ? "#8a3b12" : "#0e6027";
+  const fondo = offline ? "#fff2e8" : pendientes ? "#edf5ff" : "#defbe6";
+  const color = offline ? "#8a3b12" : pendientes ? "#0043ce" : "#0e6027";
   return (
     <View style={[estilos.barra, { backgroundColor: fondo }]}>
       <Ionicons
@@ -30,9 +30,13 @@ export function BarraEstadoJornada({
           ? es
             ? "Sin señal · jornada cifrada disponible"
             : "Offline · encrypted route available"
-          : es
-            ? "Jornada actualizada y lista para trabajar offline"
-            : "Route updated and ready offline"}
+          : pendientes
+            ? es
+              ? `${pendientes} movimientos protegidos pendientes de sincronizar`
+              : `${pendientes} secured movements pending synchronization`
+            : es
+              ? "Jornada actualizada y lista para trabajar offline"
+              : "Route updated and ready offline"}
       </Text>
       <Pressable
         accessibilityRole="button"

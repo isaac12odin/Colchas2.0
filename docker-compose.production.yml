@@ -7,8 +7,11 @@ services:
     env_file: .env.production
     expose:
       - "4000"
+    volumes:
+      - nexo_uploads:/app/uploads
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4000/salud/listo"]
+      test:
+        ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4000/salud/listo"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -48,5 +51,6 @@ networks:
     internal: false
 
 volumes:
+  nexo_uploads:
   caddy_datos:
   caddy_config:

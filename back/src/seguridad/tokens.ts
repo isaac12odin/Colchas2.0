@@ -8,6 +8,7 @@ export interface IdentidadToken {
   correo: string;
   rol: RolUsuario;
   debeCambiarContrasena: boolean;
+  tokenVersion: number;
 }
 
 export function crearTokenAcceso(identidad: IdentidadToken): string {

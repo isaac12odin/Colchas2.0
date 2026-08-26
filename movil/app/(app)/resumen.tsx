@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -9,6 +9,7 @@ import {
 import { api } from "@/src/api";
 import { colores, usarTema } from "@/src/tema";
 import { usarSesion } from "@/src/sesion";
+import { usarDatosVivosMovil } from "@/src/usarDatosVivosMovil";
 
 interface Resumen {
   ventas: { total: number };
@@ -30,18 +31,23 @@ export default function ResumenMovil() {
   const es = idioma === "es";
   const [datos, establecerDatos] = useState<Resumen | null>(null);
   const [error, establecerError] = useState("");
-  useEffect(() => {
-    api<Resumen>("/reportes/resumen?periodo=MES")
-      .then(establecerDatos)
-      .catch((e) => establecerError(e.message));
+  const cargar = useCallback(async () => {
+    try {
+      const nuevos = await api<Resumen>("/reportes/resumen?periodo=MES");
+      establecerDatos(nuevos);
+      establecerError("");
+    } catch (error) {
+      establecerError(error instanceof Error ? error.message : "Error");
+    }
   }, []);
+  usarDatosVivosMovil(cargar, 15_000);
   if (!datos && !error)
     return (
       <View style={estilos.centro}>
         <ActivityIndicator color={colores.azul} />
       </View>
     );
-  if (error)
+  if (!datos && error)
     return (
       <View style={estilos.centro}>
         <Text style={estilos.error}>{error}</Text>
@@ -79,6 +85,15 @@ export default function ResumenMovil() {
       <Text style={[estilos.ayuda, { color: tema.texto }]}>
         {es ? "Indicadores del mes actual" : "Current-month indicators"}
       </Text>
+      {error && (
+        <View style={estilos.avisoError}>
+          <Text style={estilos.error}>
+            {es
+              ? "No se pudo actualizar; se muestra la última lectura confirmada."
+              : "Unable to refresh; showing the last confirmed reading."}
+          </Text>
+        </View>
+      )}
       {tarjetas.map((t) => (
         <View
           key={t.e}
@@ -114,4 +129,5 @@ const estilos = StyleSheet.create({
   etiqueta: { color: colores.gris, fontSize: 13 },
   valor: { fontSize: 25, fontWeight: "700", marginTop: 6 },
   error: { color: colores.rojo, textAlign: "center" },
+  avisoError: { backgroundColor: "#fff1f1", borderRadius: 10, padding: 10 },
 });

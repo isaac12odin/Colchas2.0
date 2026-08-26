@@ -1,135 +1,121 @@
-import { useState, type FormEvent } from "react";
-import { CamposPlanCredito } from "@/componentes/CamposPlanCredito";
+"use client";
+
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
+import { IndicadorPasosOperacion } from "@/componentes/AsistenteOperacion";
+import { PasoArticulosEntrega } from "./PasoArticulosEntrega";
+import { PasoCobroEntrega } from "./PasoCobroEntrega";
+import { ResumenEntregaPedido } from "./ResumenEntregaPedido";
+import type { DatosEntregaPedidoWeb, PedidoWeb } from "./tipos";
+import { usarFormularioEntregaPedido } from "./usarFormularioEntregaPedido";
 
 export function FormularioEntregaPedido({
-  tipoVenta,
-  numeroTarjetaActual,
+  pedido,
   totalPedido,
   es,
+  guardando,
   cancelar,
-  alCambiarTipo,
   alCancelar,
-  alEnviar,
-  items,
-  proveedores,
+  alGuardar,
 }: {
-  tipoVenta: string;
-  numeroTarjetaActual?: string | null;
+  pedido: PedidoWeb;
   totalPedido: number;
   es: boolean;
+  guardando: boolean;
   cancelar: string;
-  alCambiarTipo: (tipo: string) => void;
   alCancelar: () => void;
-  alEnviar: (evento: FormEvent<HTMLFormElement>) => void;
-  items: Array<{
-    id: string;
-    descripcion: string;
-    proveedor: { id: string; nombre: string } | null;
-  }>;
-  proveedores: Array<{ id: string; nombre: string }>;
+  alGuardar: (datos: DatosEntregaPedidoWeb) => Promise<void>;
 }) {
-  const [anticipo, establecerAnticipo] = useState("0");
-  const saldoNuevo =
-    tipoVenta === "CREDITO"
-      ? Math.max(0, totalPedido - Number(anticipo || 0))
-      : 0;
-  const requiereFinanciamiento = saldoNuevo > 0;
+  const control = usarFormularioEntregaPedido({
+    pedido,
+    total: totalPedido,
+    alGuardar,
+  });
   return (
-    <form onSubmit={alEnviar} className="grid gap-4 sm:grid-cols-2">
-      <label>
-        <span className="etiqueta">{es ? "Tipo de venta" : "Sale type"}</span>
-        <select
-          className="campo"
-          value={tipoVenta}
-          onChange={(evento) => alCambiarTipo(evento.target.value)}
-        >
-          <option value="CREDITO">{es ? "Crédito" : "Credit"}</option>
-          <option value="CONTADO">{es ? "Contado" : "Cash"}</option>
-        </select>
-      </label>
-      <label>
-        <span className="etiqueta">{es ? "Anticipo" : "Deposit"}</span>
-        <input
-          name="anticipo"
-          className="campo"
-          type="number"
-          min="0"
-          step="0.01"
-          value={anticipo}
-          onChange={(evento) => establecerAnticipo(evento.target.value)}
+    <form
+      onSubmit={control.enviar}
+      data-capacitacion="pedidos.entrega.formulario"
+    >
+      <IndicadorPasosOperacion
+        actual={control.paso}
+        pasos={[
+          {
+            titulo: es ? "1. Verificar" : "1. Verify",
+            descripcion: es ? "Cliente y paquete" : "Customer and package",
+          },
+          {
+            titulo: es ? "2. Cobro" : "2. Payment",
+            descripcion: es ? "Contado o crédito" : "Cash or credit",
+          },
+          {
+            titulo: es ? "3. Confirmar" : "3. Confirm",
+            descripcion: es
+              ? "Venta, inventario y saldo"
+              : "Sale, stock, balance",
+          },
+        ]}
+      />
+      {control.paso === 1 && (
+        <PasoArticulosEntrega pedido={pedido} control={control} es={es} />
+      )}
+      {control.paso === 2 && (
+        <PasoCobroEntrega control={control} total={totalPedido} es={es} />
+      )}
+      {control.paso === 3 && (
+        <ResumenEntregaPedido
+          pedido={pedido}
+          control={control}
+          total={totalPedido}
+          es={es}
         />
-      </label>
-      {tipoVenta === "CREDITO" && requiereFinanciamiento && (
-        <label className="sm:col-span-2">
-          <span className="etiqueta">
-            {es
-              ? "Número de tarjeta asignado por ti"
-              : "Card number assigned by you"}
-          </span>
-          <input
-            name="numeroTarjeta"
-            className="campo"
-            defaultValue={numeroTarjetaActual ?? ""}
-            minLength={3}
-            maxLength={30}
-            required
-          />
-        </label>
       )}
-      <div className="sm:col-span-2 rounded-lg border p-4">
-        <h3 className="font-semibold">
-          {es ? "Proveedor que surtió la mercancía" : "Supplying vendor"}
-        </h3>
-        <p className="mt-1 text-xs text-slate-500">
-          {es
-            ? "Es obligatorio para conservar la trazabilidad de cada artículo."
-            : "Required for item-level traceability."}
-        </p>
-        <div className="mt-3 space-y-3">
-          {items.map((item) => (
-            <label key={item.id} className="block">
-              <span className="etiqueta">{item.descripcion}</span>
-              <select
-                name={`proveedor_${item.id}`}
-                className="campo"
-                defaultValue={item.proveedor?.id ?? ""}
-                required
-              >
-                <option value="">Seleccione proveedor</option>
-                {proveedores.map((proveedor) => (
-                  <option key={proveedor.id} value={proveedor.id}>
-                    {proveedor.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </div>
-      </div>
-      {tipoVenta === "CREDITO" && (
-        <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">
-          {es ? "Saldo que se financiará" : "Balance to finance"}:{" "}
-          <strong>
-            {saldoNuevo.toLocaleString(es ? "es-MX" : "en-US", {
-              style: "currency",
-              currency: "MXN",
-            })}
-          </strong>
-        </div>
-      )}
-      {tipoVenta === "CREDITO" && requiereFinanciamiento && (
-        <CamposPlanCredito es={es} />
-      )}
-      <div className="sm:col-span-2 flex justify-end gap-2">
+      <div className="mt-6 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between">
         <button type="button" className="boton-secundario" onClick={alCancelar}>
           {cancelar}
         </button>
-        <button
-          className="boton-primario disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={Number(anticipo || 0) > totalPedido}
-        >
-          {es ? "Confirmar entrega y venta" : "Confirm delivery and sale"}
-        </button>
+        <div className="flex gap-2">
+          {control.paso > 1 && (
+            <button
+              type="button"
+              className="boton-secundario"
+              onClick={control.anterior}
+            >
+              <ChevronLeft size={17} /> {es ? "Atrás" : "Back"}
+            </button>
+          )}
+          {control.paso < 3 ? (
+            <button
+              key="continuar-entrega"
+              type="button"
+              className="boton-primario"
+              disabled={
+                control.paso === 1
+                  ? !control.todosVerificados
+                  : !control.cobroValido
+              }
+              onClick={control.siguiente}
+              data-capacitacion={`pedidos.entrega.continuar-${control.paso}`}
+            >
+              {es ? "Continuar" : "Continue"} <ChevronRight size={17} />
+            </button>
+          ) : (
+            <button
+              key="confirmar-entrega"
+              type="submit"
+              className="boton-primario"
+              disabled={guardando || !control.cobroValido}
+              data-capacitacion="pedidos.entrega.confirmar"
+            >
+              {guardando
+                ? es
+                  ? "Confirmando…"
+                  : "Confirming…"
+                : es
+                  ? "Entregar, descontar inventario y crear venta"
+                  : "Deliver, reduce stock, and create sale"}
+            </button>
+          )}
+        </div>
       </div>
     </form>
   );

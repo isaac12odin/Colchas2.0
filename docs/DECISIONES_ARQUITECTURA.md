@@ -26,6 +26,9 @@ Este documento conserva el **por qué** de la arquitectura de Nexo. No sustituye
 | ADR-010 | Web y móvil independientes con una API canónica              | ACEPTADA |
 | ADR-011 | Imagen backend aislada del monorepo de compilación           | ACEPTADA |
 | ADR-012 | Catálogo genérico para múltiples rubros                      | ACEPTADA |
+| ADR-013 | Fotos de catálogo privadas y fuera de respuestas masivas     | ACEPTADA |
+| ADR-014 | Lecturas operativas siempre frescas en Web                   | ACEPTADA |
+| ADR-015 | Proyección local prioritaria durante trabajo móvil pendiente | ACEPTADA |
 
 ## ADR-001 — Monolito modular en un monorepo
 
@@ -406,3 +409,104 @@ Un rubro especializado puede necesitar variantes, lotes, series, caducidad o uni
 ### Revisar cuando
 
 Dos clientes reales requieran la misma extensión o una obligación regulatoria exija trazabilidad por lote/serie/caducidad. Entonces se diseña un módulo de variantes o trazabilidad con migración, no columnas libres sin contrato.
+
+## ADR-013 — Fotos de catálogo privadas y fuera de respuestas masivas
+
+- **Estado:** ACEPTADA
+- **Fecha:** 2026-08-20
+
+### Contexto
+
+El personal necesita reconocer mercancía visualmente al comprar, almacenar, pedir y vender. Las imágenes de cámara pueden ser grandes o contener contenido distinto al MIME declarado. Incluir bytes en listados o en el catálogo offline aumentaría memoria, latencia y tamaño de sincronización.
+
+### Decisión
+
+La web y el móvil reducen la imagen antes de enviarla. La API vuelve a validar tamaño, formato y firma binaria, elimina metadatos, normaliza a sRGB y genera WebP. Las fotos de producto se limitan a 1,280 px con objetivo de 240 KB; las evidencias, a 1,600 px con objetivo de 480 KB. El archivo se escribe atómicamente en almacenamiento privado y PostgreSQL conserva sólo ruta relativa, nombre, MIME, SHA-256, tamaño y dimensiones. Los listados sólo exponen `tieneFoto` y `fotoActualizadaEn`; el archivo se obtiene por un endpoint autenticado. La sincronización móvil nunca incluye el binario.
+
+### Motivo
+
+Separar archivo y metadatos evita inflar PostgreSQL, sus consultas y respaldos, mantiene el control por rol y conserva estable el contrato del catálogo. El almacenamiento local privado evita depender de un proveedor de objetos mientras el despliegue tenga una sola instancia de API.
+
+### Consecuencias
+
+La carpeta requiere volumen persistente, permisos restrictivos y respaldo coordinado con PostgreSQL. La compresión del cliente mejora experiencia pero no es un control de seguridad; el servidor conserva la decisión final. Varias réplicas de API requerirán almacenamiento compartido u objetos privados.
+
+### Invariantes
+
+- PostgreSQL nunca almacena el contenido binario; sólo rutas relativas y metadatos.
+- Ningún listado, auditoría, respuesta de venta ni catálogo offline contiene archivos o base64.
+- La API comprueba la firma real antes de persistir y nunca confía sólo en nombre/MIME.
+- La foto requiere autenticación y usa caché `private`; su hash permite revalidar sin descargar.
+- Las rutas absolutas y cualquier recorrido `..` se rechazan antes de leer o eliminar un archivo.
+- Borrar o reemplazar una foto no altera detalles históricos de ventas.
+
+### Revisar cuando
+
+Se requieran varias réplicas de API, múltiples fotos/variantes por producto o caché offline visual. La alternativa a almacenamiento de objetos debe mantener autorización, hash, respaldo verificable y una migración sin cambiar identificadores.
+
+## ADR-014 — Lecturas operativas siempre frescas en Web
+
+- **Estado:** ACEPTADA
+- **Fecha:** 2026-08-20
+
+### Contexto
+
+Ventas, abonos, devoluciones, compras y sincronización móvil cambian saldo, caja, alertas e inventario. Una pantalla que consulta sólo al montarse o acepta respuestas fuera de orden puede mostrar una realidad anterior aunque PostgreSQL ya haya confirmado la operación.
+
+### Decisión
+
+Toda consulta Web usa `no-store`, encabezados `no-cache` y un identificador único en la URL. Para una misma consulta, una respuesta anterior nunca puede reemplazar a la solicitud más reciente. Toda mutación confirmada publica un evento de invalidación y la pantalla activa vuelve a consultar; además se actualiza al recuperar foco, reconectarse, volver a una pestaña visible y mediante un intervalo acotado.
+
+### Motivo
+
+El servidor y su libro contable son la fuente de verdad. La interfaz no intenta mantener una segunda contabilidad ni adivinar efectos relacionados; vuelve a leer el resultado confirmado y evita carreras de red.
+
+### Consecuencias
+
+Se realizan más lecturas y una mutación puede provocar dos consultas cercanas si el flujo también solicitaba actualización explícita. El coordinador serializa refrescos vivos y el backend debe conservar consultas paginadas e índices adecuados.
+
+### Invariantes
+
+- Ninguna respuesta autenticada operativa se comparte mediante caché HTTP.
+- Una respuesta antigua no pisa información obtenida por una consulta posterior idéntica.
+- Venta, abono, devolución, compra, pedido y cambios de catálogo invalidan automáticamente la vista activa.
+- La actualización automática nunca repite una mutación.
+
+### Revisar cuando
+
+La carga de lecturas justifique eventos de servidor, WebSocket o invalidación selectiva por entidad. La sustitución debe conservar revalidación por foco/reconexión y una prueba de respuestas fuera de orden.
+
+## ADR-015 — Proyección local prioritaria durante trabajo móvil pendiente
+
+- **Estado:** ACEPTADA
+- **Fecha:** 2026-08-20
+
+### Contexto
+
+En campo, una venta, entrega o abono debe reflejarse al instante aunque no exista señal. Cuando el teléfono vuelve a enfocar una pantalla puede recibir del servidor una versión anterior, porque su cola local aún no se ha sincronizado. Reemplazar la proyección local con esa respuesta haría reaparecer pedidos, stock o saldos incorrectos ante el cobrador.
+
+### Decisión
+
+La escritura offline y sus proyecciones de jornada/catálogo se guardan juntas en una transacción SQLCipher. Mientras exista trabajo pendiente, la copia local proyectada tiene prioridad visual. Al confirmarse toda la cola, un evento de sincronización vuelve a leer la fuente canónica. Las pantallas activas también actualizan al recuperar foco, al volver la app al primer plano y en un intervalo acotado. Las consultas móviles evitan caché y una respuesta vieja de una ruta idéntica no puede pisar otra más reciente.
+
+Las altas y ediciones de producto, incluida su foto, permanecen en línea porque deben validar unicidad, precio y existencia directamente con el servidor. Cámara y galería producen un JPEG reducido; el backend sigue siendo quien valida y autoriza el archivo definitivo.
+
+### Motivo
+
+El servidor es la autoridad una vez que confirma movimientos; antes de eso, la bitácora cifrada del dispositivo es la única fuente que conoce el trabajo realizado en campo. Esta prioridad explícita evita saltos visuales y conserva la experiencia inmediata sin crear una segunda contabilidad.
+
+### Consecuencias
+
+Mientras existan movimientos pendientes, una pantalla puede mostrar una proyección local aunque el teléfono ya tenga red. La interfaz identifica los movimientos por confirmar y permite sincronizarlos. Tras sincronizar, se descarta esa prioridad y se vuelve a consultar PostgreSQL.
+
+### Invariantes
+
+- Encolar operación y guardar su proyección local ocurre en la misma transacción.
+- Una lectura remota nunca borra una venta, entrega o abono aún no confirmado.
+- Venta de contado no incrementa saldo; crédito incrementa sólo `total - anticipo`, redondeado a centavos.
+- Un abono reduce saldo y una entrega a crédito crea deuda una sola vez.
+- La sincronización idempotente es el único paso que permite reemplazar la proyección con el estado canónico.
+
+### Revisar cuando
+
+Se necesite edición colaborativa simultánea de una misma ruta en varios teléfonos. Entonces deberá incorporarse una estrategia explícita de merge por entidad y versión, conservando idempotencia, autorización por cartera y evidencia de conflictos.

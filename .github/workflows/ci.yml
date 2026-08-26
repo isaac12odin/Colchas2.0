@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contrato-y-calidad:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run arquitectura:check
+      - run: npm run openapi:check
+
+  backend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nexo_cobranza_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nexo_cobranza_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/nexo_cobranza_test?schema=public
+      E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/nexo_cobranza_test?schema=public
+      JWT_ACCESS_SECRET: ci-access-token-de-mas-de-treinta-y-dos-caracteres
+      JWT_REFRESH_SECRET: ci-refresh-token-de-mas-de-treinta-y-dos-caracteres
+      FIELD_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      SEARCH_HMAC_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+      FRONTEND_URL: http://127.0.0.1:3100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w back
+      - run: npm run test -w back
+      - run: npm run test:robustas -w back
+      - run: npm run build -w back
+
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w front
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:ui -w front
+      - run: npm run build -w front
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencia-playwright
+          path: |
+            front/playwright-report
+            front/test-results
+          retention-days: 14
+
+  movil:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w movil
+      - run: npm run test -w movil
+      - run: npm run doctor:movil
+
+  suministro-backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --workspace @nexo/back --audit-level=high
+      - run: docker build -f back/Dockerfile --target ejecucion -t nexo-api:${{ github.sha }} .
+      - uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: nexo-api:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+      - uses: anchore/sbom-action@v0
+        with:
+          image: nexo-api:${{ github.sha }}
+          artifact-name: sbom-nexo-api-${{ github.sha }}.spdx.json

@@ -68,8 +68,12 @@ test("muestra un error comprensible cuando las credenciales fallan", async ({
   });
 
   await page.goto("/");
+  const campoContrasena = page.getByLabel("Contraseña");
+  await expect(campoContrasena).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "Mostrar clave" }).click();
+  await expect(campoContrasena).toHaveAttribute("type", "text");
   await page.getByLabel("Correo electrónico").fill("invalido@nexo.test");
-  await page.getByLabel("Contraseña").fill("Equivocada!2026");
+  await campoContrasena.fill("Equivocada!2026");
   await page.getByRole("button", { name: "Iniciar sesión" }).click();
   await expect(
     page.locator('[role="alert"]').filter({
@@ -104,11 +108,19 @@ test("inicia sesión, entra al tablero y expone la navegación administrativa", 
   await expect(
     page.getByRole("heading", { name: "Resumen de operación" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Usuarios" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Alertas/ })).toContainText("3");
+  await page
+    .locator("aside")
+    .getByText("Más herramientas", { exact: true })
+    .click();
+  await expect(
+    page.locator("aside").getByRole("link", { name: "Usuarios" }),
+  ).toBeVisible();
+  await expect(
+    page.locator("header").getByRole("link", { name: "Alertas" }),
+  ).toContainText("3");
 });
 
-test("redirige una sección prohibida y oculta opciones ajenas al rol", async ({
+test("cierra la sesión web de almacén y dirige a la aplicación móvil", async ({
   page,
 }) => {
   const almacenista = {
@@ -125,24 +137,13 @@ test("redirige una sección prohibida y oculta opciones ajenas al rol", async ({
       return json(route, 200, { usuario: almacenista });
     if (ruta.endsWith("/alertas"))
       return json(route, 200, { totales: { total: 0 } });
-    if (ruta.includes("/inventario/productos"))
-      return json(route, 200, {
-        datos: [],
-        paginacion: {
-          pagina: 1,
-          limite: 20,
-          total: 0,
-          totalPaginas: 0,
-        },
-      });
     return json(route, 404, { error: { mensaje: `Sin mock para ${ruta}` } });
   });
 
   await page.goto("/usuarios");
-  await expect(page).toHaveURL(/\/inventario$/);
-  await expect(page.getByRole("heading", { name: "Inventario" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Compras" })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByLabel("Correo electrónico")).toBeVisible();
+  await expect(page.locator("aside")).toHaveCount(0);
 });
 
 test("conserva tema e idioma entre recargas", async ({ page }) => {

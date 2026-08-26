@@ -84,6 +84,7 @@ async function principal() {
     correo: usuario.correo,
     rol: usuario.rol,
     debeCambiarContrasena: false,
+    tokenVersion: usuario.tokenVersion,
   });
   const cabeceras = autorizar(token);
   const localidad = await prisma.localidad.create({

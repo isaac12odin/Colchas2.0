@@ -27,6 +27,7 @@ COPY --chown=node:node --from=dependencias-produccion /app/node_modules node_mod
 COPY --chown=node:node --from=compilacion /app/node_modules/.prisma node_modules/.prisma
 COPY --chown=node:node --from=compilacion /app/back/dist back/dist
 COPY --chown=node:node --from=compilacion /app/back/prisma back/prisma
+RUN mkdir -p /app/uploads && chown node:node /app/uploads && chmod 700 /app/uploads
 USER node
 EXPOSE 4000
 CMD ["node", "back/dist/src/servidor.js"]

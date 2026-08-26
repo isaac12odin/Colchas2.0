@@ -1,0 +1,21 @@
+name: Deuda técnica
+description: Registrar un compromiso arquitectónico con condición de revisión.
+title: "[DT] "
+labels: [deuda-tecnica]
+body:
+  - type: textarea
+    id: contexto
+    attributes: { label: Contexto y decisión vigente }
+    validations: { required: true }
+  - type: textarea
+    id: costo
+    attributes: { label: Riesgo/costo de mantenerla }
+    validations: { required: true }
+  - type: textarea
+    id: disparador
+    attributes: { label: Condición medible para revisarla }
+    validations: { required: true }
+  - type: textarea
+    id: salida
+    attributes: { label: Estrategia y evidencia de cierre }
+    validations: { required: true }

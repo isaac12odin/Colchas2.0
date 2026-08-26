@@ -1,0 +1,68 @@
+import { definirLeccionWeb, paso } from "./definirLeccion";
+
+export const importacionInicial = definirLeccionWeb({
+  id: "importacion-inicial",
+  pantalla: "configuracion",
+  roles: ["ADMINISTRADOR"],
+  titulo: [
+    "Importar los datos iniciales en orden",
+    "Import opening data in order",
+  ],
+  objetivo: [
+    "Cargar localidades, productos, clientes, saldos, tarjetas y rutas sin captura repetitiva.",
+    "Load locations, products, customers, balances, cards, and routes without repetitive entry.",
+  ],
+  resultado: [
+    "Carga completa o rechazo total con errores claros; nunca datos a medias.",
+    "Complete load or full rejection with clear errors; never partial data.",
+  ],
+  responsable: ["Administración", "Administration"],
+  rutaReal: "/configuracion",
+  guion: [
+    paso(
+      "importar-abrir",
+      "Abre Importar Excel",
+      "Configuración → Importar Excel",
+      "Usa este flujo sólo para una carga inicial o masiva.",
+      "Ejemplo: 80 clientes y sus localidades; para uno solo usa Nuevo cliente.",
+      "Pulsa Importar Excel.",
+      "La sección de importación está visible.",
+      "configuracion.importar.tab",
+      "click",
+    ),
+    paso(
+      "importar-descargar",
+      "Descarga la plantilla",
+      "Importar Excel → Descargar XLSX",
+      "No construyas encabezados desde cero.",
+      "Ejemplo: trabaja sobre una copia de la plantilla oficial.",
+      "Pulsa Descargar XLSX.",
+      "El navegador inicia la descarga de la plantilla.",
+      "configuracion.importar.descargar",
+      "click",
+    ),
+    paso(
+      "importar-archivo",
+      "Selecciona el archivo revisado",
+      "Importar Excel → archivo .xlsx",
+      "Revisa duplicados, encabezados y respaldo antes de elegir el archivo.",
+      "Ejemplo: apertura-agosto-revisada.xlsx.",
+      "Selecciona un archivo .xlsx de práctica.",
+      "El control conserva un archivo compatible.",
+      "configuracion.importar.archivo",
+      "upload",
+    ),
+    paso(
+      "importar-confirmar",
+      "Valida e importa",
+      "Importar Excel → Importar de forma segura",
+      "Este único botón valida e importa; si una fila falla, la operación completa se rechaza.",
+      "Ejemplo: 3 clientes válidos y 1 duplicado producen un error completo, no una carga parcial.",
+      "Pulsa Importar de forma segura.",
+      "El resumen simulado queda sólo en este navegador.",
+      "configuracion.importar.guardar",
+      "mutacion-local",
+      { metodo: "POST", ruta: "/importaciones/excel" },
+    ),
+  ],
+});

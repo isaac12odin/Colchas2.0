@@ -39,24 +39,31 @@ export function TablaVentas({
   }
 
   return (
-    <div className="panel overflow-hidden">
+    <div className="panel overflow-hidden" data-capacitacion="ventas.lista">
       <form
         className="flex gap-2 border-b p-4"
         onSubmit={(evento) => {
           evento.preventDefault();
           control.cargar();
         }}
+        data-capacitacion="ventas.busqueda"
       >
         <div className="relative flex-1">
           <Search className="absolute left-3 top-3 text-slate-400" size={18} />
           <input
             className="campo pl-10"
+            data-capacitacion="ventas.busqueda.campo"
             value={control.buscar}
             onChange={(evento) => control.establecerBuscar(evento.target.value)}
             placeholder={es ? "Folio o cliente" : "Invoice or customer"}
           />
         </div>
-        <button className="boton-secundario">{buscarTexto}</button>
+        <button
+          className="boton-secundario"
+          data-capacitacion="ventas.busqueda.ejecutar"
+        >
+          {buscarTexto}
+        </button>
       </form>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
@@ -78,7 +85,7 @@ export function TablaVentas({
           <tbody className="divide-y">
             {control.respuesta?.datos.map((venta) => (
               <Fragment key={venta.id}>
-                <tr>
+                <tr data-capacitacion="ventas.lista.fila">
                   <td className="px-4 py-3">
                     <p className="font-mono text-xs font-semibold">
                       {venta.folio}
@@ -110,6 +117,7 @@ export function TablaVentas({
                       className="boton-secundario whitespace-nowrap"
                       onClick={() => void alternarDetalle(venta.id)}
                       disabled={cargandoId === venta.id}
+                      data-capacitacion="ventas.detalle.abrir"
                     >
                       {detalle?.id === venta.id ? (
                         <ChevronUp size={16} />
@@ -129,6 +137,7 @@ export function TablaVentas({
                     <td
                       colSpan={7}
                       className="bg-slate-50 p-4 dark:bg-slate-950"
+                      data-capacitacion="ventas.detalle"
                     >
                       <DetalleVenta
                         venta={detalle}
@@ -169,8 +178,14 @@ function DetalleVenta({
   mostrarCostos: boolean;
 }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <section className="rounded-lg border bg-white p-4 dark:bg-slate-900">
+    <div
+      className="grid gap-4 lg:grid-cols-3"
+      data-capacitacion="ventas.detalle.revision"
+    >
+      <section
+        className="rounded-lg border bg-white p-4 dark:bg-slate-900"
+        data-capacitacion="ventas.detalle.productos"
+      >
         <h3 className="font-semibold">{es ? "Productos" : "Products"}</h3>
         <div className="mt-3 space-y-3">
           {venta.detalles.map((item) => (
@@ -195,7 +210,10 @@ function DetalleVenta({
           ))}
         </div>
       </section>
-      <section className="rounded-lg border bg-white p-4 dark:bg-slate-900">
+      <section
+        className="rounded-lg border bg-white p-4 dark:bg-slate-900"
+        data-capacitacion="ventas.detalle.plan-pago"
+      >
         <h3 className="font-semibold">
           {es ? "Plan de pago" : "Payment plan"}
         </h3>
@@ -222,7 +240,10 @@ function DetalleVenta({
           </p>
         )}
       </section>
-      <section className="rounded-lg border bg-white p-4 dark:bg-slate-900">
+      <section
+        className="rounded-lg border bg-white p-4 dark:bg-slate-900"
+        data-capacitacion="ventas.detalle.abonos"
+      >
         <h3 className="font-semibold">{es ? "Abonos" : "Payments"}</h3>
         <div className="mt-3 space-y-2">
           {venta.abonos.map((abono) => (

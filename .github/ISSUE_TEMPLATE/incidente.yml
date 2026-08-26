@@ -1,0 +1,30 @@
+name: Incidente
+description: Reportar una afectación operativa o de seguridad sin incluir PII ni secretos.
+title: "[INCIDENTE] "
+labels: [incidente]
+body:
+  - type: dropdown
+    id: severidad
+    attributes:
+      label: Severidad
+      options: [P0, P1, P2, P3]
+    validations: { required: true }
+  - type: textarea
+    id: impacto
+    attributes:
+      label: Impacto y alcance
+      description: Roles, flujos y cantidad aproximada; no escriba nombres, teléfonos, direcciones ni tokens.
+    validations: { required: true }
+  - type: textarea
+    id: tiempo
+    attributes:
+      label: Línea de tiempo UTC
+    validations: { required: true }
+  - type: textarea
+    id: contencion
+    attributes:
+      label: Contención aplicada
+  - type: textarea
+    id: evidencia
+    attributes:
+      label: IDs de correlación y evidencia sanitizada

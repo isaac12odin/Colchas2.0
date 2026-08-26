@@ -1,0 +1,10 @@
+[Unit]
+Description=Nexo - conciliación read-only de saldos e inventario
+After=docker.service postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/Colchas2.0
+ExecStart=/usr/bin/docker compose -f /etc/nexo/compose.yml run --rm migracion npm run reconciliar -w back
+User=root
+Nice=10

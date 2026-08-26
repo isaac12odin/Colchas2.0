@@ -3,7 +3,7 @@ import "./globals.css";
 import { Proveedores } from "@/componentes/proveedores";
 
 export const metadata: Metadata = {
-  title: { default: "Nexo Cobranza", template: "%s · Nexo Cobranza" },
+  title: { default: "Vektra", template: "%s · Vektra" },
   description: "Gestion de cobranza, ventas, rutas e inventario.",
 };
 

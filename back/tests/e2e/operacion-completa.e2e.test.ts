@@ -6,7 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { app } from "../../src/app.js";
-import { fechaMexicoISO } from "../../src/compartido/fechas.js";
+import { fechaMexicoISO, fechaOperativa } from "../../src/compartido/fechas.js";
 import { prisma } from "../../src/infraestructura/prisma.js";
 import type { OperacionSincronizacion } from "../../src/modulos/sincronizacion/esquemas.js";
 import {
@@ -58,6 +58,13 @@ describe.sequential("suite robusta con datos automáticos", () => {
         .send({ nombre: "No autorizada", estado: "Puebla" })
         .expect(403);
 
+      const categoria = await request(app)
+        .post("/api/v1/inventario/categorias-producto")
+        .set(cabeceras(almacenista.token))
+        .send({ nombre: `Automatizada ${escenario.marca}` })
+        .expect(201);
+      escenario.registrarCategoriaProducto(categoria.body.id);
+
       const producto = await request(app)
         .post("/api/v1/inventario/productos")
         .set(cabeceras(almacenista.token))
@@ -65,15 +72,46 @@ describe.sequential("suite robusta con datos automáticos", () => {
           sku: `API-${escenario.marca}`,
           nombre: `Producto por API ${escenario.marca}`,
           marca: "Nexo Test",
-          categoria: "Automatizada",
+          categoriaId: categoria.body.id,
           codigoBarras: `790${escenario.marca}`,
           existenciaInicial: 5,
           existenciaMinima: 2,
           precioCompra: 120,
           precioVenta: 250,
+          foto: {
+            nombre: "producto-e2e.png",
+            mime: "image/png",
+            base64: pngUnPixel,
+          },
         })
         .expect(201);
       escenario.registrarProducto(producto.body.id);
+      expect(producto.body.tieneFoto).toBe(true);
+
+      const catalogosProducto = await request(app)
+        .get("/api/v1/inventario/catalogos-producto")
+        .set(cabeceras(almacenista.token))
+        .expect(200);
+      expect(catalogosProducto.body.marcas).toContain("Nexo Test");
+      expect(catalogosProducto.body.categorias).toContainEqual(
+        expect.objectContaining({
+          id: categoria.body.id,
+          nombre: `Automatizada ${escenario.marca}`,
+        }),
+      );
+
+      const foto = await request(app)
+        .get(`/api/v1/inventario/productos/${producto.body.id}/foto`)
+        .set(cabeceras(almacenista.token))
+        .expect(200)
+        .expect("Content-Type", /image\/webp/);
+      expect(foto.headers.etag).toMatch(/^"[a-f0-9]{64}"$/);
+      expect(foto.headers["cache-control"]).toContain("private");
+      await request(app)
+        .get(`/api/v1/inventario/productos/${producto.body.id}/foto`)
+        .set(cabeceras(almacenista.token))
+        .set("If-None-Match", String(foto.headers.etag))
+        .expect(304);
 
       await request(app)
         .post("/api/v1/inventario/productos")
@@ -137,6 +175,8 @@ describe.sequential("suite robusta con datos automáticos", () => {
       );
       expect(visible).toBeTruthy();
       expect(visible).not.toHaveProperty("precioCompra");
+      expect(visible.tieneFoto).toBe(true);
+      expect(visible).not.toHaveProperty("fotoContenido");
 
       await request(app)
         .get("/api/v1/inventario/movimientos")
@@ -168,7 +208,7 @@ describe.sequential("suite robusta con datos automáticos", () => {
         precio: 400,
       });
       const tarjeta = `CRED-${escenario.marca}`;
-      const primerVencimiento = new Date(Date.now() - 8 * 86_400_000);
+      const primerVencimiento = new Date(Date.now() + 7 * 86_400_000);
 
       const venta = await request(app)
         .post("/api/v1/ventas")
@@ -189,6 +229,32 @@ describe.sequential("suite robusta con datos automáticos", () => {
         .expect(201);
       expect(Number(venta.body.total)).toBe(800);
       expect(venta.body.planPago.cuotas).toHaveLength(4);
+      expect(venta.body.resumenSaldo).toMatchObject({
+        saldoAnterior: 0,
+        cargoVenta: 800,
+        anticipo: 100,
+        saldoNuevo: 700,
+      });
+
+      await prisma.cuota.update({
+        where: { id: venta.body.planPago.cuotas[0].id },
+        data: { fechaVence: fechaOperativa(fechaMexicoISO(new Date())) },
+      });
+      const agenda = await request(app)
+        .get("/api/v1/abonos/agenda")
+        .set(cabeceras(cobrador.token))
+        .expect(200);
+      expect(agenda.body.hoy).toMatchObject({
+        cantidad: 1,
+        cuotas: 1,
+        total: 200,
+      });
+      expect(agenda.body.hoy.items[0]).toMatchObject({
+        numero: 1,
+        pendiente: 200,
+        cliente: { id: cliente.id },
+        venta: { id: venta.body.id },
+      });
 
       const despuesVenta = await prisma.cliente.findUniqueOrThrow({
         where: { id: cliente.id },
@@ -215,12 +281,12 @@ describe.sequential("suite robusta con datos automáticos", () => {
       };
       const primerAbono = await request(app)
         .post("/api/v1/abonos")
-        .set(cabeceras(cobrador.token))
+        .set(cabeceras(admin.token))
         .send(datosAbono)
         .expect(201);
       const reintento = await request(app)
         .post("/api/v1/abonos")
-        .set(cabeceras(cobrador.token))
+        .set(cabeceras(admin.token))
         .send(datosAbono)
         .expect(200);
       expect(reintento.body.id).toBe(primerAbono.body.id);
@@ -292,7 +358,10 @@ describe.sequential("suite robusta con datos automáticos", () => {
       await request(app)
         .patch(`/api/v1/pedidos/${pedido.body.id}/estado`)
         .set(cabeceras(admin.token))
-        .send({ estado: "PEDIDO_PROVEEDOR" })
+        .send({
+          estado: "PEDIDO_PROVEEDOR",
+          proveedores: [{ itemPedidoId, proveedorId: proveedor.id }],
+        })
         .expect(200);
 
       const compra = await request(app)
@@ -356,7 +425,7 @@ describe.sequential("suite robusta con datos automáticos", () => {
         .get(`/api/v1/devoluciones/${devolucion.body.id}/evidencia`)
         .set(cabeceras(admin.token))
         .expect(200)
-        .expect("Content-Type", /image\/png/);
+        .expect("Content-Type", /image\/webp/);
       expect(evidencia.headers["x-content-hash"]).toMatch(/^[a-f0-9]{64}$/);
 
       const fecha = fechaMexicoISO(new Date());
@@ -544,14 +613,436 @@ describe.sequential("suite robusta con datos automáticos", () => {
     }
   });
 
+  it("aísla un rechazo offline y continúa con la siguiente operación", async () => {
+    const escenario = new EscenarioPrueba();
+    try {
+      const [cobrador, administrador] = await Promise.all([
+        escenario.crearUsuario(RolUsuario.COBRADOR),
+        escenario.crearUsuario(RolUsuario.ADMINISTRADOR),
+      ]);
+      const localidad = await escenario.crearLocalidad(7);
+      const cliente = await escenario.crearCliente(localidad.id, {
+        indice: 7,
+        saldo: 100,
+      });
+      const ruta = await escenario.crearRuta(
+        [localidad.id],
+        [cliente.id],
+        DiaSemana.JUEVES,
+        cobrador.id,
+      );
+      const dispositivoId = `rechazo-${escenario.marca}`;
+      const claveIntegridad = "c3".repeat(32);
+      await request(app)
+        .post("/api/v1/sincronizacion/dispositivos/registrar")
+        .set(cabeceras(cobrador.token))
+        .send({ dispositivoId, claveIntegridad })
+        .expect(200);
+
+      const fecha = new Date();
+      const abono = {
+        idOperacion: `abono-rechazado-${randomUUID()}`,
+        tipo: "ABONO" as const,
+        secuencia: 1,
+        hashAnterior: "GENESIS" as const,
+        creadoEn: fecha,
+        hashIntegridad: "0".repeat(128),
+        datos: {
+          clienteId: cliente.id,
+          monto: 999,
+          metodo: MetodoPago.EFECTIVO,
+          fechaAbono: fecha,
+        },
+      } satisfies OperacionSincronizacion;
+      abono.hashIntegridad = calcularHashOperacion(
+        claveIntegridad,
+        cobrador.id,
+        abono,
+      );
+      const visita = {
+        idOperacion: `visita-posterior-${randomUUID()}`,
+        tipo: "VISITA" as const,
+        secuencia: 2,
+        hashAnterior: abono.hashIntegridad,
+        creadoEn: fecha,
+        hashIntegridad: "0".repeat(128),
+        datos: {
+          rutaId: ruta.id,
+          clienteId: cliente.id,
+          fechaProgramada: fecha,
+          fechaVisita: fecha,
+          resultado: "NO_PAGO" as const,
+          notas: "Debe persistir aunque el abono anterior sea inválido",
+        },
+      } satisfies OperacionSincronizacion;
+      visita.hashIntegridad = calcularHashOperacion(
+        claveIntegridad,
+        cobrador.id,
+        visita,
+      );
+      const visitaRechazada = {
+        idOperacion: `visita-rechazada-${randomUUID()}`,
+        tipo: "VISITA" as const,
+        secuencia: 3,
+        hashAnterior: visita.hashIntegridad,
+        creadoEn: fecha,
+        hashIntegridad: "0".repeat(128),
+        datos: {
+          rutaId: ruta.id,
+          clienteId: cliente.id,
+          fechaProgramada: new Date(fecha.getTime() + 60_000),
+          fechaVisita: fecha,
+          resultado: "REPROGRAMADO" as const,
+          promesaPagoFecha: new Date(fecha.getTime() - 60_000),
+        },
+      } satisfies OperacionSincronizacion;
+      visitaRechazada.hashIntegridad = calcularHashOperacion(
+        claveIntegridad,
+        cobrador.id,
+        visitaRechazada,
+      );
+      const abonoDependiente = {
+        idOperacion: `abono-dependiente-${randomUUID()}`,
+        tipo: "ABONO" as const,
+        secuencia: 4,
+        hashAnterior: visitaRechazada.hashIntegridad,
+        creadoEn: fecha,
+        hashIntegridad: "0".repeat(128),
+        visitaOperacionId: visitaRechazada.idOperacion,
+        datos: {
+          clienteId: cliente.id,
+          monto: 10,
+          metodo: MetodoPago.EFECTIVO,
+          fechaAbono: fecha,
+        },
+      } satisfies OperacionSincronizacion;
+      abonoDependiente.hashIntegridad = calcularHashOperacion(
+        claveIntegridad,
+        cobrador.id,
+        abonoDependiente,
+      );
+      const operaciones = [abono, visita, visitaRechazada, abonoDependiente];
+      const respuesta = await request(app)
+        .post("/api/v1/sincronizacion/lotes")
+        .set(cabeceras(cobrador.token))
+        .send({
+          idLoteCliente: `lote-rechazo-${randomUUID()}`,
+          dispositivoId,
+          huellaIntegridad: calcularHuellaLote(claveIntegridad, operaciones),
+          operaciones,
+        })
+        .expect(201);
+
+      expect(respuesta.body.resultados).toMatchObject([
+        {
+          idOperacion: abono.idOperacion,
+          exito: false,
+          codigoError: "ABONO_EXCEDENTE",
+          rechazoPermanente: true,
+        },
+        { idOperacion: visita.idOperacion, exito: true },
+        {
+          idOperacion: visitaRechazada.idOperacion,
+          exito: false,
+          codigoError: "PROMESA_PAGO_INVALIDA",
+          rechazoPermanente: true,
+        },
+        {
+          idOperacion: abonoDependiente.idOperacion,
+          exito: false,
+          codigoError: "DEPENDENCIA_OFFLINE_NO_CONFIRMADA",
+          rechazoPermanente: true,
+        },
+      ]);
+      expect(
+        await prisma.abono.count({
+          where: { idOperacionMovil: abono.idOperacion },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.visitaCobranza.count({
+          where: { idOperacionMovil: visita.idOperacion },
+        }),
+      ).toBe(1);
+      const dispositivo =
+        await prisma.dispositivoSincronizacion.findUniqueOrThrow({
+          where: {
+            usuarioId_dispositivoId: {
+              usuarioId: cobrador.id,
+              dispositivoId,
+            },
+          },
+        });
+      expect(dispositivo.ultimaSecuencia).toBe(4);
+      expect(dispositivo.ultimoHash).toBe(abonoDependiente.hashIntegridad);
+
+      const pendienteRevision =
+        await prisma.operacionSincronizada.findUniqueOrThrow({
+          where: { idOperacion: abono.idOperacion },
+        });
+      expect(pendienteRevision.requiereRevision).toBe(true);
+      await request(app)
+        .patch(
+          `/api/v1/sincronizacion/revisiones/${pendienteRevision.id}/resolver`,
+        )
+        .set(cabeceras(administrador.token))
+        .send({
+          resolucion:
+            "Saldo verificado; se descartó el importe excesivo y se solicitó una captura nueva.",
+        })
+        .expect(200);
+      expect(
+        (
+          await prisma.operacionSincronizada.findUniqueOrThrow({
+            where: { id: pendienteRevision.id },
+          })
+        ).requiereRevision,
+      ).toBe(false);
+    } finally {
+      await escenario.limpiar();
+    }
+  });
+
+  it("conserva la cadena ante conflictos offline de stock, saldo, pedido y jornada", async () => {
+    const escenario = new EscenarioPrueba();
+    try {
+      const [administrador, cobrador] = await Promise.all([
+        escenario.crearUsuario(RolUsuario.ADMINISTRADOR),
+        escenario.crearUsuario(RolUsuario.COBRADOR),
+      ]);
+      const localidad = await escenario.crearLocalidad(8);
+      const cliente = await escenario.crearCliente(localidad.id, {
+        indice: 8,
+        saldo: 100,
+        tarjeta: `OFF-${escenario.marca}`,
+      });
+      await escenario.crearRuta(
+        [localidad.id],
+        [cliente.id],
+        DiaSemana.VIERNES,
+        cobrador.id,
+      );
+      const [productoAgotado, productoPedido, proveedor] = await Promise.all([
+        escenario.crearProducto({ indice: 8, existencia: 0, precio: 100 }),
+        escenario.crearProducto({ indice: 9, existencia: 2, precio: 120 }),
+        escenario.crearProveedor(8),
+      ]);
+      const dispositivoId = `conflictos-${escenario.marca}`;
+      const claveIntegridad = "d4".repeat(32);
+      await request(app)
+        .post("/api/v1/sincronizacion/dispositivos/registrar")
+        .set(cabeceras(cobrador.token))
+        .send({ dispositivoId, claveIntegridad })
+        .expect(200);
+
+      let secuencia = 0;
+      let hashAnterior = "GENESIS";
+      const firmar = <T extends OperacionSincronizacion>(operacion: T) => {
+        operacion.hashIntegridad = calcularHashOperacion(
+          claveIntegridad,
+          cobrador.id,
+          operacion,
+        );
+        secuencia = operacion.secuencia;
+        hashAnterior = operacion.hashIntegridad;
+        return operacion;
+      };
+      const sincronizar = (operaciones: OperacionSincronizacion[]) =>
+        request(app)
+          .post("/api/v1/sincronizacion/lotes")
+          .set(cabeceras(cobrador.token))
+          .send({
+            idLoteCliente: `conflictos-${randomUUID()}`,
+            dispositivoId,
+            huellaIntegridad: calcularHuellaLote(claveIntegridad, operaciones),
+            operaciones,
+          });
+
+      const capturadaSinConexion = new Date();
+      const ventaSinStock = firmar({
+        idOperacion: `venta-sin-stock-${randomUUID()}`,
+        tipo: "VENTA",
+        secuencia: secuencia + 1,
+        hashAnterior,
+        creadoEn: capturadaSinConexion,
+        hashIntegridad: "0".repeat(128),
+        datos: {
+          clienteId: cliente.id,
+          tipo: "CONTADO",
+          descuento: 0,
+          anticipo: 0,
+          metodoAnticipo: "EFECTIVO",
+          fechaVenta: capturadaSinConexion,
+          items: [{ productoId: productoAgotado.id, cantidad: 1 }],
+        },
+      } satisfies OperacionSincronizacion);
+      const abonoConSaldoObsoleto = firmar({
+        idOperacion: `abono-saldo-obsoleto-${randomUUID()}`,
+        tipo: "ABONO",
+        secuencia: secuencia + 1,
+        hashAnterior,
+        creadoEn: capturadaSinConexion,
+        hashIntegridad: "0".repeat(128),
+        datos: {
+          clienteId: cliente.id,
+          monto: 100,
+          metodo: MetodoPago.EFECTIVO,
+          fechaAbono: capturadaSinConexion,
+        },
+      } satisfies OperacionSincronizacion);
+
+      // Mientras el móvil estaba desconectado, otra caja redujo el saldo real.
+      await request(app)
+        .post("/api/v1/abonos")
+        .set(cabeceras(administrador.token))
+        .send({
+          clienteId: cliente.id,
+          monto: 50,
+          metodo: MetodoPago.TRANSFERENCIA,
+          fechaAbono: new Date(),
+        })
+        .expect(201);
+      const primerosConflictos = await sincronizar([
+        ventaSinStock,
+        abonoConSaldoObsoleto,
+      ]).expect(201);
+      expect(primerosConflictos.body.resultados).toMatchObject([
+        {
+          idOperacion: ventaSinStock.idOperacion,
+          codigoError: "STOCK_INSUFICIENTE",
+          rechazoPermanente: true,
+        },
+        {
+          idOperacion: abonoConSaldoObsoleto.idOperacion,
+          codigoError: "ABONO_EXCEDENTE",
+          rechazoPermanente: true,
+        },
+      ]);
+
+      const pedido = await request(app)
+        .post("/api/v1/pedidos")
+        .set(cabeceras(administrador.token))
+        .send({
+          clienteId: cliente.id,
+          items: [{ productoId: productoPedido.id, cantidad: 1 }],
+        })
+        .expect(201);
+      const itemPedidoId = pedido.body.items[0].id as string;
+      await request(app)
+        .patch(`/api/v1/pedidos/${pedido.body.id}/estado`)
+        .set(cabeceras(administrador.token))
+        .send({
+          estado: "PEDIDO_PROVEEDOR",
+          proveedores: [{ itemPedidoId, proveedorId: proveedor.id }],
+        })
+        .expect(200);
+      for (const estado of ["RECIBIDO_ALMACEN", "LISTO_ENTREGA"]) {
+        await request(app)
+          .patch(`/api/v1/pedidos/${pedido.body.id}/estado`)
+          .set(cabeceras(administrador.token))
+          .send({ estado })
+          .expect(200);
+      }
+      await request(app)
+        .post(`/api/v1/pedidos/${pedido.body.id}/entregar`)
+        .set(cabeceras(administrador.token))
+        .send({ tipo: "CONTADO", fechaEntrega: new Date() })
+        .expect(201);
+
+      const capturadaAntesDeConocerEntrega = new Date();
+      const entregaDuplicada = firmar({
+        idOperacion: `entrega-duplicada-${randomUUID()}`,
+        tipo: "ENTREGA",
+        secuencia: secuencia + 1,
+        hashAnterior,
+        creadoEn: capturadaAntesDeConocerEntrega,
+        hashIntegridad: "0".repeat(128),
+        datos: {
+          pedidoId: pedido.body.id,
+          tipo: "CONTADO",
+          anticipo: 0,
+          metodoAnticipo: "EFECTIVO",
+          fechaEntrega: capturadaAntesDeConocerEntrega,
+        },
+      } satisfies OperacionSincronizacion);
+      const conflictoPedido = await sincronizar([entregaDuplicada]).expect(201);
+      expect(conflictoPedido.body.resultados[0]).toMatchObject({
+        codigoError: "PEDIDO_YA_ENTREGADO",
+        rechazoPermanente: true,
+      });
+
+      const fechaCorte = fechaMexicoISO(new Date());
+      await request(app)
+        .post("/api/v1/cortes")
+        .set(cabeceras(administrador.token))
+        .send({
+          usuarioOperadorId: cobrador.id,
+          fecha: fechaCorte,
+          efectivo: 0,
+          transferencia: 0,
+          tarjeta: 0,
+          otro: 0,
+          firmaNombre: cobrador.nombre,
+          confirmacion: `CERRAR ${fechaCorte}`,
+        })
+        .expect(201);
+      const abonoDespuesDelCorte = firmar({
+        idOperacion: `abono-jornada-cerrada-${randomUUID()}`,
+        tipo: "ABONO",
+        secuencia: secuencia + 1,
+        hashAnterior,
+        creadoEn: new Date(),
+        hashIntegridad: "0".repeat(128),
+        datos: {
+          clienteId: cliente.id,
+          monto: 10,
+          metodo: MetodoPago.EFECTIVO,
+          fechaAbono: new Date(),
+        },
+      } satisfies OperacionSincronizacion);
+      const conflictoJornada = await sincronizar([abonoDespuesDelCorte]).expect(
+        201,
+      );
+      expect(conflictoJornada.body.resultados[0]).toMatchObject({
+        codigoError: "JORNADA_CERRADA",
+        rechazoPermanente: true,
+      });
+
+      const [dispositivo, recibosRevisables] = await Promise.all([
+        prisma.dispositivoSincronizacion.findUniqueOrThrow({
+          where: {
+            usuarioId_dispositivoId: {
+              usuarioId: cobrador.id,
+              dispositivoId,
+            },
+          },
+        }),
+        prisma.operacionSincronizada.count({
+          where: {
+            usuarioId: cobrador.id,
+            dispositivoId,
+            requiereRevision: true,
+          },
+        }),
+      ]);
+      expect(dispositivo.ultimaSecuencia).toBe(4);
+      expect(dispositivo.ultimoHash).toBe(abonoDespuesDelCorte.hashIntegridad);
+      expect(recibosRevisables).toBe(4);
+    } finally {
+      await escenario.limpiar();
+    }
+  });
+
   it("importa un Excel completo y revierte todas las filas si una es inválida", async () => {
     const escenario = new EscenarioPrueba();
     try {
-      const [admin, contable] = await Promise.all([
+      const [admin, contable, cobrador] = await Promise.all([
         escenario.crearUsuario(RolUsuario.ADMINISTRADOR),
         escenario.crearUsuario(RolUsuario.CONTABLE),
+        escenario.crearUsuario(RolUsuario.COBRADOR),
       ]);
       const datos = datosImportacion(escenario.marca);
+      datos.correoCobrador = cobrador.correo;
       escenario.registrarImportacionEsperada({
         localidadNombre: datos.localidad,
         localidadEstado: datos.estado,
@@ -604,6 +1095,7 @@ describe.sequential("suite robusta con datos automáticos", () => {
           where: { rutaId: ruta.id, clienteId: cliente.id },
         }),
       ).toBe(1);
+      expect(ruta).toMatchObject({ activa: true, cobradorId: cobrador.id });
 
       const marcaInvalida = `${escenario.marca}-ROLLBACK`;
       const datosInvalidos = datosImportacion(marcaInvalida);
@@ -647,6 +1139,7 @@ interface DatosExcel {
   tarjeta: string;
   cliente: string;
   ruta: string;
+  correoCobrador?: string;
 }
 
 function datosImportacion(marca: string): DatosExcel {
@@ -725,8 +1218,18 @@ async function crearExcelImportacion(datos: DatosExcel) {
   ]);
 
   const rutas = libro.addWorksheet("Rutas");
-  rutas.addRow(["Nombre", "Dia", "LocalidadesSeparadasPorPuntoYComa"]);
-  rutas.addRow([datos.ruta, "MIERCOLES", datos.localidad]);
+  rutas.addRow([
+    "Nombre",
+    "Dia",
+    "LocalidadesSeparadasPorPuntoYComa",
+    "CorreoCobradorOpcional",
+  ]);
+  rutas.addRow([
+    datos.ruta,
+    "MIERCOLES",
+    datos.localidad,
+    datos.correoCobrador ?? "",
+  ]);
 
   const asignaciones = libro.addWorksheet("RutaClientes");
   asignaciones.addRow(["Ruta", "NumeroTarjeta", "Telefono"]);

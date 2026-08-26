@@ -10,7 +10,10 @@ rutasAuditoria.use(autenticar, permitirPermiso("AUDITORIA_CONSULTAR"));
 rutasAuditoria.get("/", async (req, res) => {
   const { pagina, limite, buscar } = esquemaPaginacion.parse(req.query);
   const filtros = z
-    .object({ entidad: z.string().max(80).optional(), accion: z.string().max(80).optional() })
+    .object({
+      entidad: z.string().max(80).optional(),
+      accion: z.string().max(80).optional(),
+    })
     .parse(req.query);
   const where = {
     ...(filtros.entidad ? { entidad: filtros.entidad } : {}),
@@ -20,7 +23,11 @@ rutasAuditoria.get("/", async (req, res) => {
           OR: [
             { entidad: { contains: buscar, mode: "insensitive" as const } },
             { accion: { contains: buscar, mode: "insensitive" as const } },
-            { usuario: { nombre: { contains: buscar, mode: "insensitive" as const } } },
+            {
+              usuario: {
+                nombre: { contains: buscar, mode: "insensitive" as const },
+              },
+            },
           ],
         }
       : {}),

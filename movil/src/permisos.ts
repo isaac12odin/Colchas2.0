@@ -8,6 +8,7 @@ export type ModuloMovil =
   | "pedidos"
   | "sincronizacion"
   | "resumen"
+  | "capacitacion"
   | "cambioContrasena";
 
 export const rolesPorModuloMovil: Record<ModuloMovil, readonly Rol[]> = {
@@ -18,6 +19,13 @@ export const rolesPorModuloMovil: Record<ModuloMovil, readonly Rol[]> = {
   pedidos: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR", "ALMACENISTA", "COBRADOR"],
   sincronizacion: ["ADMINISTRADOR", "COBRADOR"],
   resumen: ["ADMINISTRADOR", "CONTABLE"],
+  capacitacion: [
+    "ADMINISTRADOR",
+    "CONTABLE",
+    "VENDEDOR",
+    "ALMACENISTA",
+    "COBRADOR",
+  ],
   cambioContrasena: [
     "ADMINISTRADOR",
     "CONTABLE",
@@ -52,6 +60,8 @@ function obtenerModuloMovil(
       return "sincronizacion";
     case "resumen":
       return "resumen";
+    case "capacitacion":
+      return "capacitacion";
     case "cambiar-contrasena":
       return "cambioContrasena";
     default:

@@ -35,7 +35,7 @@ describe("controles de operacion empresarial", () => {
     expect(validarCodigoMfa(secreto, incorrecto, ahora)).toBeNull();
   });
 
-  it("acepta proveedor por articulo en una entrega offline", () => {
+  it("no permite reasignar proveedor durante una entrega", () => {
     const datos = esquemaEntregaPedido.parse({
       pedidoId: "11111111-1111-4111-8111-111111111111",
       tipo: "CONTADO",
@@ -46,7 +46,13 @@ describe("controles de operacion empresarial", () => {
         },
       ],
     });
-    expect(datos.proveedores).toHaveLength(1);
+    expect(datos).not.toHaveProperty("proveedores");
+    expect(
+      rolTienePermiso(RolUsuario.COBRADOR, "PEDIDOS_ASIGNAR_PROVEEDOR"),
+    ).toBe(false);
+    expect(
+      rolTienePermiso(RolUsuario.CONTABLE, "PEDIDOS_ASIGNAR_PROVEEDOR"),
+    ).toBe(true);
   });
 
   it("exige un producto de reemplazo cuando la devolucion es un cambio", () => {

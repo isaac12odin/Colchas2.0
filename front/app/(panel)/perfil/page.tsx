@@ -5,6 +5,11 @@ import { KeyRound, ShieldCheck } from "lucide-react";
 import { api, ErrorApi } from "@/lib/api";
 import { EncabezadoPagina, MensajeError } from "@/componentes/ui";
 import { usarAplicacion } from "@/componentes/proveedores";
+import {
+  BotonGenerarContrasena,
+  CampoContrasena,
+  RequisitosContrasena,
+} from "@/componentes/CampoContrasena";
 
 export default function PaginaPerfil() {
   const { usuario, establecerUsuario, cerrarSesion, idioma } = usarAplicacion();
@@ -16,6 +21,9 @@ export default function PaginaPerfil() {
     uri: string;
   } | null>(null);
   const [mensaje, establecerMensaje] = useState("");
+  const [contrasenaActual, establecerContrasenaActual] = useState("");
+  const [nuevaContrasena, establecerNuevaContrasena] = useState("");
+  const [confirmacion, establecerConfirmacion] = useState("");
   async function cambiar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const form = new FormData(evento.currentTarget);
@@ -115,44 +123,74 @@ export default function PaginaPerfil() {
             </div>
           </div>
           <form onSubmit={cambiar} className="max-w-lg space-y-4">
-            <label>
-              <span className="etiqueta">
+            <div>
+              <label htmlFor="perfil-contrasena-actual" className="etiqueta">
                 {es ? "Contraseña actual" : "Current password"}
-              </span>
-              <input
+              </label>
+              <CampoContrasena
+                id="perfil-contrasena-actual"
                 name="contrasenaActual"
                 className="campo"
-                type="password"
-                minLength={8}
+                autoComplete="current-password"
+                value={contrasenaActual}
+                onChange={(evento) =>
+                  establecerContrasenaActual(evento.target.value)
+                }
+                minLength={6}
                 required
               />
-            </label>
-            <label>
-              <span className="etiqueta">
+            </div>
+            <div>
+              <label htmlFor="perfil-contrasena-nueva" className="etiqueta">
                 {es
-                  ? "Nueva contraseña (mínimo 12)"
-                  : "New password (minimum 12)"}
-              </span>
-              <input
+                  ? "Nueva contraseña (mínimo 6)"
+                  : "New password (minimum 6)"}
+              </label>
+              <CampoContrasena
+                id="perfil-contrasena-nueva"
                 name="nuevaContrasena"
                 className="campo"
-                type="password"
-                minLength={12}
+                autoComplete="new-password"
+                value={nuevaContrasena}
+                onChange={(evento) =>
+                  establecerNuevaContrasena(evento.target.value)
+                }
+                minLength={6}
                 required
               />
-            </label>
-            <label>
-              <span className="etiqueta">
+            </div>
+            <div>
+              <label
+                htmlFor="perfil-contrasena-confirmacion"
+                className="etiqueta"
+              >
                 {es ? "Confirmar nueva contraseña" : "Confirm new password"}
-              </span>
-              <input
+              </label>
+              <CampoContrasena
+                id="perfil-contrasena-confirmacion"
                 name="confirmacion"
                 className="campo"
-                type="password"
-                minLength={12}
+                autoComplete="new-password"
+                value={confirmacion}
+                onChange={(evento) =>
+                  establecerConfirmacion(evento.target.value)
+                }
+                minLength={6}
                 required
               />
-            </label>
+            </div>
+            <RequisitosContrasena valor={nuevaContrasena} />
+            <BotonGenerarContrasena
+              texto={
+                es
+                  ? "Generar y confirmar clave segura"
+                  : "Generate secure password"
+              }
+              alGenerar={(clave) => {
+                establecerNuevaContrasena(clave);
+                establecerConfirmacion(clave);
+              }}
+            />
             <button disabled={enviando} className="boton-primario">
               {enviando
                 ? "…"
@@ -169,7 +207,8 @@ export default function PaginaPerfil() {
               <div>
                 <h2 className="font-semibold">Autenticación de dos factores</h2>
                 <p className="text-sm text-slate-500">
-                  Protege la cuenta administrativa aunque alguien conozca la contraseña.
+                  Protege la cuenta administrativa aunque alguien conozca la
+                  contraseña.
                 </p>
               </div>
             </div>
@@ -180,16 +219,30 @@ export default function PaginaPerfil() {
             ) : configuracionMfa ? (
               <form onSubmit={confirmarMfa} className="max-w-lg space-y-4">
                 <p className="text-sm leading-6 text-slate-500">
-                  Agrega manualmente esta clave en Google Authenticator, Microsoft Authenticator, 1Password o equivalente.
+                  Agrega manualmente esta clave en Google Authenticator,
+                  Microsoft Authenticator, 1Password o equivalente.
                 </p>
                 <div className="rounded-lg bg-slate-950 p-4 text-center font-mono text-sm tracking-widest text-white">
                   {configuracionMfa.secreto}
                 </div>
-                <label><span className="etiqueta">Código actual de 6 dígitos</span><input name="codigo" className="campo text-center font-mono tracking-[.35em]" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required /></label>
+                <label>
+                  <span className="etiqueta">Código actual de 6 dígitos</span>
+                  <input
+                    name="codigo"
+                    className="campo text-center font-mono tracking-[.35em]"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    required
+                  />
+                </label>
                 <button className="boton-primario">Confirmar y activar</button>
               </form>
             ) : (
-              <button className="boton-primario" onClick={() => void iniciarMfa()}>
+              <button
+                className="boton-primario"
+                onClick={() => void iniciarMfa()}
+              >
                 Configurar segundo factor
               </button>
             )}

@@ -30,7 +30,14 @@ rutasLocalidades.post(
       })
       .parse(req.body);
     const localidad = await prisma.localidad.create({ data: datos });
-    await auditar(req, "CREAR", "Localidad", localidad.id, undefined, localidad);
+    await auditar(
+      req,
+      "CREAR",
+      "Localidad",
+      localidad.id,
+      undefined,
+      localidad,
+    );
     res.status(201).json(localidad);
   },
 );
@@ -50,10 +57,17 @@ rutasLocalidades.patch(
       where: { id: String(req.params.id) },
     });
     const localidad = await prisma.localidad.update({
-        where: { id: String(req.params.id) },
-        data: datos,
-      });
-    await auditar(req, "ACTUALIZAR", "Localidad", localidad.id, antes, localidad);
+      where: { id: String(req.params.id) },
+      data: datos,
+    });
+    await auditar(
+      req,
+      "ACTUALIZAR",
+      "Localidad",
+      localidad.id,
+      antes,
+      localidad,
+    );
     res.json(localidad);
   },
 );

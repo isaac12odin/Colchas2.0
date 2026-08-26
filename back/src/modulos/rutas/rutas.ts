@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   DiaSemana,
+  MotivoNoCobro,
   Prisma,
   ResultadoVisita,
   RolUsuario,
@@ -26,50 +27,104 @@ import {
   esquemaAbono,
   registrarAbonoEnTransaccion,
 } from "../cobranza/servicio.js";
+import { dineroPositivo } from "../../compartido/dinero.js";
+import { obtenerResumenesCarteraClientes } from "../cobranza/resumenesCartera.js";
+import { rutasDocumentos } from "./documentos/rutasDocumentos.js";
 
 export const rutasCobranza = Router();
 rutasCobranza.use(autenticar);
+rutasCobranza.use(rutasDocumentos);
 
 export const esquemaRuta = z.object({
   nombre: z.string().trim().min(3).max(120),
   diaSemana: z.nativeEnum(DiaSemana),
   notas: z.string().max(1000).optional(),
-  cobradorId: z.string().uuid(),
+  cobradorId: z.string().uuid().nullable().optional(),
   localidadIds: z.array(z.string().uuid()).min(1),
-  clienteIds: z.array(z.string().uuid()).default([]),
-  incluirClientesLocalidades: z.boolean().default(true),
+  clienteIds: z.array(z.string().uuid()).max(2_000).default([]),
+  incluirClientesLocalidades: z.boolean().default(false),
 });
 
-rutasCobranza.get(
-  "/",
-  permitirPermiso("RUTAS_HISTORIAL"),
-  async (req, res) => {
-    const datos = await prisma.ruta.findMany({
-      where: { activa: true, ...filtroRutasDelActor(req.usuario!) },
-      include: {
-        cobrador: { select: { id: true, nombre: true, correo: true } },
-        localidades: {
-          orderBy: { orden: "asc" },
-          include: { localidad: true },
-        },
-        _count: { select: { clientes: true, visitas: true } },
+rutasCobranza.get("/", permitirPermiso("RUTAS_HISTORIAL"), async (req, res) => {
+  const datos = await prisma.ruta.findMany({
+    where: { activa: true, ...filtroRutasDelActor(req.usuario!) },
+    include: {
+      cobrador: { select: { id: true, nombre: true, correo: true } },
+      localidades: {
+        orderBy: { orden: "asc" },
+        include: { localidad: true },
       },
-      orderBy: [{ diaSemana: "asc" }, { nombre: "asc" }],
-    });
-    res.json({ datos });
-  },
-);
-
-const esquemaRegistroVisitaWeb = z.object({
-  clienteId: z.string().uuid(),
-  fechaProgramada: z.coerce.date(),
-  fechaVisita: z.coerce.date().default(new Date()),
-  resultado: z.nativeEnum(ResultadoVisita),
-  notas: z.string().trim().max(1000).optional(),
-  abono: esquemaAbono
-    .omit({ clienteId: true, visitaId: true, idOperacionMovil: true })
-    .optional(),
+      clientes: {
+        where: { activo: true },
+        orderBy: { orden: "asc" },
+        include: {
+          cliente: {
+            select: {
+              id: true,
+              nombreCompleto: true,
+              numeroTarjeta: true,
+              localidadId: true,
+              localidad: true,
+              saldo: true,
+            },
+          },
+        },
+      },
+      _count: { select: { clientes: true, visitas: true } },
+    },
+    orderBy: [{ diaSemana: "asc" }, { nombre: "asc" }],
+  });
+  res.json({ datos });
 });
+
+const esquemaRegistroVisitaWeb = z
+  .object({
+    clienteId: z.string().uuid(),
+    fechaProgramada: z.coerce.date(),
+    fechaVisita: z.coerce.date().default(() => new Date()),
+    resultado: z.nativeEnum(ResultadoVisita),
+    motivoNoCobro: z.nativeEnum(MotivoNoCobro).nullable().optional(),
+    promesaPagoFecha: z.coerce.date().nullable().optional(),
+    promesaPagoMonto: dineroPositivo.nullable().optional(),
+    notas: z.string().trim().max(1000).optional(),
+    abono: esquemaAbono
+      .omit({ clienteId: true, visitaId: true, idOperacionMovil: true })
+      .optional(),
+  })
+  .superRefine((datos, contexto) => {
+    if (datos.resultado === ResultadoVisita.PAGO && !datos.abono)
+      contexto.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["abono"],
+        message: "Indique cuánto dinero recibió.",
+      });
+    const esResultadoSinCobro = (
+      [
+        ResultadoVisita.NO_PAGO,
+        ResultadoVisita.AUSENTE,
+        ResultadoVisita.REPROGRAMADO,
+      ] as ResultadoVisita[]
+    ).includes(datos.resultado);
+    if (!esResultadoSinCobro) return;
+    if (!datos.motivoNoCobro)
+      contexto.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["motivoNoCobro"],
+        message: "Indique por qué no se realizó el cobro.",
+      });
+    if (!datos.promesaPagoFecha)
+      contexto.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["promesaPagoFecha"],
+        message: "Indique la fecha del siguiente compromiso o intento.",
+      });
+    if (!datos.promesaPagoMonto)
+      contexto.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["promesaPagoMonto"],
+        message: "Indique el monto del siguiente compromiso.",
+      });
+  });
 
 rutasCobranza.post(
   "/:id/visitas",
@@ -87,8 +142,7 @@ rutasCobranza.post(
           },
           select: { activo: true },
         });
-        const fueraDeRuta = !asignacion?.activo;
-        const visita = await tx.visitaCobranza.upsert({
+        const visitaExistente = await tx.visitaCobranza.findUnique({
           where: {
             rutaId_clienteId_fechaProgramada: {
               rutaId,
@@ -96,20 +150,26 @@ rutasCobranza.post(
               fechaProgramada: datos.fechaProgramada,
             },
           },
-          create: {
+          select: { id: true },
+        });
+        if (visitaExistente)
+          throw new ErrorAplicacion(
+            "VISITA_YA_REGISTRADA",
+            "Esta visita ya fue registrada. No se creó una segunda captura.",
+            409,
+          );
+        const fueraDeRuta = !asignacion?.activo;
+        const visita = await tx.visitaCobranza.create({
+          data: {
             rutaId,
             clienteId: datos.clienteId,
             usuarioId: req.usuario!.id,
             fechaProgramada: datos.fechaProgramada,
             fechaVisita: datos.fechaVisita,
             resultado: datos.resultado,
-            notas: datos.notas,
-            fueraDeRuta,
-          },
-          update: {
-            usuarioId: req.usuario!.id,
-            fechaVisita: datos.fechaVisita,
-            resultado: datos.resultado,
+            motivoNoCobro: datos.motivoNoCobro,
+            promesaPagoFecha: datos.promesaPagoFecha,
+            promesaPagoMonto: datos.promesaPagoMonto,
             notas: datos.notas,
             fueraDeRuta,
           },
@@ -134,7 +194,7 @@ rutasCobranza.post(
   permitirPermiso("RUTAS_CONFIGURAR"),
   async (req, res) => {
     const datos = esquemaRuta.parse(req.body);
-    await validarCobrador(datos.cobradorId);
+    if (datos.cobradorId) await validarCobrador(datos.cobradorId);
     const clienteIds = await resolverClientesRuta(
       datos.localidadIds,
       datos.clienteIds,
@@ -145,7 +205,7 @@ rutasCobranza.post(
         nombre: datos.nombre,
         diaSemana: datos.diaSemana,
         notas: datos.notas,
-        cobradorId: datos.cobradorId,
+        cobradorId: datos.cobradorId ?? null,
         localidades: {
           create: datos.localidadIds.map((localidadId, indice) => ({
             localidadId,
@@ -165,6 +225,47 @@ rutasCobranza.post(
       },
     });
     res.status(201).json(ruta);
+  },
+);
+
+rutasCobranza.get(
+  "/clientes-con-saldo",
+  permitirPermiso("RUTAS_CONFIGURAR"),
+  async (_req, res) => {
+    const clientes = await prisma.cliente.findMany({
+      where: {
+        activo: true,
+        saldo: { is: { saldoActual: { gt: 0 } } },
+      },
+      select: {
+        id: true,
+        nombreCompleto: true,
+        numeroTarjeta: true,
+        localidadId: true,
+        localidad: true,
+        saldo: true,
+        evaluacionesRiesgo: {
+          orderBy: { calculadaEn: "desc" },
+          take: 1,
+          select: { nivel: true },
+        },
+      },
+      orderBy: [
+        { localidad: { estado: "asc" } },
+        { localidad: { nombre: "asc" } },
+        { nombreCompleto: "asc" },
+      ],
+      take: 2_000,
+    });
+    const estadosCuenta = await obtenerResumenesCarteraClientes(
+      clientes.map((cliente) => cliente.id),
+    );
+    res.json({
+      datos: clientes.map((cliente) => ({
+        ...cliente,
+        estadoCuenta: estadosCuenta.get(cliente.id),
+      })),
+    });
   },
 );
 
@@ -206,14 +307,29 @@ rutasCobranza.patch(
       .extend({ activa: z.boolean().optional() })
       .parse(req.body);
     if (datos.cobradorId) await validarCobrador(datos.cobradorId);
-    const clienteIds = datos.localidadIds
+    let localidadesParaClientes = datos.localidadIds;
+    if (datos.clienteIds && !localidadesParaClientes) {
+      const localidadesActuales = await prisma.rutaLocalidad.findMany({
+        where: { rutaId: String(req.params.id) },
+        orderBy: { orden: "asc" },
+        select: { localidadId: true },
+      });
+      localidadesParaClientes = localidadesActuales.map(
+        ({ localidadId }) => localidadId,
+      );
+    }
+    const clienteIds = localidadesParaClientes
       ? await resolverClientesRuta(
-          datos.localidadIds,
+          localidadesParaClientes,
           datos.clienteIds ?? [],
-          datos.incluirClientesLocalidades !== false,
+          datos.incluirClientesLocalidades ?? false,
         )
-      : datos.clienteIds;
+      : undefined;
     const ruta = await prisma.$transaction(async (tx) => {
+      await tx.ruta.findUniqueOrThrow({
+        where: { id: String(req.params.id) },
+        select: { id: true },
+      });
       if (datos.localidadIds) {
         await tx.rutaLocalidad.deleteMany({
           where: { rutaId: String(req.params.id) },
@@ -263,7 +379,10 @@ rutasCobranza.get(
   "/:id/jornada",
   permitirPermiso("RUTAS_OPERAR"),
   async (req, res) => {
-    const fecha = z.coerce.date().default(new Date()).parse(req.query.fecha);
+    const fecha = z.coerce
+      .date()
+      .default(() => new Date())
+      .parse(req.query.fecha);
     res.json(
       await obtenerJornadaRuta(String(req.params.id), fecha, req.usuario!),
     );
@@ -275,16 +394,53 @@ async function resolverClientesRuta(
   clienteIds: string[],
   incluirClientesLocalidades: boolean,
 ) {
-  if (!incluirClientesLocalidades) return [...new Set(clienteIds)];
+  const elegidos = [...new Set(clienteIds)];
+  if (elegidos.length) {
+    const validos = await prisma.cliente.findMany({
+      where: {
+        id: { in: elegidos },
+        activo: true,
+        localidadId: { in: localidadIds },
+        saldo: { is: { saldoActual: { gt: 0 } } },
+      },
+      select: { id: true },
+    });
+    if (validos.length !== elegidos.length)
+      throw new ErrorAplicacion(
+        "CLIENTES_RUTA_INVALIDOS",
+        "Seleccione únicamente clientas activas, de las localidades elegidas y con saldo pendiente.",
+        422,
+      );
+  }
+  if (!incluirClientesLocalidades) {
+    if (!elegidos.length)
+      throw new ErrorAplicacion(
+        "CLIENTES_RUTA_REQUERIDOS",
+        "Seleccione al menos una clienta con saldo y defina su orden de cobranza.",
+        422,
+      );
+    return elegidos;
+  }
   const clientes = await prisma.cliente.findMany({
-    where: { activo: true, localidadId: { in: localidadIds } },
+    where: {
+      activo: true,
+      localidadId: { in: localidadIds },
+      saldo: { is: { saldoActual: { gt: 0 } } },
+    },
     select: { id: true },
     orderBy: { nombreCompleto: "asc" },
   });
-  return combinarClientesRuta(
+  const resueltos = combinarClientesRuta(
+    elegidos,
     clientes.map(({ id }) => id),
-    clienteIds,
   );
+  if (!resueltos.length)
+    throw new ErrorAplicacion(
+      "CLIENTES_RUTA_REQUERIDOS",
+      "No hay clientas con saldo pendiente en las localidades elegidas.",
+      422,
+    );
+  return resueltos;
 }
 
 rutasCobranza.get(
@@ -294,7 +450,7 @@ rutasCobranza.get(
     const rango = z
       .object({
         desde: z.coerce.date().default(subMonths(new Date(), 3)),
-        hasta: z.coerce.date().default(new Date()),
+        hasta: z.coerce.date().default(() => new Date()),
       })
       .parse(req.query);
     const rutaId = String(req.params.id);

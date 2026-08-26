@@ -1,155 +1,287 @@
-import { useEffect, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { api } from "@/src/api";
-import { guardarCache, leerCache } from "@/src/almacenLocal";
-import { colores, usarTema } from "@/src/tema";
-import { usarSesion } from "@/src/sesion";
 
-interface Producto {
-  id: string;
-  sku: string;
-  nombre: string;
-  marca: string;
-  existencia: number;
-  existenciaMinima: number;
-  precioVenta: string;
-}
-const dinero = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "MXN",
-});
+import { EscanerCodigoProducto } from "@/src/modulos/inventario/EscanerCodigoProducto";
+import { ModalProductoMovil } from "@/src/modulos/inventario/ModalProductoMovil";
+import { TarjetaProductoMovil } from "@/src/modulos/inventario/TarjetaProductoMovil";
+import { usarInventarioMovil } from "@/src/modulos/inventario/usarInventarioMovil";
+import { usarSesion } from "@/src/sesion";
+import { colores, usarTema } from "@/src/tema";
+
 export default function InventarioMovil() {
   const tema = usarTema();
   const { idioma } = usarSesion();
   const es = idioma === "es";
-  const [productos, establecerProductos] = useState<Producto[]>([]);
-  const [buscar, establecerBuscar] = useState("");
-  const [cargando, establecerCargando] = useState(true);
-  const [offline, establecerOffline] = useState(false);
-  async function cargar() {
-    establecerCargando(true);
-    try {
-      const r = await api<{ datos: Producto[] }>(
-        "/inventario/productos?limite=100",
-      );
-      establecerProductos(r.datos);
-      await guardarCache("inventario", r.datos);
-      establecerOffline(false);
-    } catch {
-      establecerProductos((await leerCache<Producto[]>("inventario")) ?? []);
-      establecerOffline(true);
-    } finally {
-      establecerCargando(false);
-    }
-  }
-  useEffect(() => {
-    void cargar();
-  }, []);
-  const filtrados = productos.filter((p) =>
-    `${p.sku} ${p.nombre} ${p.marca}`
-      .toLowerCase()
-      .includes(buscar.toLowerCase()),
-  );
-  if (cargando && !productos.length)
-    return (
-      <View style={estilos.centro}>
-        <ActivityIndicator color={colores.azul} />
-      </View>
-    );
+  const control = usarInventarioMovil(es);
+  const [escanerAbierto, establecerEscanerAbierto] = useState(false);
+
   return (
-    <FlatList
-      style={{ backgroundColor: tema.fondo }}
-      contentContainerStyle={estilos.lista}
-      data={filtrados}
-      keyExtractor={(p) => p.id}
-      refreshControl={
-        <RefreshControl
-          refreshing={cargando}
-          onRefresh={cargar}
-          tintColor={colores.azul}
-        />
-      }
-      ListHeaderComponent={
-        <>
-          {offline && (
-            <Text style={estilos.offline}>
-              {es ? "Sin conexión · copia guardada" : "Offline · saved copy"}
-            </Text>
-          )}
-          <View
-            style={[
-              estilos.busqueda,
-              { backgroundColor: tema.panel, borderColor: tema.borde },
-            ]}
-          >
-            <Ionicons name="search" size={20} color={colores.gris} />
-            <TextInput
-              style={{ flex: 1, color: tema.texto }}
-              value={buscar}
-              onChangeText={establecerBuscar}
-              placeholder={
-                es ? "Buscar producto o SKU" : "Search product or SKU"
-              }
-              placeholderTextColor={colores.gris}
-            />
-          </View>
-        </>
-      }
-      renderItem={({ item }) => (
-        <View
-          style={[
-            estilos.producto,
-            { backgroundColor: tema.panel, borderColor: tema.borde },
-          ]}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={[estilos.nombre, { color: tema.texto }]}>
-              {item.nombre}
-            </Text>
-            <Text style={estilos.detalle}>
-              {item.sku} · {item.marca}
-            </Text>
-          </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <Text
+    <View style={[estilos.pagina, { backgroundColor: tema.fondo }]}>
+      <FlatList
+        contentContainerStyle={estilos.lista}
+        data={control.visibles}
+        keyExtractor={(producto) => producto.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={control.cargando}
+            onRefresh={control.cargar}
+            tintColor={colores.azul}
+          />
+        }
+        ListHeaderComponent={
+          <View style={estilos.cabecera}>
+            {control.offline && (
+              <View style={estilos.avisoOffline}>
+                <Ionicons
+                  name="cloud-offline-outline"
+                  size={17}
+                  color="#8a3b12"
+                />
+                <Text style={estilos.avisoOfflineTexto}>
+                  {es
+                    ? "Sin conexión · puedes consultar la copia guardada."
+                    : "Offline · you can view the saved copy."}
+                </Text>
+              </View>
+            )}
+            <View style={estilos.tituloFila}>
+              <View style={{ flex: 1 }}>
+                <Text style={[estilos.titulo, { color: tema.texto }]}>
+                  {es ? "Inventario visual" : "Visual inventory"}
+                </Text>
+                <Text style={estilos.subtitulo}>
+                  {control.totalProductos}{" "}
+                  {es ? "productos activos" : "active products"}
+                </Text>
+              </View>
+              <View style={estilos.acciones}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={es ? "Escanear producto" : "Scan product"}
+                  disabled={control.offline}
+                  onPress={() => establecerEscanerAbierto(true)}
+                  style={[
+                    estilos.escanear,
+                    { borderColor: tema.borde },
+                    control.offline && estilos.deshabilitado,
+                  ]}
+                >
+                  <Ionicons name="scan" color={colores.azul} size={21} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={es ? "Crear producto" : "Create product"}
+                  disabled={control.offline}
+                  onPress={control.abrirNuevo}
+                  style={[
+                    estilos.nuevo,
+                    control.offline && estilos.deshabilitado,
+                  ]}
+                >
+                  <Ionicons name="add" color="white" size={20} />
+                  <Text style={estilos.nuevoTexto}>{es ? "Nuevo" : "New"}</Text>
+                </Pressable>
+              </View>
+            </View>
+            <View
               style={[
-                estilos.existencia,
-                item.existencia <= item.existenciaMinima && {
-                  color: colores.rojo,
-                },
+                estilos.busqueda,
+                { backgroundColor: tema.panel, borderColor: tema.borde },
               ]}
             >
-              {item.existencia} {es ? "pzas." : "pcs."}
-            </Text>
-            <Text style={estilos.detalle}>
-              {dinero.format(Number(item.precioVenta))}
-            </Text>
+              <Ionicons name="search" size={20} color={colores.gris} />
+              <TextInput
+                style={{ flex: 1, color: tema.texto }}
+                value={control.buscar}
+                onChangeText={control.establecerBuscar}
+                placeholder={
+                  es
+                    ? "Producto, marca, SKU o código"
+                    : "Product, brand, SKU, or code"
+                }
+                placeholderTextColor={colores.gris}
+              />
+              {control.buscar.length > 0 && (
+                <Pressable
+                  accessibilityLabel={es ? "Limpiar búsqueda" : "Clear search"}
+                  onPress={() => control.establecerBuscar("")}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={20}
+                    color={colores.gris}
+                  />
+                </Pressable>
+              )}
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={estilos.filtros}
+            >
+              <Pressable
+                onPress={() => control.establecerCategoriaId("")}
+                style={[
+                  estilos.filtro,
+                  !control.categoriaId && estilos.filtroActivo,
+                  {
+                    borderColor: !control.categoriaId
+                      ? colores.azul
+                      : tema.borde,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    estilos.filtroTexto,
+                    { color: !control.categoriaId ? "white" : tema.texto },
+                  ]}
+                >
+                  {es ? "Todos" : "All"}
+                </Text>
+              </Pressable>
+              {control.categorias.map((categoria) => {
+                const activa = control.categoriaId === categoria.id;
+                return (
+                  <Pressable
+                    key={categoria.id}
+                    onPress={() => control.establecerCategoriaId(categoria.id)}
+                    style={[
+                      estilos.filtro,
+                      activa && estilos.filtroActivo,
+                      { borderColor: activa ? colores.azul : tema.borde },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        estilos.filtroTexto,
+                        { color: activa ? "white" : tema.texto },
+                      ]}
+                    >
+                      {categoria.nombre}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
-        </View>
-      )}
-    />
+        }
+        ListEmptyComponent={
+          control.cargando ? (
+            <ActivityIndicator style={estilos.cargando} color={colores.azul} />
+          ) : (
+            <View style={estilos.vacio}>
+              <Ionicons name="cube-outline" size={35} color={colores.gris} />
+              <Text style={estilos.vacioTexto}>
+                {control.buscar
+                  ? es
+                    ? "No encontramos ese producto."
+                    : "No matching product was found."
+                  : es
+                    ? "Crea el primer producto para comenzar."
+                    : "Create the first product to get started."}
+              </Text>
+            </View>
+          )
+        }
+        renderItem={({ item }) => (
+          <TarjetaProductoMovil
+            producto={item}
+            tema={tema}
+            es={es}
+            alEditar={() => control.abrirEdicion(item)}
+          />
+        )}
+        onEndReached={control.cargarMas}
+        onEndReachedThreshold={0.35}
+        ListFooterComponent={
+          control.cargandoMas ? (
+            <ActivityIndicator
+              style={estilos.cargandoMas}
+              color={colores.azul}
+            />
+          ) : null
+        }
+      />
+      <ModalProductoMovil
+        visible={control.modalAbierto}
+        producto={control.productoEditar}
+        guardando={control.guardando}
+        es={es}
+        tema={tema}
+        alCerrar={control.cerrarModal}
+        alGuardar={control.guardar}
+        categorias={control.categorias}
+        codigoInicial={control.codigoInicial}
+        alCrearCategoria={control.crearCategoria}
+      />
+      <EscanerCodigoProducto
+        visible={escanerAbierto}
+        tipo="AMBOS"
+        es={es}
+        alCerrar={() => establecerEscanerAbierto(false)}
+        alDetectar={(codigo, tipo) => {
+          establecerEscanerAbierto(false);
+          void control.resolverCodigo(codigo, tipo);
+        }}
+      />
+    </View>
   );
 }
+
 const estilos = StyleSheet.create({
-  centro: { flex: 1, alignItems: "center", justifyContent: "center" },
-  lista: { padding: 16, gap: 9 },
-  offline: {
+  pagina: { flex: 1 },
+  lista: { padding: 15, gap: 10 },
+  cabecera: { gap: 12, marginBottom: 3 },
+  avisoOffline: {
     backgroundColor: "#fff2e8",
-    color: "#8a3b12",
-    textAlign: "center",
-    padding: 9,
-    borderRadius: 9,
-    marginBottom: 10,
+    padding: 10,
+    borderRadius: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
   },
+  avisoOfflineTexto: {
+    color: "#8a3b12",
+    fontSize: 11,
+    fontWeight: "700",
+    flex: 1,
+  },
+  tituloFila: { flexDirection: "row", alignItems: "center", gap: 12 },
+  acciones: { flexDirection: "row", alignItems: "center", gap: 8 },
+  escanear: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  titulo: { fontSize: 21, fontWeight: "900" },
+  subtitulo: { color: colores.gris, fontSize: 11, marginTop: 2 },
+  nuevo: {
+    minHeight: 44,
+    borderRadius: 11,
+    backgroundColor: colores.azul,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  nuevoTexto: { color: "white", fontWeight: "900", fontSize: 12 },
+  deshabilitado: { opacity: 0.4 },
   busqueda: {
     height: 48,
     borderWidth: 1,
@@ -158,17 +290,19 @@ const estilos = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 13,
     gap: 9,
-    marginBottom: 5,
   },
-  producto: {
-    minHeight: 72,
+  filtros: { gap: 8, paddingVertical: 2 },
+  filtro: {
+    minHeight: 36,
+    borderRadius: 8,
     borderWidth: 1,
-    borderRadius: 13,
-    padding: 13,
-    flexDirection: "row",
-    alignItems: "center",
+    paddingHorizontal: 12,
+    justifyContent: "center",
   },
-  nombre: { fontWeight: "700" },
-  detalle: { color: colores.gris, fontSize: 12, marginTop: 4 },
-  existencia: { color: colores.verde, fontWeight: "700" },
+  filtroActivo: { backgroundColor: colores.azul },
+  filtroTexto: { fontSize: 11, fontWeight: "800" },
+  cargando: { marginTop: 45 },
+  cargandoMas: { marginVertical: 18 },
+  vacio: { alignItems: "center", gap: 8, marginTop: 50 },
+  vacioTexto: { color: colores.gris, textAlign: "center", fontSize: 12 },
 });

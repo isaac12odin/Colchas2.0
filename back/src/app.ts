@@ -28,6 +28,7 @@ import { rutasCortes } from "./modulos/cortes/rutas.js";
 import { rutasImportaciones } from "./modulos/importaciones/rutas.js";
 import { rutasAlertas } from "./modulos/alertas/rutas.js";
 import { rutasAuditoria } from "./modulos/auditoria/rutas.js";
+import { rutasReconciliacion } from "./modulos/reconciliacion/rutas.js";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -35,11 +36,13 @@ app.set("trust proxy", 1);
 app.use(pinoHttp({ logger: registro }));
 app.use(helmet({ crossOriginResourcePolicy: { policy: "same-site" } }));
 app.use((req, res, next) => {
-  if (requiereHttps({
-    produccion: entorno.NODE_ENV === "production",
-    conexionSegura: req.secure,
-    ruta: req.path,
-  })) {
+  if (
+    requiereHttps({
+      produccion: entorno.NODE_ENV === "production",
+      conexionSegura: req.secure,
+      ruta: req.path,
+    })
+  ) {
     res.status(426).json({
       error: {
         codigo: "HTTPS_REQUERIDO",
@@ -65,11 +68,24 @@ app.use(
     },
   }),
 );
+// Los saldos, existencias y cortes cambian con cada operación. Nunca permita
+// que navegador, proxy o CDN reutilicen una representación autenticada vieja.
+app.use("/api/v1", (_req, res, next) => {
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  next();
+});
 app.use(
   cors({
     origin: entorno.FRONTEND_URL,
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-CSRF-Token",
+      "Cache-Control",
+      "Pragma",
+    ],
   }),
 );
 app.use(express.json({ limit: "11mb" }));
@@ -94,13 +110,17 @@ app.use(protegerCsrf);
 app.get("/salud", (_req, res) =>
   res.json({
     estado: "ok",
-    servicio: "nexo-api",
+    servicio: "vektra-api",
     fecha: new Date().toISOString(),
   }),
 );
 app.get("/salud/listo", async (_req, res) => {
   await prisma.$queryRaw`SELECT 1`;
-  res.json({ estado: "listo", baseDatos: "disponible", fecha: new Date().toISOString() });
+  res.json({
+    estado: "listo",
+    baseDatos: "disponible",
+    fecha: new Date().toISOString(),
+  });
 });
 app.use("/api/v1/auth", rutasAutenticacion);
 app.use("/api/v1/usuarios", rutasUsuarios);
@@ -120,5 +140,6 @@ app.use("/api/v1/cortes", rutasCortes);
 app.use("/api/v1/importaciones", rutasImportaciones);
 app.use("/api/v1/alertas", rutasAlertas);
 app.use("/api/v1/auditoria", rutasAuditoria);
+app.use("/api/v1/reconciliacion", rutasReconciliacion);
 app.use(manejarNoEncontrado);
 app.use(manejarError);

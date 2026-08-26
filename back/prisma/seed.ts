@@ -1,7 +1,7 @@
 import "dotenv/config";
-import argon2 from 'argon2';
-import { PrismaClient, RolUsuario } from '@prisma/client';
-import { leerConfiguracionSeed } from './configuracionSeed.js';
+import argon2 from "argon2";
+import { PrismaClient, RolUsuario } from "@prisma/client";
+import { leerConfiguracionSeed } from "./configuracionSeed.js";
 
 const prisma = new PrismaClient();
 
@@ -20,37 +20,40 @@ async function principal() {
       hashContrasena,
       rol: RolUsuario.ADMINISTRADOR,
       activo: true,
-      debeCambiarContrasena: true,
+      debeCambiarContrasena: false,
       intentosFallidos: 0,
       bloqueadoHasta: null,
     },
     create: {
-      nombre: 'Administrador principal',
+      nombre: "Administrador principal",
       correo,
       hashContrasena,
       rol: RolUsuario.ADMINISTRADOR,
-      debeCambiarContrasena: true,
+      debeCambiarContrasena: false,
     },
   });
 
   const localidad = await prisma.localidad.upsert({
-    where: { nombre_estado: { nombre: 'Centro', estado: 'Sin especificar' } },
+    where: { nombre_estado: { nombre: "Centro", estado: "Sin especificar" } },
     update: {},
-    create: { nombre: 'Centro', estado: 'Sin especificar' },
+    create: { nombre: "Centro", estado: "Sin especificar" },
   });
 
   await prisma.ruta.upsert({
-    where: { nombre: 'Ruta inicial' },
+    where: { nombre: "Ruta inicial" },
     update: {},
     create: {
-      nombre: 'Ruta inicial',
-      diaSemana: 'LUNES',
+      nombre: "Ruta inicial",
+      diaSemana: "LUNES",
+      activa: true,
+      notas:
+        "Ruta administrativa web. Asigne un cobrador sólo si también debe aparecer en móvil.",
       localidades: { create: { localidadId: localidad.id, orden: 1 } },
     },
   });
 
   console.info(`Usuario administrador preparado: ${correo}`);
-  console.info('Por seguridad, el sistema exigira cambiar la contrasena en el primer acceso.');
+  console.info("La contraseña quedó lista para usarse.");
 }
 
 principal()

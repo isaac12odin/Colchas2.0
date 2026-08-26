@@ -3,6 +3,7 @@ import { prisma } from "../../infraestructura/prisma.js";
 import { autenticar, permitirPermiso } from "../../seguridad/middlewares.js";
 import { crearPagina, esquemaPaginacion } from "../../compartido/paginacion.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
+import { leerImagen } from "../../compartido/imagenes.js";
 import { esquemaDevolucion, registrarDevolucion } from "./servicio.js";
 
 export const rutasDevoluciones = Router();
@@ -83,13 +84,13 @@ rutasDevoluciones.get(
     const evidencia = await prisma.devolucion.findUnique({
       where: { id: String(req.params.id) },
       select: {
-        evidenciaContenido: true,
+        evidenciaRuta: true,
         evidenciaMime: true,
         evidenciaNombre: true,
         evidenciaHash: true,
       },
     });
-    if (!evidencia?.evidenciaContenido || !evidencia.evidenciaMime)
+    if (!evidencia?.evidenciaRuta || !evidencia.evidenciaMime)
       throw new ErrorAplicacion(
         "EVIDENCIA_NO_ENCONTRADA",
         "La devolucion no tiene evidencia fotografica.",
@@ -99,6 +100,14 @@ rutasDevoluciones.get(
     res.setHeader("Content-Disposition", `inline; filename="evidencia"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Hash", evidencia.evidenciaHash ?? "");
-    res.send(Buffer.from(evidencia.evidenciaContenido));
+    try {
+      res.send(await leerImagen(evidencia.evidenciaRuta));
+    } catch {
+      throw new ErrorAplicacion(
+        "EVIDENCIA_NO_ENCONTRADA",
+        "El archivo de evidencia no está disponible.",
+        404,
+      );
+    }
   },
 );

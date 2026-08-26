@@ -3,13 +3,17 @@ export interface PedidoWeb {
   folio: string;
   estado: string;
   fechaCompromiso: string | null;
-  cliente: { nombreCompleto: string; numeroTarjeta?: string | null };
+  cliente: {
+    id: string;
+    nombreCompleto: string;
+    numeroTarjeta?: string | null;
+  };
   items: Array<{
     id: string;
     descripcion: string;
     cantidad: number;
     precioEstimado: string;
-    producto: { nombre: string } | null;
+    producto: { id: string; nombre: string; sku: string } | null;
     proveedor: { id: string; nombre: string } | null;
   }>;
 }
@@ -21,6 +25,12 @@ export interface ClientePedido {
   direccion: string;
   numeroTarjeta?: string | null;
   localidad?: { nombre: string; estado: string };
+  saldo?: { saldoActual: string; vencidoActual?: string } | null;
+  acuerdoPago?: {
+    periodicidad: "SEMANAL" | "QUINCENAL" | "MENSUAL";
+    montoPeriodico: string;
+    activo: boolean;
+  } | null;
 }
 
 export interface ProductoPedido {
@@ -32,6 +42,20 @@ export interface ProductoPedido {
   existencia: number;
   precioVenta: string;
   precioCompra?: string;
+  tieneFoto?: boolean;
+  fotoActualizadaEn?: string | null;
+}
+
+export interface DatosEntregaPedidoWeb {
+  tipo: "CREDITO" | "CONTADO";
+  numeroTarjeta?: string;
+  anticipo: number;
+  metodoAnticipo: "EFECTIVO" | "TRANSFERENCIA" | "TARJETA" | "OTRO";
+  plan?: {
+    periodicidad: "SEMANAL" | "QUINCENAL" | "MENSUAL";
+    montoCuota: number;
+    primerVencimiento: string;
+  };
 }
 
 export const estadosPedido = [
@@ -53,4 +77,22 @@ export const etiquetaSiguiente: Record<string, string> = {
   PEDIDO_PROVEEDOR: "Marcar pedido",
   RECIBIDO_ALMACEN: "Marcar recibido",
   LISTO_ENTREGA: "Listo para entrega",
+};
+
+export const etiquetaEstadoPedido: Record<string, string> = {
+  PENDIENTE_PEDIR: "Pendiente de pedir",
+  PEDIDO_PROVEEDOR: "Pedido al proveedor",
+  RECIBIDO_ALMACEN: "Recibido en almacén",
+  LISTO_ENTREGA: "Listo para entregar",
+  ENTREGADO: "Entregado",
+  CANCELADO: "Cancelado",
+};
+
+export const etiquetaEstadoPedidoEn: Record<string, string> = {
+  PENDIENTE_PEDIR: "Pending supplier",
+  PEDIDO_PROVEEDOR: "Ordered from supplier",
+  RECIBIDO_ALMACEN: "Received in warehouse",
+  LISTO_ENTREGA: "Ready to deliver",
+  ENTREGADO: "Delivered",
+  CANCELADO: "Cancelled",
 };

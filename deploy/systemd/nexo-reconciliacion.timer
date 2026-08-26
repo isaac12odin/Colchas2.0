@@ -1,0 +1,11 @@
+[Unit]
+Description=Nexo - conciliación diaria
+
+[Timer]
+OnCalendar=*-*-* 03:20:00 America/Mexico_City
+Persistent=true
+RandomizedDelaySec=300
+Unit=nexo-reconciliacion.service
+
+[Install]
+WantedBy=timers.target

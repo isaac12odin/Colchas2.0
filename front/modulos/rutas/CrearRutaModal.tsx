@@ -1,22 +1,11 @@
-import { type FormEvent, useEffect, useState } from "react";
-
 import { Modal } from "@/componentes/ui";
-import { api } from "@/lib/api";
+import { OrdenClientesRuta } from "./constructor/OrdenClientesRuta";
+import { PasoDatosRuta } from "./constructor/PasoDatosRuta";
+import { ResumenRuta } from "./constructor/ResumenRuta";
+import { SelectorClientesRuta } from "./constructor/SelectorClientesRuta";
+import { SelectorLocalidadesRuta } from "./constructor/SelectorLocalidadesRuta";
+import { usarConstructorRuta } from "./constructor/usarConstructorRuta";
 import type { RutaWeb } from "./tipos";
-
-interface Localidad {
-  id: string;
-  nombre: string;
-  estado: string;
-}
-
-interface Cobrador {
-  id: string;
-  nombre: string;
-  correo: string;
-  rol: string;
-  activo: boolean;
-}
 
 export function CrearRutaModal({
   abierto,
@@ -35,216 +24,111 @@ export function CrearRutaModal({
   alCerrar: () => void;
   alCrear: () => void;
 }) {
-  const [localidades, establecerLocalidades] = useState<Localidad[]>([]);
-  const [cobradores, establecerCobradores] = useState<Cobrador[]>([]);
-  const [cobradorId, establecerCobradorId] = useState("");
-  const [seleccionadas, establecerSeleccionadas] = useState<string[]>([]);
-  const [buscarLocalidad, establecerBuscarLocalidad] = useState("");
-  const [nombre, establecerNombre] = useState("");
-  const [dia, establecerDia] = useState("LUNES");
-  const [notas, establecerNotas] = useState("");
-  const [guardando, establecerGuardando] = useState(false);
-
-  useEffect(() => {
-    if (!abierto) return;
-    void api<{ datos: Localidad[] }>("/localidades").then((respuesta) =>
-      establecerLocalidades(respuesta.datos),
-    );
-    void api<{ datos: Cobrador[] }>("/usuarios").then((respuesta) =>
-      establecerCobradores(
-        respuesta.datos.filter(
-          (usuario) => usuario.rol === "COBRADOR" && usuario.activo,
-        ),
-      ),
-    );
-    establecerNombre(ruta?.nombre ?? "");
-    establecerDia(ruta?.diaSemana ?? "LUNES");
-    establecerNotas(ruta?.notas ?? "");
-    establecerCobradorId(ruta?.cobradorId ?? ruta?.cobrador?.id ?? "");
-    establecerSeleccionadas(
-      ruta?.localidades.map(({ localidad }) => localidad.id) ?? [],
-    );
-  }, [abierto, ruta]);
-
-  async function enviar(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
-    if (!seleccionadas.length || !cobradorId || guardando) return;
-    establecerGuardando(true);
-    try {
-      await api(ruta ? `/rutas/${ruta.id}` : "/rutas", {
-        method: ruta ? "PATCH" : "POST",
-        body: JSON.stringify({
-          nombre,
-          diaSemana: dia,
-          notas: notas || undefined,
-          cobradorId,
-          localidadIds: seleccionadas,
-          incluirClientesLocalidades: true,
-        }),
-      });
-      alCerrar();
-      alCrear();
-    } finally {
-      establecerGuardando(false);
-    }
-  }
-
-  function alternar(id: string) {
-    establecerSeleccionadas((actuales) =>
-      actuales.includes(id)
-        ? actuales.filter((actual) => actual !== id)
-        : [...actuales, id],
-    );
-  }
+  const control = usarConstructorRuta({
+    abierto,
+    ruta,
+    es,
+    alCerrar,
+    alGuardar: alCrear,
+  });
 
   return (
     <Modal
       abierto={abierto}
       cerrar={alCerrar}
+      ancho="pantalla"
       titulo={
         ruta
           ? es
-            ? "Configurar ruta"
-            : "Configure route"
+            ? "Configurar ruta y orden de cobranza"
+            : "Configure route and collection order"
           : es
-            ? "Nueva ruta multilocalidad"
-            : "New multi-location route"
+            ? "Nueva ruta de cobranza"
+            : "New collection route"
       }
     >
-      <form onSubmit={enviar} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label>
-            <span className="etiqueta">
-              {es ? "Nombre de ruta" : "Route name"}
-            </span>
-            <input
-              className="campo"
-              value={nombre}
-              onChange={(evento) => establecerNombre(evento.target.value)}
-              required
-              minLength={3}
-            />
-          </label>
-          <label>
-            <span className="etiqueta">
-              {es ? "Día de cobranza" : "Collection day"}
-            </span>
-            <select
-              className="campo"
-              value={dia}
-              onChange={(evento) => establecerDia(evento.target.value)}
-            >
-              {[
-                "LUNES",
-                "MARTES",
-                "MIERCOLES",
-                "JUEVES",
-                "VIERNES",
-                "SABADO",
-                "DOMINGO",
-              ].map((valor) => (
-                <option key={valor}>{valor}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <label>
-          <span className="etiqueta">
-            {es ? "Cobrador responsable" : "Assigned collector"}
-          </span>
-          <select
-            className="campo"
-            value={cobradorId}
-            onChange={(evento) => establecerCobradorId(evento.target.value)}
-            required
-          >
-            <option value="">
-              {es ? "Selecciona un cobrador" : "Select a collector"}
-            </option>
-            {cobradores.map((cobrador) => (
-              <option key={cobrador.id} value={cobrador.id}>
-                {cobrador.nombre} · {cobrador.correo}
-              </option>
-            ))}
-          </select>
-          {!cobradores.length && (
-            <p className="mt-1 text-xs text-amber-700">
-              {es
-                ? "Primero crea un usuario con rol Cobrador."
-                : "Create a user with the Collector role first."}
-            </p>
-          )}
-        </label>
-        <fieldset>
-          <legend className="etiqueta">
-            {es
-              ? "Localidades incluidas (una o varias)"
-              : "Included locations (one or more)"}
-          </legend>
-          <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border p-3">
-            <input
-              className="campo mb-2"
-              value={buscarLocalidad}
-              onChange={(evento) =>
-                establecerBuscarLocalidad(evento.target.value)
-              }
-              placeholder={
-                es
-                  ? "Buscar por localidad o estado"
-                  : "Search location or state"
-              }
-            />
-            {localidades
-              .filter((localidad) =>
-                `${localidad.nombre} ${localidad.estado}`
-                  .toLocaleLowerCase("es-MX")
-                  .includes(buscarLocalidad.toLocaleLowerCase("es-MX")),
-              )
-              .map((localidad) => (
-                <label
-                  key={localidad.id}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-slate-50 dark:hover:bg-slate-900"
-                >
-                  <input
-                    type="checkbox"
-                    checked={seleccionadas.includes(localidad.id)}
-                    onChange={() => alternar(localidad.id)}
-                  />
-                  <span>
-                    <strong>{localidad.nombre}</strong>
-                    <span className="ml-2 text-xs text-slate-500">
-                      {localidad.estado}
-                    </span>
-                  </span>
-                </label>
-              ))}
-          </div>
-          <p className="mt-2 text-xs text-slate-500">
-            {seleccionadas.length}{" "}
-            {es
-              ? "localidad(es). Sus clientas activas se sincronizarán con la ruta."
-              : "location(s). Their active customers will be synchronized."}
+      <form
+        onSubmit={control.enviar}
+        className="space-y-5"
+        data-capacitacion="rutas.configuracion.formulario"
+      >
+        {control.error && (
+          <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">
+            {control.error}
           </p>
-        </fieldset>
-        <label>
-          <span className="etiqueta">
-            {es ? "Notas opcionales" : "Optional notes"}
-          </span>
-          <textarea
-            className="campo min-h-20 py-3"
-            value={notas}
-            onChange={(evento) => establecerNotas(evento.target.value)}
-          />
-        </label>
-        <div className="flex justify-end gap-2">
+        )}
+
+        {control.cargando ? (
+          <p className="py-16 text-center text-sm text-slate-500">
+            {es
+              ? "Cargando lugares y clientes…"
+              : "Loading locations and customers…"}
+          </p>
+        ) : (
+          <>
+            <PasoDatosRuta
+              es={es}
+              nombre={control.nombre}
+              dia={control.dia}
+              cobradorId={control.cobradorId}
+              cobradores={control.cobradores}
+              cambiarNombre={control.establecerNombre}
+              cambiarDia={control.establecerDia}
+              cambiarCobrador={control.establecerCobradorId}
+            />
+            <SelectorLocalidadesRuta
+              es={es}
+              localidades={control.localidades}
+              clientes={control.clientes}
+              seleccionadas={control.localidadesSeleccionadas}
+              alternar={control.alternarLocalidad}
+            />
+            <SelectorClientesRuta
+              es={es}
+              clientes={control.clientes}
+              localidades={control.localidadesSeleccionadas}
+              seleccionados={control.clientesOrdenados}
+              alternar={control.alternarCliente}
+            />
+            <OrdenClientesRuta
+              es={es}
+              orden={control.clientesOrdenados}
+              clientes={control.clientesPorId}
+              cambiar={control.establecerClientesOrdenados}
+            />
+            <ResumenRuta
+              es={es}
+              orden={control.clientesOrdenados}
+              clientes={control.clientesPorId}
+            />
+            <label>
+              <span className="etiqueta">
+                {es
+                  ? "Notas opcionales para el cobrador"
+                  : "Optional collector notes"}
+              </span>
+              <textarea
+                className="campo min-h-20 py-3"
+                value={control.notas}
+                onChange={(evento) =>
+                  control.establecerNotas(evento.target.value)
+                }
+                data-capacitacion="rutas.configuracion.notas"
+              />
+            </label>
+          </>
+        )}
+
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t bg-white py-3 dark:bg-slate-950">
           <button type="button" className="boton-secundario" onClick={alCerrar}>
             {cancelar}
           </button>
           <button
-            disabled={!seleccionadas.length || !cobradorId || guardando}
+            disabled={!control.puedeGuardar}
             className="boton-primario disabled:opacity-50"
+            data-capacitacion="rutas.configuracion.guardar"
           >
-            {guardando ? (es ? "Guardando…" : "Saving…") : guardar}
+            {control.guardando ? (es ? "Guardando…" : "Saving…") : guardar}
           </button>
         </div>
       </form>

@@ -42,10 +42,12 @@ export function SelectorClienteRemoto({
   valor,
   alCambiar,
   es,
+  prefijoCapacitacion,
 }: {
   valor: ClientePedido | null;
   alCambiar: (cliente: ClientePedido | null) => void;
   es: boolean;
+  prefijoCapacitacion?: string;
 }) {
   const [termino, establecerTermino] = useState("");
   const encontrados = usarOpcionesRemotas<ClientePedido>("/clientes", termino);
@@ -77,6 +79,7 @@ export function SelectorClienteRemoto({
       }
       alBuscar={establecerTermino}
       sinResultados={es ? "Cliente no encontrado." : "Customer not found."}
+      prefijoCapacitacion={prefijoCapacitacion}
     />
   );
 }
@@ -86,11 +89,13 @@ export function SelectorProductoRemoto({
   alCambiar,
   es,
   requiereExistencia = false,
+  prefijoCapacitacion,
 }: {
   valor: ProductoPedido | null;
   alCambiar: (producto: ProductoPedido | null) => void;
   es: boolean;
   requiereExistencia?: boolean;
+  prefijoCapacitacion?: string;
 }) {
   const [termino, establecerTermino] = useState("");
   const respuesta = usarOpcionesRemotas<ProductoPedido>(
@@ -116,6 +121,9 @@ export function SelectorProductoRemoto({
         titulo: producto.nombre,
         detalle: `${producto.sku} · ${producto.existencia} en existencia · ${dinero.format(Number(producto.precioVenta))}`,
         busqueda: `${producto.nombre} ${producto.marca} ${producto.sku} ${producto.codigoBarras ?? ""}`,
+        imagenUrl: producto.tieneFoto
+          ? `/api/inventario/productos/${producto.id}/foto${producto.fotoActualizadaEn ? `?v=${encodeURIComponent(producto.fotoActualizadaEn)}` : ""}`
+          : null,
       }))}
       valor={valor?.id ?? ""}
       alCambiar={(id) =>
@@ -129,6 +137,7 @@ export function SelectorProductoRemoto({
             : "Primero registra el producto en Inventario."
           : "Product not found."
       }
+      prefijoCapacitacion={prefijoCapacitacion}
     />
   );
 }

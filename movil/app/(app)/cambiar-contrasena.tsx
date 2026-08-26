@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Stack } from "expo-router";
 import { api } from "@/src/api";
 import { usarSesion } from "@/src/sesion";
 import { colores, usarTema } from "@/src/tema";
@@ -23,20 +24,14 @@ export default function CambiarContrasena() {
   const [nueva, establecerNueva] = useState("");
   const [confirmacion, establecerConfirmacion] = useState("");
   const [enviando, establecerEnviando] = useState(false);
-  const requisitos = [
-    nueva.length >= 12,
-    /[a-z]/.test(nueva),
-    /[A-Z]/.test(nueva),
-    /\d/.test(nueva),
-    /[^A-Za-z0-9]/.test(nueva),
-  ];
+  const claveValida = nueva.length >= 6;
   async function guardar() {
-    if (!requisitos.every(Boolean) || nueva !== confirmacion)
+    if (!claveValida || nueva !== confirmacion)
       return Alert.alert(
         es ? "Revisa la contraseña" : "Check your password",
         es
-          ? "Cumple todos los requisitos y confirma la misma contraseña."
-          : "Meet all requirements and enter the same confirmation.",
+          ? "Usa al menos 6 caracteres y confirma la misma contraseña."
+          : "Use at least 6 characters and enter the same confirmation.",
       );
     establecerEnviando(true);
     try {
@@ -64,101 +59,100 @@ export default function CambiarContrasena() {
     }
   }
   return (
-    <KeyboardAvoidingView
-      style={[estilos.pagina, { backgroundColor: tema.fondo }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <View
-        style={[
-          estilos.panel,
-          { backgroundColor: tema.panel, borderColor: tema.borde },
-        ]}
+    <>
+      <Stack.Screen
+        options={{
+          title: "Protege tu cuenta",
+          headerBackVisible: false,
+          gestureEnabled: false,
+        }}
+      />
+      <KeyboardAvoidingView
+        style={[estilos.pagina, { backgroundColor: tema.fondo }]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={estilos.icono}>
-          <Ionicons name="shield-checkmark" color={colores.azul} size={30} />
-        </View>
-        <Text style={[estilos.titulo, { color: tema.texto }]}>
-          {es
-            ? "Crea tu contraseña definitiva"
-            : "Create your permanent password"}
-        </Text>
-        <Text style={estilos.detalle}>
-          {es
-            ? "La contraseña temporal solo sirve para el primer acceso. Nadie podrá operar hasta que la cambies."
-            : "The temporary password is only for first access. No one can operate until you change it."}
-        </Text>
-        <Text style={estilos.etiqueta}>
-          {es ? "Contraseña temporal" : "Temporary password"}
-        </Text>
-        <TextInput
-          secureTextEntry
-          value={actual}
-          onChangeText={establecerActual}
+        <View
           style={[
-            estilos.campo,
-            { borderColor: tema.borde, color: tema.texto },
+            estilos.panel,
+            { backgroundColor: tema.panel, borderColor: tema.borde },
           ]}
-        />
-        <Text style={estilos.etiqueta}>
-          {es ? "Nueva contraseña" : "New password"}
-        </Text>
-        <TextInput
-          secureTextEntry
-          value={nueva}
-          onChangeText={establecerNueva}
-          style={[
-            estilos.campo,
-            { borderColor: tema.borde, color: tema.texto },
-          ]}
-        />
-        <View style={estilos.requisitos}>
-          {[
-            es ? "12 caracteres" : "12 characters",
-            es ? "minúscula" : "lowercase",
-            es ? "mayúscula" : "uppercase",
-            es ? "número" : "number",
-            es ? "símbolo" : "symbol",
-          ].map((texto, indice) => (
-            <View key={texto} style={estilos.requisito}>
+        >
+          <View style={estilos.icono}>
+            <Ionicons name="shield-checkmark" color={colores.azul} size={30} />
+          </View>
+          <Text style={[estilos.titulo, { color: tema.texto }]}>
+            {es ? "Cambiar contraseña" : "Change password"}
+          </Text>
+          <Text style={estilos.detalle}>
+            {es
+              ? "Puedes cambiar tu contraseña cuando lo necesites."
+              : "You can change your password whenever needed."}
+          </Text>
+          <Text style={estilos.etiqueta}>
+            {es ? "Contraseña actual" : "Current password"}
+          </Text>
+          <TextInput
+            secureTextEntry
+            value={actual}
+            onChangeText={establecerActual}
+            style={[
+              estilos.campo,
+              { borderColor: tema.borde, color: tema.texto },
+            ]}
+          />
+          <Text style={estilos.etiqueta}>
+            {es ? "Nueva contraseña" : "New password"}
+          </Text>
+          <TextInput
+            secureTextEntry
+            value={nueva}
+            onChangeText={establecerNueva}
+            style={[
+              estilos.campo,
+              { borderColor: tema.borde, color: tema.texto },
+            ]}
+          />
+          <View style={estilos.requisitos}>
+            <View style={estilos.requisito}>
               <Ionicons
-                name={
-                  requisitos[indice] ? "checkmark-circle" : "ellipse-outline"
-                }
-                color={requisitos[indice] ? colores.verde : colores.gris}
+                name={claveValida ? "checkmark-circle" : "ellipse-outline"}
+                color={claveValida ? colores.verde : colores.gris}
                 size={14}
               />
-              <Text style={estilos.requisitoTexto}>{texto}</Text>
+              <Text style={estilos.requisitoTexto}>
+                {es ? "Mínimo 6 caracteres" : "At least 6 characters"}
+              </Text>
             </View>
-          ))}
-        </View>
-        <Text style={estilos.etiqueta}>
-          {es ? "Confirmar contraseña" : "Confirm password"}
-        </Text>
-        <TextInput
-          secureTextEntry
-          value={confirmacion}
-          onChangeText={establecerConfirmacion}
-          style={[
-            estilos.campo,
-            { borderColor: tema.borde, color: tema.texto },
-          ]}
-        />
-        <Pressable
-          disabled={enviando}
-          onPress={() => void guardar()}
-          style={[estilos.boton, enviando && { opacity: 0.5 }]}
-        >
-          {enviando ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Ionicons name="lock-closed" color="white" size={18} />
-          )}
-          <Text style={estilos.botonTexto}>
-            {es ? "Guardar y volver a entrar" : "Save and sign in again"}
+          </View>
+          <Text style={estilos.etiqueta}>
+            {es ? "Confirmar contraseña" : "Confirm password"}
           </Text>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+          <TextInput
+            secureTextEntry
+            value={confirmacion}
+            onChangeText={establecerConfirmacion}
+            style={[
+              estilos.campo,
+              { borderColor: tema.borde, color: tema.texto },
+            ]}
+          />
+          <Pressable
+            disabled={enviando}
+            onPress={() => void guardar()}
+            style={[estilos.boton, enviando && { opacity: 0.5 }]}
+          >
+            {enviando ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Ionicons name="lock-closed" color="white" size={18} />
+            )}
+            <Text style={estilos.botonTexto}>
+              {es ? "Guardar y volver a entrar" : "Save and sign in again"}
+            </Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 

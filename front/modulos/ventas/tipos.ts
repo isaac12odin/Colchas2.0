@@ -9,6 +9,40 @@ export interface VentaWeb {
   usuario: { nombre: string };
 }
 
+export type TipoVentaWeb = "CREDITO" | "CONTADO" | "PUBLICO";
+export type MetodoPagoWeb = "EFECTIVO" | "TRANSFERENCIA" | "TARJETA" | "OTRO";
+
+export interface NuevaVentaWeb {
+  idOperacionMovil: string;
+  clienteId?: string | null;
+  numeroTarjeta?: string;
+  tipo: TipoVentaWeb;
+  descuento: number;
+  anticipo: number;
+  metodoAnticipo: MetodoPagoWeb;
+  fechaVenta: string;
+  items: Array<{ productoId: string; cantidad: number }>;
+  plan?: {
+    periodicidad: "SEMANAL" | "QUINCENAL" | "MENSUAL";
+    montoCuota: number;
+    primerVencimiento: string;
+  };
+}
+
+export interface ResultadoVentaWeb {
+  id: string;
+  folio: string;
+  total: string | number;
+  resumenSaldo: {
+    clienteId: string;
+    saldoAnterior: number;
+    cargoVenta: number;
+    anticipo: number;
+    saldoNuevo: number;
+  } | null;
+  idempotente: boolean;
+}
+
 export interface VentaDetalleWeb extends VentaWeb {
   detalles: Array<{
     id: string;

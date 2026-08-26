@@ -1,27 +1,28 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Banknote, CheckCircle2, MapPin, Navigation, Plus } from "lucide-react";
-import { api, ErrorApi } from "@/lib/api";
-import {
-  EncabezadoPagina,
-  EstadoVacio,
-  MensajeError,
-  Modal,
-} from "@/componentes/ui";
+import { Plus } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
+import { EncabezadoPagina, MensajeError } from "@/componentes/ui";
 import { usarAplicacion } from "@/componentes/proveedores";
-import { BuscadorExtraordinarioWeb } from "@/modulos/rutas/BuscadorExtraordinarioWeb";
+import { api, ErrorApi } from "@/lib/api";
+import { usarDatosVivos } from "@/lib/usarDatosVivos";
+import { AccionesDocumentoRuta } from "@/modulos/rutas/AccionesDocumentoRuta";
 import { CrearRutaModal } from "@/modulos/rutas/CrearRutaModal";
+import { EstadoOperacionRuta } from "@/modulos/rutas/EstadoOperacionRuta";
+import { GuiaJornadaRuta } from "@/modulos/rutas/GuiaJornadaRuta";
+import {
+  ModalRegistrarVisita,
+  type RegistroVisitaRuta,
+} from "@/modulos/rutas/ModalRegistrarVisita";
+import { SelectorOrigenCobranzaRuta } from "@/modulos/rutas/SelectorOrigenCobranzaRuta";
 import type {
   ClienteJornadaWeb,
   JornadaWeb,
   RutaWeb,
 } from "@/modulos/rutas/tipos";
+
 const hoy = new Date().toISOString().slice(0, 10);
-const dinero = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "MXN",
-});
 
 export default function PaginaRutas() {
   const { t, idioma, usuario } = usarAplicacion();
@@ -33,35 +34,47 @@ export default function PaginaRutas() {
   const [seleccion, establecerSeleccion] = useState<ClienteJornadaWeb | null>(
     null,
   );
-  const [resultado, establecerResultado] = useState("PAGO");
   const [error, establecerError] = useState("");
   const [configurandoRuta, establecerConfigurandoRuta] = useState<
     RutaWeb | null | undefined
   >(undefined);
-  const cargarRutas = useCallback(() => {
-    api<{ datos: RutaWeb[] }>("/rutas")
-      .then((respuesta) => {
-        establecerRutas(respuesta.datos);
-        establecerRutaId((actual) => actual || respuesta.datos[0]?.id || "");
-      })
-      .catch((e) => establecerError(e.message));
-  }, []);
+
+  const cargarRutas = useCallback(
+    () =>
+      api<{ datos: RutaWeb[] }>("/rutas")
+        .then((respuesta) => {
+          establecerRutas(respuesta.datos);
+          establecerRutaId((actual) => actual || respuesta.datos[0]?.id || "");
+        })
+        .catch((errorCarga) => establecerError(errorCarga.message)),
+    [],
+  );
+
+  const cargarJornada = useCallback(() => {
+    if (!rutaId) {
+      establecerJornada(null);
+      return;
+    }
+    return api<JornadaWeb>(
+      `/rutas/${rutaId}/jornada?fecha=${new Date(`${fecha}T12:00:00`).toISOString()}`,
+    )
+      .then(establecerJornada)
+      .catch((errorCarga) => establecerError(errorCarga.message));
+  }, [fecha, rutaId]);
+
   useEffect(() => {
-    cargarRutas();
+    void cargarRutas();
   }, [cargarRutas]);
   useEffect(() => {
-    if (rutaId)
-      api<JornadaWeb>(
-        `/rutas/${rutaId}/jornada?fecha=${new Date(`${fecha}T12:00:00`).toISOString()}`,
-      )
-        .then(establecerJornada)
-        .catch((e) => establecerError(e.message));
-  }, [rutaId, fecha]);
-  async function registrar(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
+    void cargarJornada();
+  }, [cargarJornada]);
+  usarDatosVivos(async () => {
+    await cargarRutas();
+    await cargarJornada();
+  });
+
+  async function registrar(datos: RegistroVisitaRuta) {
     if (!seleccion || !jornada) return;
-    const f = new FormData(evento.currentTarget);
-    const monto = Number(f.get("monto") || 0);
     try {
       await api(`/rutas/${jornada.id}/visitas`, {
         method: "POST",
@@ -69,44 +82,51 @@ export default function PaginaRutas() {
           clienteId: seleccion.id,
           fechaProgramada: new Date(`${fecha}T12:00:00`).toISOString(),
           fechaVisita: new Date().toISOString(),
-          resultado,
-          notas: f.get("notas") || undefined,
+          resultado: datos.resultado,
+          motivoNoCobro: datos.motivoNoCobro,
+          promesaPagoFecha: datos.promesaPagoFecha
+            ? new Date(`${datos.promesaPagoFecha}T12:00:00`).toISOString()
+            : undefined,
+          promesaPagoMonto: datos.promesaPagoMonto,
+          notas: datos.notas,
           abono:
-            monto > 0
+            datos.monto && datos.monto > 0
               ? {
-                  monto,
-                  metodo: "EFECTIVO",
+                  monto: datos.monto,
+                  metodo: datos.metodo ?? "EFECTIVO",
                   fechaAbono: new Date().toISOString(),
+                  referencia: datos.referencia,
                 }
               : undefined,
         }),
       });
       establecerSeleccion(null);
-      setTimeout(
-        () =>
-          api<JornadaWeb>(
-            `/rutas/${rutaId}/jornada?fecha=${new Date(`${fecha}T12:00:00`).toISOString()}`,
-          ).then(establecerJornada),
-        100,
+      await cargarJornada();
+    } catch (errorRegistro) {
+      establecerError(
+        errorRegistro instanceof ErrorApi ? errorRegistro.message : "Error",
       );
-    } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      throw errorRegistro;
     }
   }
+
+  const rutaActual = rutas.find((ruta) => ruta.id === rutaId);
+
   return (
     <>
       <EncabezadoPagina
         titulo={t.rutas}
         descripcion={
           es
-            ? "Agenda de cobranza por localidad, con pagos, visitas y entregas."
-            : "Collection schedule by location, including payments, visits, and deliveries."
+            ? "Ordena a quién visitar, cobra lo acordado y conserva cada atraso sin duplicar el dinero."
+            : "Order each visit, collect the agreed amount, and track every delay without duplicating money."
         }
         accion={
           usuario?.rol === "ADMINISTRADOR" ? (
             <button
               className="boton-primario"
               onClick={() => establecerConfigurandoRuta(null)}
+              data-capacitacion="rutas.configuracion.abrir-nueva"
             >
               <Plus size={18} />
               {es ? "Nueva ruta" : "New route"}
@@ -115,236 +135,85 @@ export default function PaginaRutas() {
         }
       />
       {error && <MensajeError mensaje={error} />}
-      <div className="mb-5 grid gap-3 sm:grid-cols-2">
-        <label>
-          <span className="etiqueta">{es ? "Ruta" : "Route"}</span>
-          <select
-            className="campo"
-            value={rutaId}
-            onChange={(e) => establecerRutaId(e.target.value)}
-          >
-            <option value="">—</option>
-            {rutas.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.nombre} · {r.diaSemana}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span className="etiqueta">
-            {es ? "Fecha de jornada" : "Route date"}
-          </span>
-          <input
-            className="campo"
-            type="date"
-            value={fecha}
-            onChange={(e) => establecerFecha(e.target.value)}
-          />
-        </label>
-      </div>
-      {usuario?.rol === "ADMINISTRADOR" && rutaId && (
-        <button
-          className="boton-secundario mb-4"
-          onClick={() =>
-            establecerConfigurandoRuta(
-              rutas.find((ruta) => ruta.id === rutaId) ?? null,
-            )
-          }
-        >
-          {es
-            ? "Configurar localidades de esta ruta"
-            : "Configure route locations"}
-        </button>
-      )}
-      {rutaId && (
-        <BuscadorExtraordinarioWeb
-          rutaId={rutaId}
-          es={es}
-          alSeleccionar={(cliente) => {
-            establecerSeleccion(cliente);
-            establecerResultado(
-              Number(cliente.saldo?.saldoActual ?? 0) > 0 ? "PAGO" : "ENTREGA",
-            );
-          }}
-        />
-      )}
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <div className="panel overflow-hidden">
-          <div className="border-b p-4">
-            <h2 className="font-semibold">
-              {jornada?.nombre ??
-                (es ? "Selecciona una ruta" : "Select a route")}
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {jornada
-                ? `${jornada.clientes.filter((c) => c.visita).length}/${jornada.clientes.length} ${es ? "visitas registradas" : "visits recorded"}`
-                : ""}
-            </p>
-          </div>
-          <div className="divide-y">
-            {jornada?.clientes.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  establecerSeleccion(c);
-                  establecerResultado(
-                    Number(c.saldo?.saldoActual ?? 0) > 0 ? "PAGO" : "ENTREGA",
-                  );
-                }}
-                className="grid w-full gap-3 p-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800 sm:grid-cols-[45px_1fr_auto] sm:items-center"
-              >
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-sm font-semibold dark:bg-slate-800">
-                  {c.orden}
-                </span>
-                <span>
-                  <span className="flex items-center gap-2 font-semibold">
-                    {c.nombreCompleto}
-                    {c.fueraDeRuta && (
-                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
-                        {es ? "FUERA DE RUTA" : "EXTRA"}
-                      </span>
-                    )}
-                    {c.visita && (
-                      <CheckCircle2 size={16} className="text-emerald-600" />
-                    )}
-                  </span>
-                  <span className="mt-1 block text-xs text-slate-500">
-                    <MapPin size={12} className="mr-1 inline" />
-                    {c.direccion} · {c.telefono}
-                  </span>
-                  {c.pedidos.length > 0 && (
-                    <span className="mt-1 block text-xs font-semibold text-violet-600">
-                      {c.pedidos.length}{" "}
-                      {es ? "entrega(s) pendiente(s)" : "pending delivery(ies)"}
-                    </span>
-                  )}
-                </span>
-                <span className="text-left sm:text-right">
-                  <span className="block font-semibold">
-                    {dinero.format(Number(c.saldo?.saldoActual ?? 0))}
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    {c.visita?.resultado ??
-                      c.evaluacionesRiesgo[0]?.nivel ??
-                      (es ? "Pendiente" : "Pending")}
-                  </span>
-                </span>
-              </button>
-            ))}
-            {jornada?.clientes.length === 0 && (
-              <EstadoVacio
-                texto={
-                  es
-                    ? "La ruta no tiene clientes asignados."
-                    : "This route has no assigned customers."
-                }
-              />
-            )}
-          </div>
-        </div>
-        <aside className="panel h-fit p-5">
-          <Navigation className="text-marca-500" />
-          <h2 className="mt-4 font-semibold">
-            {es ? "Orden de la jornada" : "Route workflow"}
-          </h2>
-          <ol className="mt-3 space-y-3 text-sm text-slate-500">
-            <li>
-              1. {es ? "Selecciona cada cliente." : "Select each customer."}
-            </li>
-            <li>
-              2.{" "}
-              {es
-                ? "Marca el resultado y el abono."
-                : "Record the result and payment."}
-            </li>
-            <li>
-              3.{" "}
-              {es
-                ? "Confirma entregas pendientes."
-                : "Confirm pending deliveries."}
-            </li>
-          </ol>
-          <p className="mt-5 rounded-lg bg-marca-50 p-3 text-xs leading-5 text-marca-900 dark:bg-marca-900/30 dark:text-blue-100">
-            {es
-              ? "La app móvil guarda estas acciones sin conexión y las sincroniza después."
-              : "The mobile app stores these actions offline and syncs them later."}
-          </p>
-        </aside>
-      </div>
-      <Modal
-        abierto={Boolean(seleccion)}
-        cerrar={() => establecerSeleccion(null)}
-        titulo={seleccion?.nombreCompleto ?? ""}
-      >
-        <form onSubmit={registrar} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-950">
-              <span className="block text-xs text-slate-500">
-                {es ? "Saldo" : "Balance"}
-              </span>
-              <strong>
-                {dinero.format(Number(seleccion?.saldo?.saldoActual ?? 0))}
-              </strong>
-            </div>
-            <div className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-950">
-              <span className="block text-xs text-slate-500">
-                {es ? "Entregas" : "Deliveries"}
-              </span>
-              <strong>{seleccion?.pedidos.length ?? 0}</strong>
-            </div>
-          </div>
+
+      <section className="mb-5 rounded-2xl border bg-white p-4 dark:bg-slate-950">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label>
-            <span className="etiqueta">{es ? "Resultado" : "Result"}</span>
+            <span className="etiqueta">{es ? "Ruta" : "Route"}</span>
             <select
               className="campo"
-              value={resultado}
-              onChange={(e) => establecerResultado(e.target.value)}
+              value={rutaId}
+              onChange={(evento) => establecerRutaId(evento.target.value)}
+              data-capacitacion="rutas.jornada.ruta"
             >
-              <option value="PAGO">{es ? "Pagó" : "Paid"}</option>
-              <option value="NO_PAGO">{es ? "No pagó" : "Did not pay"}</option>
-              <option value="AUSENTE">{es ? "Ausente" : "Absent"}</option>
-              <option value="REPROGRAMADO">
-                {es ? "Reprogramado" : "Rescheduled"}
-              </option>
-              <option value="ENTREGA">{es ? "Entrega" : "Delivery"}</option>
+              <option value="">—</option>
+              {rutas.map((ruta) => (
+                <option key={ruta.id} value={ruta.id}>
+                  {ruta.nombre} · {ruta.diaSemana} ·{" "}
+                  {ruta.cobrador?.nombre ?? (es ? "SÓLO WEB" : "WEB ONLY")}
+                </option>
+              ))}
             </select>
           </label>
-          {resultado === "PAGO" && (
-            <label>
-              <span className="etiqueta">
-                {es ? "Monto recibido" : "Amount received"}
-              </span>
-              <input
-                name="monto"
-                className="campo"
-                type="number"
-                min="0.01"
-                max={Number(seleccion?.saldo?.saldoActual ?? 0)}
-                step="0.01"
-                required
-              />
-            </label>
-          )}
           <label>
-            <span className="etiqueta">{es ? "Notas" : "Notes"}</span>
-            <textarea name="notas" className="campo min-h-20 py-3" />
+            <span className="etiqueta">
+              {es ? "Fecha de jornada" : "Route date"}
+            </span>
+            <input
+              className="campo"
+              type="date"
+              value={fecha}
+              onChange={(evento) => establecerFecha(evento.target.value)}
+              data-capacitacion="rutas.jornada.fecha"
+            />
           </label>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              className="boton-secundario"
-              onClick={() => establecerSeleccion(null)}
-            >
-              {t.cancelar}
-            </button>
-            <button className="boton-primario">
-              <Banknote size={17} />
-              {t.guardar}
-            </button>
+        </div>
+        <EstadoOperacionRuta ruta={rutaActual} es={es} />
+        {rutaId && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            <AccionesDocumentoRuta rutaId={rutaId} fecha={fecha} es={es} />
+            {usuario?.rol === "ADMINISTRADOR" && (
+              <button
+                className="boton-secundario"
+                onClick={() => establecerConfigurandoRuta(rutaActual ?? null)}
+                data-capacitacion="rutas.configuracion.abrir-existente"
+              >
+                {es
+                  ? "Configurar clientes y orden"
+                  : "Configure customers and order"}
+              </button>
+            )}
           </div>
-        </form>
-      </Modal>
+        )}
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
+        {rutaId ? (
+          <SelectorOrigenCobranzaRuta
+            rutaId={rutaId}
+            jornada={jornada}
+            es={es}
+            seleccionar={establecerSeleccion}
+          />
+        ) : (
+          <section className="panel p-8 text-center text-sm text-slate-500">
+            {es
+              ? "Selecciona una ruta para iniciar la cobranza."
+              : "Select a route to start collecting."}
+          </section>
+        )}
+        <GuiaJornadaRuta es={es} />
+      </div>
+
+      <ModalRegistrarVisita
+        key={seleccion?.id ?? "sin-seleccion"}
+        cliente={seleccion}
+        es={es}
+        cancelar={t.cancelar}
+        guardar={t.guardar}
+        cerrar={() => establecerSeleccion(null)}
+        registrar={registrar}
+      />
       <CrearRutaModal
         abierto={configurandoRuta !== undefined}
         es={es}

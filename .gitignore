@@ -16,3 +16,5 @@ back/prisma/dev.db
 back/uploads/
 .postgres-data/
 .postgres-socket/
+front/playwright-report/
+front/test-results/

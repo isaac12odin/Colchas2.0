@@ -25,7 +25,11 @@ interface Contexto {
   sesionOffline: boolean;
   idioma: "es" | "en";
   alternarIdioma: () => void;
-  iniciar: (correo: string, contrasena: string, codigoMfa?: string) => Promise<boolean>;
+  iniciar: (
+    correo: string,
+    contrasena: string,
+    codigoMfa?: string,
+  ) => Promise<boolean>;
   salir: () => Promise<void>;
 }
 
@@ -134,7 +138,11 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
       .finally(() => establecerCargando(false));
   }, []);
 
-  async function iniciar(correo: string, contrasena: string, codigoMfa?: string) {
+  async function iniciar(
+    correo: string,
+    contrasena: string,
+    codigoMfa?: string,
+  ) {
     const respuesta = await api<{
       usuario?: Usuario;
       accessToken?: string;

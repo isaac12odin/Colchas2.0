@@ -1,8 +1,10 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api, ErrorApi } from "@/lib/api";
+import { emitirSaldoActualizado } from "@/lib/eventosOperacion";
+import { usarDatosVivos } from "@/lib/usarDatosVivos";
 import type { Pagina } from "@/lib/tipos";
-import type { VentaWeb } from "./tipos";
+import type { NuevaVentaWeb, ResultadoVentaWeb, VentaWeb } from "./tipos";
 
 export function usarVentasWeb() {
   const [respuesta, establecerRespuesta] = useState<Pagina<VentaWeb> | null>(
@@ -11,8 +13,11 @@ export function usarVentasWeb() {
   const [pagina, establecerPagina] = useState(1);
   const [buscar, establecerBuscar] = useState("");
   const [modal, establecerModal] = useState(false);
-  const [tipo, establecerTipo] = useState("CREDITO");
   const [error, establecerError] = useState("");
+  const [guardando, establecerGuardando] = useState(false);
+  const [resultado, establecerResultado] = useState<ResultadoVentaWeb | null>(
+    null,
+  );
 
   const cargar = useCallback(
     () =>
@@ -24,40 +29,30 @@ export function usarVentasWeb() {
     [pagina, buscar],
   );
   useEffect(() => void cargar(), [cargar]);
+  usarDatosVivos(cargar);
 
-  async function crear(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
-    const formulario = new FormData(evento.currentTarget);
-    const cuerpo: Record<string, unknown> = {
-      clienteId: formulario.get("clienteId") || null,
-      numeroTarjeta: formulario.get("numeroTarjeta") || undefined,
-      tipo,
-      descuento: Number(formulario.get("descuento") || 0),
-      anticipo: Number(formulario.get("anticipo") || 0),
-      metodoAnticipo: formulario.get("metodoAnticipo"),
-      fechaVenta: new Date().toISOString(),
-      items: [
-        {
-          productoId: formulario.get("productoId"),
-          cantidad: Number(formulario.get("cantidad")),
-        },
-      ],
-    };
-    if (tipo === "CREDITO" && formulario.get("montoCuota")) {
-      cuerpo.plan = {
-        periodicidad: formulario.get("periodicidad"),
-        montoCuota: Number(formulario.get("montoCuota")),
-        primerVencimiento: new Date(
-          String(formulario.get("primerVencimiento")),
-        ).toISOString(),
-      };
-    }
+  async function crear(cuerpo: NuevaVentaWeb) {
+    establecerGuardando(true);
+    establecerError("");
     try {
-      await api("/ventas", { method: "POST", body: JSON.stringify(cuerpo) });
-      establecerModal(false);
-      cargar();
+      const venta = await api<ResultadoVentaWeb>("/ventas", {
+        method: "POST",
+        body: JSON.stringify(cuerpo),
+      });
+      establecerResultado(venta);
+      if (venta.resumenSaldo)
+        emitirSaldoActualizado({
+          clienteId: venta.resumenSaldo.clienteId,
+          saldoNuevo: venta.resumenSaldo.saldoNuevo,
+          origen: "VENTA",
+        });
+      await cargar();
+      return venta;
     } catch (e) {
       establecerError(e instanceof ErrorApi ? e.message : "Error");
+      throw e;
+    } finally {
+      establecerGuardando(false);
     }
   }
 
@@ -66,13 +61,21 @@ export function usarVentasWeb() {
     pagina,
     buscar,
     modal,
-    tipo,
     error,
+    guardando,
+    resultado,
     establecerPagina,
     establecerBuscar,
-    establecerTipo,
-    abrirModal: () => establecerModal(true),
-    cerrarModal: () => establecerModal(false),
+    abrirModal: () => {
+      establecerResultado(null);
+      establecerError("");
+      establecerModal(true);
+    },
+    cerrarModal: () => {
+      establecerModal(false);
+      establecerResultado(null);
+    },
+    reiniciarVenta: () => establecerResultado(null),
     cargar,
     crear,
   };

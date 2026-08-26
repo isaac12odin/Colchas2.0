@@ -33,6 +33,7 @@ export interface FilaOperacion {
   estado: EstadoOperacion;
   intentos: number;
   ultimo_error: string | null;
+  codigo_error: string | null;
   usuario_id: string;
 }
 
@@ -77,13 +78,7 @@ export async function calcularHuellaLocal(
 ) {
   return hmacSha512(
     secreto,
-    mensajeOperacion(
-      usuarioId,
-      secuencia,
-      hashAnterior,
-      creadoEn,
-      datos,
-    ),
+    mensajeOperacion(usuarioId, secuencia, hashAnterior, creadoEn, datos),
   );
 }
 
@@ -103,6 +98,7 @@ async function asegurarColumnas(
     ["estado", "TEXT NOT NULL DEFAULT 'PENDIENTE'"],
     ["intentos", "INTEGER NOT NULL DEFAULT 0"],
     ["ultimo_error", "TEXT"],
+    ["codigo_error", "TEXT"],
     ["actualizado_en", "TEXT NOT NULL DEFAULT ''"],
     ["usuario_id", "TEXT NOT NULL DEFAULT ''"],
   ];
@@ -208,6 +204,7 @@ export async function obtenerBaseLocal() {
             estado TEXT NOT NULL DEFAULT 'PENDIENTE',
             intentos INTEGER NOT NULL DEFAULT 0,
             ultimo_error TEXT,
+            codigo_error TEXT,
             usuario_id TEXT NOT NULL,
             actualizado_en TEXT NOT NULL
           );

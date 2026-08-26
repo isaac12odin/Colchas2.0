@@ -8,6 +8,19 @@ export interface RutaWeb {
   localidades: Array<{
     localidad: { id: string; nombre: string; estado?: string };
   }>;
+  clientes?: Array<{
+    clienteId: string;
+    orden: number;
+    cliente: {
+      id: string;
+      nombreCompleto: string;
+      numeroTarjeta?: string | null;
+      localidadId: string;
+      localidad: { id: string; nombre: string; estado?: string };
+      saldo: { saldoActual: string } | null;
+      estadoCuenta?: EstadoCuentaWeb;
+    };
+  }>;
   _count: { clientes: number };
 }
 
@@ -21,7 +34,14 @@ export interface ClienteJornadaWeb {
   orden: number;
   fueraDeRuta?: boolean;
   saldo: { saldoActual: string } | null;
-  visita: { resultado: string } | null;
+  estadoCuenta: EstadoCuentaWeb;
+  visita: {
+    resultado: string | null;
+    motivoNoCobro?: string | null;
+    promesaPagoFecha?: string | null;
+    promesaPagoMonto?: string | null;
+    abonos?: Array<{ monto: string }>;
+  } | null;
   pedidos: Array<{
     folio: string;
     items: Array<{ descripcion: string; cantidad: number }>;
@@ -30,6 +50,19 @@ export interface ClienteJornadaWeb {
     planPago: { cuotas: Array<{ monto: string; montoPagado: string }> } | null;
   }>;
   evaluacionesRiesgo: Array<{ nivel: string }>;
+}
+
+export interface EstadoCuentaWeb {
+  saldoTotal: number;
+  abonoPeriodico: number;
+  vencido: number;
+  venceHoy: number;
+  cobrarHoy: number;
+  proximoVencimiento: string | null;
+  cuotasVencidas: number;
+  retardosHistoricos: number;
+  diasRetardoActual: number;
+  diasRetardoMaximo: number;
 }
 
 export interface JornadaWeb {

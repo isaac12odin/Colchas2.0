@@ -19,6 +19,7 @@ export class EscenarioPrueba {
   readonly localidadIds = new Set<string>();
   readonly clienteIds = new Set<string>();
   readonly productoIds = new Set<string>();
+  readonly categoriaProductoIds = new Set<string>();
   readonly proveedorIds = new Set<string>();
   readonly rutaIds = new Set<string>();
   readonly importacionesEsperadas: Array<{
@@ -50,6 +51,7 @@ export class EscenarioPrueba {
         correo: usuario.correo,
         rol: usuario.rol,
         debeCambiarContrasena: false,
+        tokenVersion: usuario.tokenVersion,
       }),
     };
   }
@@ -128,12 +130,14 @@ export class EscenarioPrueba {
     opciones: { indice?: number; existencia?: number; precio?: number } = {},
   ) {
     const indice = opciones.indice ?? 1;
+    const categoriaId = await this.categoriaProductoId();
     const producto = await prisma.producto.create({
       data: {
         sku: `E2E-${this.marca}-${indice}`,
         nombre: `Producto automatizado ${indice} ${this.marca}`,
         marca: "Nexo E2E",
         categoria: "Pruebas",
+        categoriaId,
         codigoBarras: `750${this.marca.slice(0, 8)}${indice}`,
         existencia: opciones.existencia ?? 0,
         existenciaMinima: 2,
@@ -143,6 +147,16 @@ export class EscenarioPrueba {
     });
     this.productoIds.add(producto.id);
     return producto;
+  }
+
+  async categoriaProductoId() {
+    const categoria = await prisma.categoriaProducto.upsert({
+      where: { nombre: "Pruebas" },
+      create: { nombre: "Pruebas", orden: 999 },
+      update: { activo: true },
+      select: { id: true },
+    });
+    return categoria.id;
   }
 
   async crearProveedor(indice = 1) {
@@ -199,6 +213,10 @@ export class EscenarioPrueba {
 
   registrarProducto(id: string) {
     this.productoIds.add(id);
+  }
+
+  registrarCategoriaProducto(id: string) {
+    this.categoriaProductoIds.add(id);
   }
 
   registrarRuta(id: string) {
@@ -342,6 +360,9 @@ export class EscenarioPrueba {
     await prisma.ruta.deleteMany({ where: { id: { in: rutaIds } } });
     await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
     await prisma.producto.deleteMany({ where: { id: { in: productoIds } } });
+    await prisma.categoriaProducto.deleteMany({
+      where: { id: { in: [...this.categoriaProductoIds] } },
+    });
     await prisma.proveedor.deleteMany({
       where: { id: { in: proveedorIds } },
     });

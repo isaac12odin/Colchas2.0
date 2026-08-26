@@ -30,7 +30,9 @@ export function filtroRutasDelActor(actor: ActorDatos): Prisma.RutaWhereInput {
   return actor.rol === RolUsuario.COBRADOR ? { cobradorId: actor.id } : {};
 }
 
-export function filtroVentasDelActor(actor: ActorDatos): Prisma.VentaWhereInput {
+export function filtroVentasDelActor(
+  actor: ActorDatos,
+): Prisma.VentaWhereInput {
   if (actor.rol === RolUsuario.COBRADOR) {
     return {
       OR: [
@@ -83,6 +85,19 @@ export async function bloquearVenta(
     SELECT 1::integer AS bloqueado
     FROM (
       SELECT pg_advisory_xact_lock(hashtext(${`nexo:venta:${ventaId}`}))
+    ) AS candado
+  `;
+}
+
+/** Evita que dos operadores avancen o reasignen el mismo pedido a la vez. */
+export async function bloquearPedido(
+  tx: Prisma.TransactionClient,
+  pedidoId: string,
+) {
+  await tx.$queryRaw`
+    SELECT 1::integer AS bloqueado
+    FROM (
+      SELECT pg_advisory_xact_lock(hashtext(${`nexo:pedido:${pedidoId}`}))
     ) AS candado
   `;
 }

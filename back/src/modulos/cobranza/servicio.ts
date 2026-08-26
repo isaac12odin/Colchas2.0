@@ -2,8 +2,15 @@ import { Prisma, MetodoPago } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../infraestructura/prisma.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
+import { dineroPositivo } from "../../compartido/dinero.js";
 import { recalcularRiesgoCliente } from "./riesgo.js";
-import { fechaMexicoISO, fechaOperativa } from "../../compartido/fechas.js";
+import {
+  contextoFechaOperacion,
+  fechaISODesdeDateDb,
+  requiereAlertaReloj,
+  validarFechaMonetaria,
+} from "../../compartido/fechas.js";
+import { huellaIdempotencia } from "../../compartido/idempotencia.js";
 import {
   asegurarJornadaAbierta,
   bloquearJornada,
@@ -19,29 +26,75 @@ export const esquemaAbono = z.object({
   ventaId: z.string().uuid().nullable().optional(),
   visitaId: z.string().uuid().nullable().optional(),
   idOperacionMovil: z.string().trim().min(8).max(100).optional(),
-  monto: z.coerce.number().positive(),
+  monto: dineroPositivo,
   metodo: z.nativeEnum(MetodoPago).default("EFECTIVO"),
-  fechaAbono: z.coerce.date().default(new Date()),
+  fechaAbono: z.coerce.date().default(() => new Date()),
   referencia: z.string().trim().max(120).optional(),
   notas: z.string().trim().max(1000).optional(),
 });
 
 export type NuevoAbono = z.infer<typeof esquemaAbono>;
 
+export function calcularHuellaAbono(actor: ActorDatos, datos: NuevoAbono) {
+  return huellaIdempotencia({
+    version: 1,
+    actorId: actor.id,
+    clienteId: datos.clienteId,
+    ventaId: datos.ventaId ?? null,
+    visitaId: datos.visitaId ?? null,
+    monto: datos.monto,
+    metodo: datos.metodo,
+    fechaAbono: datos.fechaAbono,
+    referencia: datos.referencia ?? null,
+    notas: datos.notas ?? null,
+  });
+}
+
 export async function registrarAbonoEnTransaccion(
   tx: Prisma.TransactionClient,
   actor: ActorDatos,
   datos: NuevoAbono,
 ) {
+  const recibidaEnServidor = new Date();
   await asegurarClienteAsignado(tx, actor, datos.clienteId);
   if (datos.idOperacionMovil) {
+    await tx.$queryRaw`
+      SELECT 1::integer AS bloqueado
+      FROM (
+        SELECT pg_advisory_xact_lock(
+          hashtext(${`nexo:idempotencia:${datos.idOperacionMovil}`})
+        )
+      ) AS candado
+    `;
+    const huellaOperacion = calcularHuellaAbono(actor, datos);
     const existente = await tx.abono.findUnique({
       where: { idOperacionMovil: datos.idOperacionMovil },
       include: { aplicaciones: true },
     });
-    if (existente) return { ...existente, idempotente: true };
+    if (existente) {
+      if (
+        existente.usuarioId !== actor.id ||
+        existente.huellaOperacion === null ||
+        existente.huellaOperacion !== huellaOperacion
+      )
+        throw new ErrorAplicacion(
+          "ID_OPERACION_REUTILIZADO",
+          "La clave de este abono ya pertenece a otra operación.",
+          409,
+        );
+      return { ...existente, idempotente: true };
+    }
   }
-  await asegurarJornadaAbierta(tx, actor.id, datos.fechaAbono);
+  validarFechaMonetaria(
+    datos.fechaAbono,
+    recibidaEnServidor,
+    "La fecha del abono",
+  );
+  const contextoFecha = contextoFechaOperacion(
+    datos.fechaAbono,
+    recibidaEnServidor,
+  );
+  await asegurarJornadaAbierta(tx, actor.id, recibidaEnServidor);
   await bloquearCliente(tx, datos.clienteId);
 
   const cliente = await tx.cliente.findUnique({
@@ -79,7 +132,16 @@ export async function registrarAbonoEnTransaccion(
   }
 
   const abono = await tx.abono.create({
-    data: { ...datos, usuarioId: actor.id },
+    data: {
+      ...datos,
+      usuarioId: actor.id,
+      huellaOperacion: datos.idOperacionMovil
+        ? calcularHuellaAbono(actor, datos)
+        : null,
+      capturadaEnCliente: contextoFecha.capturadaEnCliente,
+      recibidaEnServidor: contextoFecha.recibidaEnServidor,
+      fechaOperativa: contextoFecha.fechaOperativa,
+    },
   });
   const cuotas = await tx.cuota.findMany({
     where: {
@@ -145,6 +207,25 @@ export async function registrarAbonoEnTransaccion(
       data: { numeroTarjeta: null },
     });
   await recalcularRiesgoCliente(tx, datos.clienteId);
+  if (
+    datos.idOperacionMovil &&
+    requiereAlertaReloj(contextoFecha.diferenciaRelojSegundos)
+  ) {
+    await tx.auditoria.create({
+      data: {
+        usuarioId: actor.id,
+        accion: "DIFERENCIA_RELOJ_DISPOSITIVO",
+        entidad: "Abono",
+        entidadId: abono.id,
+        datosDespues: {
+          idOperacion: datos.idOperacionMovil,
+          diferenciaRelojSegundos: contextoFecha.diferenciaRelojSegundos,
+          capturadaEnCliente: contextoFecha.capturadaEnCliente,
+          recibidaEnServidor: contextoFecha.recibidaEnServidor,
+        },
+      },
+    });
+  }
   await tx.auditoria.create({
     data: {
       usuarioId: actor.id,
@@ -156,7 +237,11 @@ export async function registrarAbonoEnTransaccion(
         monto: datos.monto,
         saldoAnterior,
         saldoNuevo,
-        origen: datos.idOperacionMovil ? "MOVIL_OFFLINE" : "EN_LINEA",
+        origen: datos.idOperacionMovil
+          ? "MOVIL_OFFLINE"
+          : datos.visitaId
+            ? "WEB_RUTA"
+            : "WEB_DIRECTO",
       },
     },
   });
@@ -186,14 +271,19 @@ export async function anularAbono(
           clienteId: true,
           usuarioId: true,
           fechaAbono: true,
+          fechaOperativa: true,
         },
       });
       if (!referencia)
-        throw new ErrorAplicacion("ABONO_NO_ENCONTRADO", "El abono no existe.", 404);
+        throw new ErrorAplicacion(
+          "ABONO_NO_ENCONTRADO",
+          "El abono no existe.",
+          404,
+        );
       await bloquearJornada(
         tx,
         referencia.usuarioId,
-        fechaMexicoISO(referencia.fechaAbono),
+        fechaISODesdeDateDb(referencia.fechaOperativa),
       );
       await bloquearCliente(tx, referencia.clienteId);
 
@@ -207,7 +297,11 @@ export async function anularAbono(
         },
       });
       if (!abono)
-        throw new ErrorAplicacion("ABONO_NO_ENCONTRADO", "El abono no existe.", 404);
+        throw new ErrorAplicacion(
+          "ABONO_NO_ENCONTRADO",
+          "El abono no existe.",
+          404,
+        );
       if (abono.anuladoEn)
         throw new ErrorAplicacion(
           "ABONO_YA_ANULADO",
@@ -218,7 +312,7 @@ export async function anularAbono(
         where: {
           usuarioOperadorId_fechaOperativa: {
             usuarioOperadorId: abono.usuarioId,
-            fechaOperativa: fechaOperativa(fechaMexicoISO(abono.fechaAbono)),
+            fechaOperativa: abono.fechaOperativa,
           },
         },
         select: { folio: true },

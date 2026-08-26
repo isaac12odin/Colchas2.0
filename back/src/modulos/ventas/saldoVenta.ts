@@ -1,10 +1,14 @@
 import { Prisma, TipoVenta } from "@prisma/client";
 
 import type { NuevaVenta } from "./esquemas.js";
+import { recalcularRiesgoCliente } from "../cobranza/riesgo.js";
+import { redondearMoneda } from "../../compartido/dinero.js";
 
 interface VentaCreada {
   id: string;
   folio: string;
+  fechaOperativa: Date;
+  recibidaEnServidor: Date;
 }
 
 export async function registrarSaldoVenta(
@@ -15,7 +19,7 @@ export async function registrarSaldoVenta(
   total: number,
   financiado: number,
 ) {
-  if (!entrada.clienteId || entrada.tipo !== TipoVenta.CREDITO) return;
+  if (!entrada.clienteId || entrada.tipo !== TipoVenta.CREDITO) return null;
 
   const saldo = await tx.saldoCliente.upsert({
     where: { clienteId: entrada.clienteId },
@@ -23,7 +27,7 @@ export async function registrarSaldoVenta(
     update: {},
   });
   const anterior = Number(saldo.saldoActual);
-  const despuesCargo = anterior + total;
+  const despuesCargo = redondearMoneda(anterior + total);
   await tx.movimientoSaldo.create({
     data: {
       clienteId: entrada.clienteId,
@@ -45,6 +49,9 @@ export async function registrarSaldoVenta(
         monto: entrada.anticipo,
         metodo: entrada.metodoAnticipo,
         fechaAbono: entrada.fechaVenta,
+        capturadaEnCliente: entrada.fechaVenta,
+        recibidaEnServidor: venta.recibidaEnServidor,
+        fechaOperativa: venta.fechaOperativa,
         notas: "Anticipo de venta",
       },
     });
@@ -54,7 +61,7 @@ export async function registrarSaldoVenta(
         tipo: "ABONO",
         monto: entrada.anticipo,
         saldoAnterior: despuesCargo,
-        saldoNuevo: despuesCargo - entrada.anticipo,
+        saldoNuevo: redondearMoneda(despuesCargo - entrada.anticipo),
         referenciaId: abono.id,
         concepto: `Anticipo ${venta.folio}`,
       },
@@ -64,7 +71,7 @@ export async function registrarSaldoVenta(
   await tx.saldoCliente.update({
     where: { clienteId: entrada.clienteId },
     data: {
-      saldoActual: anterior + financiado,
+      saldoActual: redondearMoneda(anterior + financiado),
       totalCargos: { increment: total },
       totalAbonos: { increment: entrada.anticipo },
     },
@@ -75,4 +82,13 @@ export async function registrarSaldoVenta(
       data: { numeroTarjeta: entrada.numeroTarjeta },
     });
   }
+  await recalcularRiesgoCliente(tx, entrada.clienteId);
+
+  return {
+    clienteId: entrada.clienteId,
+    saldoAnterior: anterior,
+    cargoVenta: total,
+    anticipo: entrada.anticipo,
+    saldoNuevo: redondearMoneda(anterior + financiado),
+  };
 }

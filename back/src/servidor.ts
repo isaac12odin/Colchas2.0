@@ -4,7 +4,7 @@ import { prisma } from "./infraestructura/prisma.js";
 import { registro } from "./infraestructura/registro.js";
 
 const servidor = app.listen(entorno.PORT, () => {
-  registro.info({ puerto: entorno.PORT }, "API de Nexo Cobranza iniciada");
+  registro.info({ puerto: entorno.PORT }, "API de Vektra iniciada");
 });
 
 async function cerrar(senal: string) {

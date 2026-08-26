@@ -31,7 +31,7 @@ export function ModalEntregaPedido({
       onRequestClose={control.cerrarEntrega}
     >
       <View style={estilos.fondo}>
-        <View style={[estilos.modal, { backgroundColor: tema.panel }]}> 
+        <View style={[estilos.modal, { backgroundColor: tema.panel }]}>
           <View style={estilos.encabezado}>
             <View>
               <Text style={[estilos.titulo, { color: tema.texto }]}>
@@ -47,73 +47,60 @@ export function ModalEntregaPedido({
               <Ionicons name="close" size={24} color={tema.texto} />
             </Pressable>
           </View>
-          <ScrollView style={estilos.desplazable} keyboardShouldPersistTaps="handled">
-          <ConfiguracionVenta
-            tipo={control.tipo}
-            montoTotal={control.entrega ? totalPedido(control.entrega) : 0}
-            anticipo={control.anticipo}
-            periodicidad={control.periodicidad}
-            cuota={control.cuota}
-            primerVencimiento={control.fechaPlan}
-            numeroTarjeta={control.numeroTarjeta}
-            es={es}
-            tema={tema}
-            alCambiarTipo={control.establecerTipo}
-            alCambiarAnticipo={control.establecerAnticipo}
-            alCambiarPeriodicidad={control.establecerPeriodicidad}
-            alCambiarCuota={control.establecerCuota}
-            alCambiarVencimiento={control.establecerFechaPlan}
-            alCambiarNumeroTarjeta={control.establecerNumeroTarjeta}
-          />
-          <View style={[estilos.proveedores, { borderColor: tema.borde }]}> 
-            <Text style={[estilos.proveedoresTitulo, { color: tema.texto }]}> 
-              {es ? "Proveedor que surtió" : "Supplying vendor"}
-            </Text>
-            {control.entrega?.items.map((item) => (
-              <View key={item.id} style={estilos.itemProveedor}>
-                <Text style={[estilos.itemNombre, { color: tema.texto }]}>
-                  {item.descripcion}
-                </Text>
-                <View style={estilos.opcionesProveedor}>
-                  {control.proveedores.map((proveedor) => {
-                    const activo =
-                      control.proveedoresPorItem[item.id] === proveedor.id;
-                    return (
-                      <Pressable
-                        key={proveedor.id}
-                        onPress={() =>
-                          control.establecerProveedor(item.id, proveedor.id)
-                        }
-                        style={[
-                          estilos.proveedor,
-                          { borderColor: activo ? colores.azul : tema.borde },
-                          activo && estilos.proveedorActivo,
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: activo ? colores.azul : tema.texto,
-                            fontWeight: "700",
-                            fontSize: 12,
-                          }}
-                        >
-                          {proveedor.nombre}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+          <ScrollView
+            style={estilos.desplazable}
+            keyboardShouldPersistTaps="handled"
+          >
+            <ConfiguracionVenta
+              tipo={control.tipo}
+              montoTotal={control.entrega ? totalPedido(control.entrega) : 0}
+              anticipo={control.anticipo}
+              periodicidad={control.periodicidad}
+              cuota={control.cuota}
+              primerVencimiento={control.fechaPlan}
+              numeroTarjeta={control.numeroTarjeta}
+              es={es}
+              tema={tema}
+              alCambiarTipo={control.establecerTipo}
+              alCambiarAnticipo={control.establecerAnticipo}
+              alCambiarPeriodicidad={control.establecerPeriodicidad}
+              alCambiarCuota={control.establecerCuota}
+              alCambiarVencimiento={control.establecerFechaPlan}
+              alCambiarNumeroTarjeta={control.establecerNumeroTarjeta}
+            />
+            <View style={[estilos.proveedores, { borderColor: tema.borde }]}>
+              <Text style={[estilos.proveedoresTitulo, { color: tema.texto }]}>
+                {es ? "Trazabilidad confirmada" : "Confirmed traceability"}
+              </Text>
+              {control.entrega?.items.map((item) => (
+                <View key={item.id} style={estilos.itemProveedor}>
+                  <Text style={[estilos.itemNombre, { color: tema.texto }]}>
+                    {item.descripcion}
+                  </Text>
+                  <Text style={estilos.proveedorLectura}>
+                    {item.proveedor?.nombre ??
+                      (es ? "Sin proveedor" : "No supplier")}
+                  </Text>
                 </View>
-              </View>
-            ))}
-          </View>
-          <View style={estilos.integridad}>
-            <Ionicons name="shield-checkmark" color={colores.verde} size={17} />
-            <Text style={estilos.integridadTexto}>
-              {es
-                ? "Se guarda primero en el equipo. Reintentar no duplicará la entrega."
-                : "Saved on the device first. Retrying will not duplicate the delivery."}
-            </Text>
-          </View>
+              ))}
+              <Text style={estilos.notaRol}>
+                {es
+                  ? "El cobrador entrega y cobra; no cambia quién surtió la mercancía."
+                  : "Collectors deliver and collect; they cannot change who supplied the goods."}
+              </Text>
+            </View>
+            <View style={estilos.integridad}>
+              <Ionicons
+                name="shield-checkmark"
+                color={colores.verde}
+                size={17}
+              />
+              <Text style={estilos.integridadTexto}>
+                {es
+                  ? "Se guarda primero en el equipo. Reintentar no duplicará la entrega."
+                  : "Saved on the device first. Retrying will not duplicate the delivery."}
+              </Text>
+            </View>
           </ScrollView>
           <Pressable
             disabled={control.guardando}
@@ -158,9 +145,13 @@ const estilos = StyleSheet.create({
   proveedoresTitulo: { fontSize: 14, fontWeight: "800", marginBottom: 8 },
   itemProveedor: { marginTop: 8 },
   itemNombre: { fontSize: 12, fontWeight: "700", marginBottom: 6 },
-  opcionesProveedor: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  proveedor: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7 },
-  proveedorActivo: { backgroundColor: "#edf5ff" },
+  proveedorLectura: {
+    color: colores.azul,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  notaRol: { color: colores.gris, fontSize: 11, lineHeight: 16, marginTop: 12 },
   encabezado: {
     flexDirection: "row",
     justifyContent: "space-between",

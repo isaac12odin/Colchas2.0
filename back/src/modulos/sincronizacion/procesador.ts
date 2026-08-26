@@ -27,14 +27,17 @@ export interface ResultadoOperacion {
   idOperacion: string;
   exito: boolean;
   entidadId?: string;
+  codigoError?: string;
+  error?: string;
+  rechazoPermanente?: boolean;
   idempotente: boolean;
 }
 
 /**
- * Valida y aplica el lote como una sola transacción. La cadena no avanza si
- * falla una regla de negocio; esto elimina estados parciales imposibles de
- * reconciliar y permite reintentar exactamente las mismas operaciones aunque
- * la app regenere el identificador del lote tras perder la respuesta.
+ * Valida el lote y avanza su cadena en una sola transacción. Cada operación
+ * tiene un SAVEPOINT: un rechazo de negocio queda como recibo terminal y no
+ * bloquea las operaciones posteriores; un error técnico inesperado revierte
+ * todo para que sea seguro reintentar.
  */
 export function sincronizarLote(
   lote: LoteSincronizacionEntrada,
@@ -98,12 +101,7 @@ export function sincronizarLote(
           );
           if (
             !recibo ||
-            !reciboCoincide(
-              recibo,
-              operacion,
-              actor.id,
-              lote.dispositivoId,
-            )
+            !reciboCoincide(recibo, operacion, actor.id, lote.dispositivoId)
           )
             throw new ErrorAplicacion(
               "OPERACION_NO_COINCIDE",
@@ -112,8 +110,11 @@ export function sincronizarLote(
             );
           return {
             idOperacion: operacion.idOperacion,
-            exito: true,
+            exito: recibo.estado === "CONFIRMADA",
             entidadId: recibo.entidadId ?? undefined,
+            codigoError: recibo.codigoError ?? undefined,
+            error: recibo.mensajeError ?? undefined,
+            rechazoPermanente: recibo.estado === "RECHAZADA" || undefined,
             idempotente: true,
           };
         });
@@ -142,27 +143,56 @@ export function sincronizarLote(
       const registro = await crearLote(tx, lote, actor.id);
       const resultados: ResultadoOperacion[] = [];
       for (const operacion of lote.operaciones) {
-        const entidadId = await procesarOperacion(tx, operacion, actor);
-        await tx.operacionSincronizada.create({
-          data: {
+        await tx.$executeRawUnsafe("SAVEPOINT nexo_operacion_offline");
+        try {
+          const entidadId = await procesarOperacion(tx, operacion, actor);
+          await guardarRecibo(
+            tx,
+            registro.id,
+            lote.dispositivoId,
+            actor.id,
+            operacion,
+            {
+              estado: "CONFIRMADA",
+              entidadId,
+            },
+          );
+          resultados.push({
             idOperacion: operacion.idOperacion,
-            loteId: registro.id,
-            usuarioId: actor.id,
-            dispositivoId: lote.dispositivoId,
-            tipo: operacion.tipo,
+            exito: true,
             entidadId,
-            secuencia: operacion.secuencia,
-            hashAnterior: operacion.hashAnterior,
-            hashContenido: operacion.hashIntegridad,
-            creadaEnCliente: operacion.creadoEn,
-          },
-        });
-        resultados.push({
-          idOperacion: operacion.idOperacion,
-          exito: true,
-          entidadId,
-          idempotente: false,
-        });
+            idempotente: false,
+          });
+        } catch (error) {
+          await tx.$executeRawUnsafe(
+            "ROLLBACK TO SAVEPOINT nexo_operacion_offline",
+          );
+          if (!(error instanceof ErrorAplicacion)) throw error;
+          await guardarRecibo(
+            tx,
+            registro.id,
+            lote.dispositivoId,
+            actor.id,
+            operacion,
+            {
+              estado: "RECHAZADA",
+              codigoError: error.codigo,
+              mensajeError: error.message,
+            },
+          );
+          resultados.push({
+            idOperacion: operacion.idOperacion,
+            exito: false,
+            codigoError: error.codigo,
+            error: error.message,
+            rechazoPermanente: true,
+            idempotente: false,
+          });
+        } finally {
+          await tx.$executeRawUnsafe(
+            "RELEASE SAVEPOINT nexo_operacion_offline",
+          );
+        }
       }
       const ultima = lote.operaciones.at(-1)!;
       await tx.dispositivoSincronizacion.update({
@@ -177,9 +207,15 @@ export function sincronizarLote(
         where: { id: registro.id },
         data: {
           totalOperaciones: resultados.length,
-          exitosas: resultados.length,
-          fallidas: 0,
-          detalleError: [],
+          exitosas: resultados.filter((resultado) => resultado.exito).length,
+          fallidas: resultados.filter((resultado) => !resultado.exito).length,
+          detalleError: resultados
+            .filter((resultado) => !resultado.exito)
+            .map((resultado) => ({
+              idOperacion: resultado.idOperacion,
+              codigo: resultado.codigoError,
+              mensaje: resultado.error,
+            })),
         },
       });
       return {
@@ -190,6 +226,42 @@ export function sincronizarLote(
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
   );
+}
+
+async function guardarRecibo(
+  tx: Prisma.TransactionClient,
+  loteId: string,
+  dispositivoId: string,
+  usuarioId: string,
+  operacion: OperacionSincronizacion,
+  resultado: {
+    estado: "CONFIRMADA" | "RECHAZADA";
+    entidadId?: string;
+    codigoError?: string;
+    mensajeError?: string;
+  },
+) {
+  await tx.operacionSincronizada.create({
+    data: {
+      idOperacion: operacion.idOperacion,
+      loteId,
+      usuarioId,
+      dispositivoId,
+      tipo: operacion.tipo,
+      entidadId: resultado.entidadId,
+      estado: resultado.estado,
+      codigoError: resultado.codigoError,
+      mensajeError: resultado.mensajeError,
+      requiereRevision: resultado.estado === "RECHAZADA",
+      secuencia: operacion.secuencia,
+      hashAnterior: operacion.hashAnterior,
+      hashContenido: operacion.hashIntegridad,
+      creadaEnCliente: operacion.creadoEn,
+      diferenciaRelojSegundos: Math.round(
+        (Date.now() - operacion.creadoEn.getTime()) / 1000,
+      ),
+    },
+  });
 }
 
 function validarCadena(
@@ -288,6 +360,15 @@ async function procesarOperacion(
   actor: ActorDatos,
 ) {
   if (operacion.tipo === "VISITA") {
+    if (
+      operacion.datos.promesaPagoFecha &&
+      operacion.datos.promesaPagoFecha < operacion.datos.fechaVisita
+    )
+      throw new ErrorAplicacion(
+        "PROMESA_PAGO_INVALIDA",
+        "La promesa de pago no puede ser anterior a la visita.",
+        422,
+      );
     await asegurarRutaAsignada(tx, actor, operacion.datos.rutaId);
     await asegurarClienteAsignado(tx, actor, operacion.datos.clienteId);
     const asignacion = await tx.rutaCliente.findUnique({
@@ -344,6 +425,12 @@ async function procesarOperacion(
           })
         )?.id
       : undefined;
+    if (operacion.visitaOperacionId && !visitaId)
+      throw new ErrorAplicacion(
+        "DEPENDENCIA_OFFLINE_NO_CONFIRMADA",
+        "El abono depende de una visita que no fue confirmada. Corrija primero la visita y capture una operación compensatoria.",
+        409,
+      );
     return (
       await registrarAbonoEnTransaccion(tx, actor, {
         ...operacion.datos,
@@ -360,14 +447,9 @@ async function procesarOperacion(
       })
     ).id;
   return (
-    await entregarPedidoEnTransaccion(
-      tx,
-      actor,
-      operacion.datos.pedidoId,
-      {
-        ...operacion.datos,
-        idOperacionMovil: operacion.idOperacion,
-      },
-    )
+    await entregarPedidoEnTransaccion(tx, actor, operacion.datos.pedidoId, {
+      ...operacion.datos,
+      idOperacionMovil: operacion.idOperacion,
+    })
   ).venta.id;
 }

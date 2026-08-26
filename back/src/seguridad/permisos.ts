@@ -38,9 +38,20 @@ export const rolesPorPermiso = {
     RolUsuario.VENDEDOR,
     RolUsuario.COBRADOR,
   ],
+  PEDIDOS_ASIGNAR_PROVEEDOR: [
+    RolUsuario.ADMINISTRADOR,
+    RolUsuario.CONTABLE,
+    RolUsuario.ALMACENISTA,
+  ],
   PEDIDOS_ALMACEN: [RolUsuario.ADMINISTRADOR, RolUsuario.ALMACENISTA],
   PEDIDOS_ENTREGAR: [RolUsuario.ADMINISTRADOR, RolUsuario.COBRADOR],
   COMPRAS_GESTIONAR: [RolUsuario.ADMINISTRADOR, RolUsuario.ALMACENISTA],
+  PROVEEDORES_CONSULTAR: [RolUsuario.ADMINISTRADOR, RolUsuario.ALMACENISTA],
+  PROVEEDORES_SELECCIONAR: [
+    RolUsuario.ADMINISTRADOR,
+    RolUsuario.CONTABLE,
+    RolUsuario.ALMACENISTA,
+  ],
   PROVEEDORES_GESTIONAR: [RolUsuario.ADMINISTRADOR, RolUsuario.ALMACENISTA],
   CORTES_CONSULTAR: [
     RolUsuario.ADMINISTRADOR,
@@ -60,6 +71,7 @@ export const rolesPorPermiso = {
   DEVOLUCIONES_AUTORIZAR: [RolUsuario.ADMINISTRADOR, RolUsuario.CONTABLE],
   IMPORTACIONES_EJECUTAR: [RolUsuario.ADMINISTRADOR],
   AUDITORIA_CONSULTAR: [RolUsuario.ADMINISTRADOR],
+  RECONCILIACION_CONSULTAR: [RolUsuario.ADMINISTRADOR, RolUsuario.CONTABLE],
 } as const satisfies Record<string, readonly RolUsuario[]>;
 
 export type Permiso = keyof typeof rolesPorPermiso;

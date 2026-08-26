@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Search } from "lucide-react";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 
 export interface OpcionBuscable {
@@ -8,6 +9,7 @@ export interface OpcionBuscable {
   titulo: string;
   detalle?: string;
   busqueda: string;
+  imagenUrl?: string | null;
 }
 
 function normalizar(valor: string) {
@@ -27,6 +29,7 @@ export function SelectorBuscable({
   alCambiar,
   alBuscar,
   sinResultados,
+  prefijoCapacitacion,
 }: {
   nombre: string;
   etiqueta: string;
@@ -36,6 +39,7 @@ export function SelectorBuscable({
   alCambiar: (id: string) => void;
   alBuscar?: (texto: string) => void;
   sinResultados: string;
+  prefijoCapacitacion?: string;
 }) {
   const [texto, establecerTexto] = useState("");
   const seleccionada = opciones.find((opcion) => opcion.id === valor);
@@ -49,12 +53,32 @@ export function SelectorBuscable({
   }, [opciones, texto]);
 
   return (
-    <div>
+    <div
+      data-capacitacion={
+        prefijoCapacitacion ? `${prefijoCapacitacion}.selector` : undefined
+      }
+    >
       <span className="etiqueta">{etiqueta}</span>
       <input type="hidden" name={nombre} value={valor} />
       {seleccionada && (
-        <div className="mb-2 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-900 dark:bg-blue-950/40">
-          <Check className="mt-0.5 shrink-0 text-blue-600" size={17} />
+        <div
+          className="mb-2 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-900 dark:bg-blue-950/40"
+          data-capacitacion={
+            prefijoCapacitacion ? `${prefijoCapacitacion}.seleccion` : undefined
+          }
+        >
+          {seleccionada.imagenUrl ? (
+            <Image
+              unoptimized
+              src={seleccionada.imagenUrl}
+              alt=""
+              width={44}
+              height={44}
+              className="h-11 w-11 shrink-0 rounded-lg object-cover"
+            />
+          ) : (
+            <Check className="mt-0.5 shrink-0 text-blue-600" size={17} />
+          )}
           <span className="min-w-0 flex-1">
             <strong className="block truncate">{seleccionada.titulo}</strong>
             {seleccionada.detalle && (
@@ -67,6 +91,9 @@ export function SelectorBuscable({
             type="button"
             className="text-xs font-semibold text-blue-700"
             onClick={() => alCambiar("")}
+            data-capacitacion={
+              prefijoCapacitacion ? `${prefijoCapacitacion}.cambiar` : undefined
+            }
           >
             Cambiar
           </button>
@@ -88,9 +115,21 @@ export function SelectorBuscable({
               }}
               placeholder={placeholder}
               autoComplete="off"
+              data-capacitacion={
+                prefijoCapacitacion
+                  ? `${prefijoCapacitacion}.buscar`
+                  : undefined
+              }
             />
           </div>
-          <div className="mt-2 max-h-52 space-y-1 overflow-y-auto rounded-lg border p-1">
+          <div
+            className="mt-2 max-h-52 space-y-1 overflow-y-auto rounded-lg border p-1"
+            data-capacitacion={
+              prefijoCapacitacion
+                ? `${prefijoCapacitacion}.opciones`
+                : undefined
+            }
+          >
             {visibles.map((opcion) => (
               <button
                 type="button"
@@ -100,13 +139,32 @@ export function SelectorBuscable({
                   alCambiar(opcion.id);
                   establecerTexto("");
                 }}
+                data-capacitacion={
+                  prefijoCapacitacion
+                    ? `${prefijoCapacitacion}.opcion`
+                    : undefined
+                }
               >
-                <strong className="block">{opcion.titulo}</strong>
-                {opcion.detalle && (
-                  <small className="block text-slate-500">
-                    {opcion.detalle}
-                  </small>
-                )}
+                <span className="flex items-center gap-3">
+                  {opcion.imagenUrl && (
+                    <Image
+                      unoptimized
+                      src={opcion.imagenUrl}
+                      alt=""
+                      width={42}
+                      height={42}
+                      className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                    />
+                  )}
+                  <span className="min-w-0">
+                    <strong className="block truncate">{opcion.titulo}</strong>
+                    {opcion.detalle && (
+                      <small className="block truncate text-slate-500">
+                        {opcion.detalle}
+                      </small>
+                    )}
+                  </span>
+                </span>
               </button>
             ))}
             {!visibles.length && (

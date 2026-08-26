@@ -104,17 +104,17 @@ rutasAlertas.get("/", async (req, res) => {
         })
       : Promise.resolve(0),
     prisma.pedidoVenta.findMany({
-          where: filtroPedidos,
-          select: {
-            id: true,
-            folio: true,
-            estado: true,
-            fechaCompromiso: true,
-            cliente: { select: { nombreCompleto: true } },
-          },
-          orderBy: { creadoEn: "asc" },
-          take: 20,
-        }),
+      where: filtroPedidos,
+      select: {
+        id: true,
+        folio: true,
+        estado: true,
+        fechaCompromiso: true,
+        cliente: { select: { nombreCompleto: true } },
+      },
+      orderBy: { creadoEn: "asc" },
+      take: 20,
+    }),
     prisma.pedidoVenta.count({ where: filtroPedidos }),
     puedeCartera
       ? prisma.ruta.findMany({
@@ -126,7 +126,10 @@ rutasAlertas.get("/", async (req, res) => {
           include: {
             clientes: { where: { activo: true }, select: { clienteId: true } },
             visitas: {
-              where: { fechaProgramada: { gte: desde, lte: hasta }, fechaVisita: { not: null } },
+              where: {
+                fechaProgramada: { gte: desde, lte: hasta },
+                fechaVisita: { not: null },
+              },
               select: { clienteId: true },
             },
           },
@@ -140,7 +143,8 @@ rutasAlertas.get("/", async (req, res) => {
       nombre: ruta.nombre,
       pendientes: Math.max(
         0,
-        ruta.clientes.length - new Set(ruta.visitas.map((visita) => visita.clienteId)).size,
+        ruta.clientes.length -
+          new Set(ruta.visitas.map((visita) => visita.clienteId)).size,
       ),
     }))
     .filter((ruta) => ruta.pendientes > 0);
@@ -152,10 +156,7 @@ rutasAlertas.get("/", async (req, res) => {
       pedidosAtrasados: totalPedidos,
       rutasIncompletas: rutasIncompletas.length,
       total:
-        totalProductos +
-        totalClientes +
-        totalPedidos +
-        rutasIncompletas.length,
+        totalProductos + totalClientes + totalPedidos + rutasIncompletas.length,
     },
     productos,
     clientes,

@@ -9,12 +9,14 @@ import {
 } from "../infraestructura/baseLocal";
 import { contenidoOperacion } from "../seguridad/integridadOffline";
 import { guardarProyeccionLocal, type ProyeccionLocal } from "./datosLocales";
+import { notificarDatosMoviles } from "../eventosDatosMovil";
 
 export type TipoOperacion = "VISITA" | "ABONO" | "VENTA" | "ENTREGA";
 export type EstadoOperacion =
   | "PENDIENTE"
   | "ENVIANDO"
   | "ERROR"
+  | "RECHAZADA"
   | "SINCRONIZADA";
 
 export interface OperacionLocal {
@@ -32,6 +34,7 @@ export interface OperacionGuardada extends OperacionLocal {
   estado: EstadoOperacion;
   intentos: number;
   ultimoError: string | null;
+  codigoError: string | null;
 }
 
 async function insertarOperaciones(
@@ -97,6 +100,7 @@ export async function encolarOperaciones(
     await insertarOperaciones(db, operaciones);
     if (proyeccion) await guardarProyeccionLocal(proyeccion, db, usuarioId);
   });
+  notificarDatosMoviles({ origen: "COLA_LOCAL" });
 }
 
 function presentarOperacion(fila: FilaOperacion): OperacionGuardada {
@@ -110,15 +114,19 @@ function presentarOperacion(fila: FilaOperacion): OperacionGuardada {
     estado: fila.estado,
     intentos: fila.intentos,
     ultimoError: fila.ultimo_error,
+    codigoError: fila.codigo_error,
   };
 }
 
-export async function leerOperaciones(): Promise<OperacionGuardada[]> {
+export async function leerOperaciones(
+  limite = 100,
+): Promise<OperacionGuardada[]> {
   const db = await obtenerBaseLocal();
   const usuarioId = await obtenerUsuarioLocal();
   const filas = await db.getAllAsync<FilaOperacion>(
-    "SELECT * FROM operaciones WHERE usuario_id = ? AND estado IN ('PENDIENTE', 'ERROR', 'ENVIANDO') ORDER BY secuencia ASC",
+    "SELECT * FROM operaciones WHERE usuario_id = ? AND estado IN ('PENDIENTE', 'ERROR', 'ENVIANDO') ORDER BY secuencia ASC LIMIT ?",
     usuarioId,
+    limite,
   );
   return filas.map(presentarOperacion);
 }
@@ -182,18 +190,29 @@ export async function marcarEnviando(ids: string[]) {
 }
 
 export async function registrarResultados(
-  resultados: Array<{ idOperacion: string; exito: boolean; error?: string }>,
+  resultados: Array<{
+    idOperacion: string;
+    exito: boolean;
+    error?: string;
+    codigoError?: string;
+    rechazoPermanente?: boolean;
+  }>,
 ) {
   const db = await obtenerBaseLocal();
   const usuarioId = await obtenerUsuarioLocal();
   await db.withTransactionAsync(async () => {
     for (const resultado of resultados) {
       await db.runAsync(
-        "UPDATE operaciones SET estado = ?, intentos = intentos + 1, ultimo_error = ?, actualizado_en = ? WHERE id = ?",
-        resultado.exito ? "SINCRONIZADA" : "ERROR",
+        "UPDATE operaciones SET estado = ?, intentos = intentos + 1, ultimo_error = ?, codigo_error = ?, actualizado_en = ? WHERE id = ?",
+        resultado.exito
+          ? "SINCRONIZADA"
+          : resultado.rechazoPermanente
+            ? "RECHAZADA"
+            : "ERROR",
         resultado.exito
           ? null
           : (resultado.error ?? "La operación fue rechazada por el servidor."),
+        resultado.exito ? null : (resultado.codigoError ?? "RECHAZADA"),
         new Date().toISOString(),
         resultado.idOperacion,
       );
@@ -204,17 +223,19 @@ export async function registrarResultados(
       new Date().toISOString(),
     );
   });
+  notificarDatosMoviles({ origen: "SINCRONIZACION" });
 }
 
 export async function registrarFalloTransporte(ids: string[], mensaje: string) {
   await actualizarOperaciones(ids, (db, id) =>
     db.runAsync(
-      "UPDATE operaciones SET estado = 'ERROR', intentos = intentos + 1, ultimo_error = ?, actualizado_en = ? WHERE id = ?",
+      "UPDATE operaciones SET estado = 'ERROR', intentos = intentos + 1, ultimo_error = ?, codigo_error = 'ERROR_TRANSPORTE', actualizado_en = ? WHERE id = ?",
       mensaje,
       new Date().toISOString(),
       id,
     ),
   );
+  notificarDatosMoviles({ origen: "SINCRONIZACION" });
 }
 
 async function actualizarOperaciones(
@@ -240,10 +261,17 @@ export async function obtenerEstadoCola() {
     "SELECT estado, COUNT(*) AS total FROM operaciones WHERE usuario_id = ? GROUP BY estado",
     usuarioId,
   );
-  const estado = { pendientes: 0, errores: 0, sincronizadas: 0, enviando: 0 };
+  const estado = {
+    pendientes: 0,
+    errores: 0,
+    rechazadas: 0,
+    sincronizadas: 0,
+    enviando: 0,
+  };
   for (const fila of filas) {
     if (fila.estado === "PENDIENTE") estado.pendientes = fila.total;
     if (fila.estado === "ERROR") estado.errores = fila.total;
+    if (fila.estado === "RECHAZADA") estado.rechazadas = fila.total;
     if (fila.estado === "SINCRONIZADA") estado.sincronizadas = fila.total;
     if (fila.estado === "ENVIANDO") estado.enviando = fila.total;
   }

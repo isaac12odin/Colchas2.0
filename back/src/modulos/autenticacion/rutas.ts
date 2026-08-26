@@ -4,6 +4,7 @@ import argon2 from "argon2";
 import { addDays, addMinutes } from "date-fns";
 import { z } from "zod";
 import type { RolUsuario } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { prisma } from "../../infraestructura/prisma.js";
 import { entorno } from "../../configuracion/entorno.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
@@ -21,6 +22,10 @@ import {
   uriConfiguracionMfa,
   validarCodigoMfa,
 } from "../../seguridad/mfa.js";
+import {
+  crearHashContrasena,
+  esquemaContrasenaSegura,
+} from "../../seguridad/contrasenas.js";
 
 export const rutasAutenticacion = Router();
 
@@ -59,44 +64,91 @@ async function emitirSesion(
     rol: RolUsuario;
     debeCambiarContrasena: boolean;
     mfaHabilitado: boolean;
+    tokenVersion: number;
   },
   movil: boolean,
+  sesionAnteriorId?: string,
+  familiaExistenteId?: string,
 ) {
   const identidad = {
     sub: usuario.id,
     correo: usuario.correo,
     rol: usuario.rol,
     debeCambiarContrasena: usuario.debeCambiarContrasena,
+    tokenVersion: usuario.tokenVersion,
   };
   const accessToken = crearTokenAcceso(identidad);
   const refreshToken = crearTokenRefresco(identidad);
   const csrfToken = crearTokenCsrf();
 
-  await prisma.sesion.create({
-    data: {
-      usuarioId: usuario.id,
-      hashToken: hashToken(refreshToken),
-      agenteUsuario: req.get("user-agent"),
-      ip: req.ip,
-      expiraEn: addDays(new Date(), 30),
-    },
-  });
-  const sesionesActivas = await prisma.sesion.findMany({
-    where: {
-      usuarioId: usuario.id,
-      revocadaEn: null,
-      expiraEn: { gt: new Date() },
-    },
-    orderBy: { creadoEn: "desc" },
-    skip: 5,
-    select: { id: true },
-  });
-  if (sesionesActivas.length) {
-    await prisma.sesion.updateMany({
-      where: { id: { in: sesionesActivas.map((sesion) => sesion.id) } },
-      data: { revocadaEn: new Date() },
+  const familiaId = familiaExistenteId ?? randomUUID();
+  const rotacion = await prisma.$transaction(async (tx) => {
+    // Serializa inicios y rotaciones del usuario; así el límite de cinco
+    // sesiones también se conserva bajo concurrencia.
+    await tx.$queryRaw`
+      SELECT 1::integer AS bloqueado
+      FROM (
+        SELECT pg_advisory_xact_lock(hashtext(${`nexo:sesiones:${usuario.id}`}))
+      ) AS candado
+    `;
+    if (sesionAnteriorId) {
+      // Consumo único: dos renovaciones concurrentes no pueden rotar el mismo
+      // token. La revocación y la creación sucesora se confirman juntas.
+      const consumida = await tx.sesion.updateMany({
+        where: {
+          id: sesionAnteriorId,
+          usuarioId: usuario.id,
+          revocadaEn: null,
+          expiraEn: { gt: new Date() },
+        },
+        data: { revocadaEn: new Date() },
+      });
+      if (consumida.count !== 1) {
+        // No se lanza dentro de la transacción: primero debe confirmarse la
+        // revocación de toda la familia sospechosa.
+        await tx.sesion.updateMany({
+          where: { familiaId, revocadaEn: null },
+          data: { revocadaEn: new Date() },
+        });
+        return { reutilizada: true as const };
+      }
+    }
+
+    await tx.sesion.create({
+      data: {
+        usuarioId: usuario.id,
+        hashToken: hashToken(refreshToken),
+        familiaId,
+        agenteUsuario: req.get("user-agent"),
+        ip: req.ip,
+        expiraEn: addDays(new Date(), 30),
+      },
     });
-  }
+    const sesionesActivas = await tx.sesion.findMany({
+      where: {
+        usuarioId: usuario.id,
+        revocadaEn: null,
+        expiraEn: { gt: new Date() },
+      },
+      orderBy: { creadoEn: "desc" },
+      skip: 5,
+      select: { id: true },
+    });
+    if (sesionesActivas.length) {
+      await tx.sesion.updateMany({
+        where: { id: { in: sesionesActivas.map((sesion) => sesion.id) } },
+        data: { revocadaEn: new Date() },
+      });
+    }
+    return { reutilizada: false as const };
+  });
+
+  if (rotacion.reutilizada)
+    throw new ErrorAplicacion(
+      "REFRESCO_REUTILIZADO",
+      "Se detectó reutilización del token. Toda la familia de sesiones fue revocada.",
+      401,
+    );
 
   if (!movil) {
     res.cookie("access_token", accessToken, {
@@ -118,6 +170,58 @@ async function emitirSesion(
   return { accessToken, refreshToken, csrfToken };
 }
 
+async function registrarIntentoFallido(usuarioId: string) {
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT 1::integer AS bloqueado
+      FROM (
+        SELECT pg_advisory_xact_lock(hashtext(${`nexo:login:${usuarioId}`}))
+      ) AS candado
+    `;
+    const actual = await tx.usuario.findUnique({ where: { id: usuarioId } });
+    if (!actual?.activo) return;
+    const intentos = actual.intentosFallidos + 1;
+    await tx.usuario.update({
+      where: { id: usuarioId },
+      data: {
+        intentosFallidos: intentos,
+        bloqueadoHasta: intentos >= 5 ? addMinutes(new Date(), 15) : null,
+      },
+    });
+  });
+}
+
+async function prepararInicioExitoso(usuarioId: string) {
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT 1::integer AS bloqueado
+      FROM (
+        SELECT pg_advisory_xact_lock(hashtext(${`nexo:login:${usuarioId}`}))
+      ) AS candado
+    `;
+    const actual = await tx.usuario.findUniqueOrThrow({
+      where: { id: usuarioId },
+    });
+    if (
+      !actual.activo ||
+      (actual.bloqueadoHasta && actual.bloqueadoHasta > new Date())
+    )
+      throw new ErrorAplicacion(
+        "CUENTA_BLOQUEADA",
+        "La cuenta está bloqueada o inactiva.",
+        423,
+      );
+    await tx.usuario.update({
+      where: { id: usuarioId },
+      data: {
+        ultimoAcceso: new Date(),
+        intentosFallidos: 0,
+        bloqueadoHasta: null,
+      },
+    });
+  });
+}
+
 rutasAutenticacion.post("/iniciar-sesion", async (req, res) => {
   const datos = z
     .object({
@@ -125,9 +229,12 @@ rutasAutenticacion.post("/iniciar-sesion", async (req, res) => {
         .string()
         .email()
         .transform((valor) => valor.toLowerCase()),
-      contrasena: z.string().min(8).max(200),
+      contrasena: z.string().min(6).max(200),
       cliente: z.enum(["WEB", "MOVIL"]).default("WEB"),
-      codigoMfa: z.string().regex(/^\d{6}$/).optional(),
+      codigoMfa: z
+        .string()
+        .regex(/^\d{6}$/)
+        .optional(),
     })
     .parse(req.body);
 
@@ -146,14 +253,7 @@ rutasAutenticacion.post("/iniciar-sesion", async (req, res) => {
     : false;
   if (!usuario || !valido || !usuario.activo) {
     if (usuario?.activo) {
-      const intentos = usuario.intentosFallidos + 1;
-      await prisma.usuario.update({
-        where: { id: usuario.id },
-        data: {
-          intentosFallidos: intentos,
-          bloqueadoHasta: intentos >= 5 ? addMinutes(new Date(), 15) : null,
-        },
-      });
+      await registrarIntentoFallido(usuario.id);
     }
     throw new ErrorAplicacion(
       "CREDENCIALES_INVALIDAS",
@@ -161,6 +261,16 @@ rutasAutenticacion.post("/iniciar-sesion", async (req, res) => {
       401,
     );
   }
+
+  if (
+    datos.cliente === "WEB" &&
+    (usuario.rol === "ALMACENISTA" || usuario.rol === "COBRADOR")
+  )
+    throw new ErrorAplicacion(
+      "ROL_EXCLUSIVO_MOVIL",
+      "Este puesto opera únicamente desde la aplicación móvil de Vektra.",
+      403,
+    );
 
   if (usuario.mfaHabilitado) {
     if (!datos.codigoMfa) {
@@ -171,7 +281,11 @@ rutasAutenticacion.post("/iniciar-sesion", async (req, res) => {
       ? descifrarCampo(usuario.mfaSecretoCifrado)
       : "";
     const contador = validarCodigoMfa(secreto, datos.codigoMfa);
-    if (contador === null || (usuario.mfaUltimoContador !== null && contador <= usuario.mfaUltimoContador))
+    if (
+      contador === null ||
+      (usuario.mfaUltimoContador !== null &&
+        contador <= usuario.mfaUltimoContador)
+    )
       throw new ErrorAplicacion(
         "MFA_INVALIDO",
         "El codigo de autenticacion es incorrecto o ya fue utilizado.",
@@ -195,23 +309,19 @@ rutasAutenticacion.post("/iniciar-sesion", async (req, res) => {
       );
   }
 
+  await prepararInicioExitoso(usuario.id);
+  const usuarioVigente = await prisma.usuario.findUniqueOrThrow({
+    where: { id: usuario.id },
+  });
   const tokens = await emitirSesion(
     req,
     res,
-    usuario,
+    usuarioVigente,
     datos.cliente === "MOVIL",
   );
-  await prisma.usuario.update({
-    where: { id: usuario.id },
-    data: {
-      ultimoAcceso: new Date(),
-      intentosFallidos: 0,
-      bloqueadoHasta: null,
-    },
-  });
 
   res.json({
-    usuario: usuarioPublico(usuario),
+    usuario: usuarioPublico(usuarioVigente),
     ...(datos.cliente === "MOVIL"
       ? { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }
       : { csrfToken: tokens.csrfToken }),
@@ -227,9 +337,8 @@ rutasAutenticacion.post("/renovar", async (req, res) => {
       401,
     );
 
-  let identidad;
   try {
-    identidad = validarTokenRefresco(refreshToken);
+    validarTokenRefresco(refreshToken);
   } catch {
     throw new ErrorAplicacion(
       "REFRESCO_INVALIDO",
@@ -242,25 +351,34 @@ rutasAutenticacion.post("/renovar", async (req, res) => {
     where: { hashToken: hashToken(refreshToken) },
     include: { usuario: true },
   });
-  if (
-    !sesion ||
-    sesion.revocadaEn ||
-    sesion.expiraEn < new Date() ||
-    !sesion.usuario.activo
-  ) {
+  if (!sesion || sesion.expiraEn < new Date() || !sesion.usuario.activo) {
     throw new ErrorAplicacion(
       "REFRESCO_INVALIDO",
       "La sesion ya no es valida.",
       401,
     );
   }
+  if (sesion.revocadaEn) {
+    await prisma.sesion.updateMany({
+      where: { familiaId: sesion.familiaId, revocadaEn: null },
+      data: { revocadaEn: new Date() },
+    });
+    throw new ErrorAplicacion(
+      "REFRESCO_REUTILIZADO",
+      "Se detectó reutilización del token. Toda la familia de sesiones fue revocada.",
+      401,
+    );
+  }
 
-  await prisma.sesion.update({
-    where: { id: sesion.id },
-    data: { revocadaEn: new Date() },
-  });
   const movil = Boolean(req.body?.refreshToken);
-  const tokens = await emitirSesion(req, res, sesion.usuario, movil);
+  const tokens = await emitirSesion(
+    req,
+    res,
+    sesion.usuario,
+    movil,
+    sesion.id,
+    sesion.familiaId,
+  );
   res.json({
     usuario: usuarioPublico(sesion.usuario),
     ...(movil
@@ -307,15 +425,8 @@ rutasAutenticacion.get("/sesion", autenticar, async (req, res) => {
 rutasAutenticacion.post("/cambiar-contrasena", autenticar, async (req, res) => {
   const datos = z
     .object({
-      contrasenaActual: z.string().min(8),
-      nuevaContrasena: z
-        .string()
-        .min(12)
-        .max(200)
-        .regex(/[a-z]/, "Incluya una minuscula.")
-        .regex(/[A-Z]/, "Incluya una mayuscula.")
-        .regex(/\d/, "Incluya un numero.")
-        .regex(/[^A-Za-z0-9]/, "Incluya un simbolo."),
+      contrasenaActual: z.string().min(6),
+      nuevaContrasena: esquemaContrasenaSegura,
     })
     .refine((valor) => valor.contrasenaActual !== valor.nuevaContrasena, {
       message: "La nueva contrasena debe ser diferente.",
@@ -333,21 +444,21 @@ rutasAutenticacion.post("/cambiar-contrasena", autenticar, async (req, res) => {
       422,
     );
   }
-  await prisma.usuario.update({
-    where: { id: usuario.id },
-    data: {
-      hashContrasena: await argon2.hash(datos.nuevaContrasena, {
-        type: argon2.argon2id,
-        memoryCost: 65_536,
-        timeCost: 3,
-      }),
-      debeCambiarContrasena: false,
-    },
-  });
-  await prisma.sesion.updateMany({
-    where: { usuarioId: usuario.id },
-    data: { revocadaEn: new Date() },
-  });
+  const hashContrasena = await crearHashContrasena(datos.nuevaContrasena);
+  await prisma.$transaction([
+    prisma.usuario.update({
+      where: { id: usuario.id },
+      data: {
+        hashContrasena,
+        debeCambiarContrasena: false,
+        tokenVersion: { increment: 1 },
+      },
+    }),
+    prisma.sesion.updateMany({
+      where: { usuarioId: usuario.id, revocadaEn: null },
+      data: { revocadaEn: new Date() },
+    }),
+  ]);
   res.status(204).send();
 });
 
@@ -406,7 +517,15 @@ rutasAutenticacion.post("/mfa/confirmar", autenticar, async (req, res) => {
   await prisma.$transaction([
     prisma.usuario.update({
       where: { id: usuario.id },
-      data: { mfaHabilitado: true, mfaUltimoContador: contador },
+      data: {
+        mfaHabilitado: true,
+        mfaUltimoContador: contador,
+        tokenVersion: { increment: 1 },
+      },
+    }),
+    prisma.sesion.updateMany({
+      where: { usuarioId: usuario.id, revocadaEn: null },
+      data: { revocadaEn: new Date() },
     }),
     prisma.auditoria.create({
       data: {
@@ -423,7 +542,7 @@ rutasAutenticacion.post("/mfa/confirmar", autenticar, async (req, res) => {
 rutasAutenticacion.post("/mfa/deshabilitar", autenticar, async (req, res) => {
   const { contrasena, codigo } = z
     .object({
-      contrasena: z.string().min(8),
+      contrasena: z.string().min(6),
       codigo: z.string().regex(/^\d{6}$/),
     })
     .parse(req.body);
@@ -433,7 +552,10 @@ rutasAutenticacion.post("/mfa/deshabilitar", autenticar, async (req, res) => {
   const contador = usuario.mfaSecretoCifrado
     ? validarCodigoMfa(descifrarCampo(usuario.mfaSecretoCifrado), codigo)
     : null;
-  if (!(await argon2.verify(usuario.hashContrasena, contrasena)) || contador === null)
+  if (
+    !(await argon2.verify(usuario.hashContrasena, contrasena)) ||
+    contador === null
+  )
     throw new ErrorAplicacion(
       "CONFIRMACION_INVALIDA",
       "La contrasena o el codigo MFA no son validos.",
@@ -446,6 +568,7 @@ rutasAutenticacion.post("/mfa/deshabilitar", autenticar, async (req, res) => {
         mfaHabilitado: false,
         mfaSecretoCifrado: null,
         mfaUltimoContador: null,
+        tokenVersion: { increment: 1 },
       },
     }),
     prisma.sesion.updateMany({

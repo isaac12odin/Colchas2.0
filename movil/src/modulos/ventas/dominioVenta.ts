@@ -1,4 +1,5 @@
 import type { Jornada, ProductoMovil } from "../../tipos";
+import { redondearMoneda } from "../../utilidades/dinero";
 
 export type TipoVenta = "CREDITO" | "CONTADO";
 export type Periodicidad = "SEMANAL" | "QUINCENAL" | "MENSUAL";
@@ -45,15 +46,20 @@ export function calcularImportes(
   tipo: TipoVenta,
   anticipo: string,
 ) {
-  const total = carrito.reduce(
-    (suma, linea) => suma + Number(linea.precioVenta) * linea.cantidad,
-    0,
+  const total = redondearMoneda(
+    carrito.reduce(
+      (suma, linea) => suma + Number(linea.precioVenta) * linea.cantidad,
+      0,
+    ),
   );
-  const anticipoNumero = Number(anticipo || 0);
+  const anticipoNumero = redondearMoneda(Number(anticipo || 0));
   return {
     total,
     anticipoNumero,
-    financiado: tipo === "CREDITO" ? Math.max(0, total - anticipoNumero) : 0,
+    financiado:
+      tipo === "CREDITO"
+        ? redondearMoneda(Math.max(0, total - anticipoNumero))
+        : 0,
   };
 }
 
@@ -101,9 +107,11 @@ export function crearDatosVenta(entrada: {
   primerVencimiento: string;
   fechaVenta: string;
 }) {
-  const total = entrada.carrito.reduce(
-    (suma, linea) => suma + Number(linea.precioVenta) * linea.cantidad,
-    0,
+  const total = redondearMoneda(
+    entrada.carrito.reduce(
+      (suma, linea) => suma + Number(linea.precioVenta) * linea.cantidad,
+      0,
+    ),
   );
   const requiereFinanciamiento =
     entrada.tipo === "CREDITO" && total - entrada.anticipo > 0;
@@ -161,7 +169,9 @@ export function proyectarSaldoVenta(
             ...cliente,
             saldo: {
               saldoActual: String(
-                Number(cliente.saldo?.saldoActual ?? 0) + financiado,
+                redondearMoneda(
+                  Number(cliente.saldo?.saldoActual ?? 0) + financiado,
+                ),
               ),
             },
           }

@@ -6,13 +6,32 @@ import type { PedidoMovil } from "../../tipos";
 import { dinero } from "../../utilidades/formato";
 import { siguienteEstado, totalPedido } from "./dominioPedidos";
 
+const estadosEs: Record<string, string> = {
+  PENDIENTE_PEDIR: "Pendiente de proveedor",
+  PEDIDO_PROVEEDOR: "Pedido al proveedor",
+  RECIBIDO_ALMACEN: "Recibido en almacén",
+  LISTO_ENTREGA: "Listo para entrega",
+};
+const estadosEn: Record<string, string> = {
+  PENDIENTE_PEDIR: "Pending supplier",
+  PEDIDO_PROVEEDOR: "Supplier ordered",
+  RECIBIDO_ALMACEN: "Received in warehouse",
+  LISTO_ENTREGA: "Ready to deliver",
+};
+const accionesEs: Record<string, string> = {
+  RECIBIDO_ALMACEN: "Confirmar recepción",
+  LISTO_ENTREGA: "Marcar listo para entrega",
+};
+
 interface Propiedades {
   pedido: PedidoMovil;
   es: boolean;
   tema: ReturnType<typeof usarTema>;
   puedeAlmacen: boolean;
+  puedeAsignarProveedor: boolean;
   puedeEntregar: boolean;
   alAvanzar: () => void;
+  alAsignarProveedor: () => void;
   alEntregar: () => void;
 }
 
@@ -32,13 +51,16 @@ export function TarjetaPedido({ pedido, es, tema, ...permisos }: Propiedades) {
               (es ? "Cliente de la ruta" : "Route customer")}
           </Text>
         </View>
-        <Text style={estilos.estado}>{pedido.estado.replaceAll("_", " ")}</Text>
+        <Text style={estilos.estado}>
+          {(es ? estadosEs : estadosEn)[pedido.estado] ?? pedido.estado}
+        </Text>
       </View>
       <View style={[estilos.items, { borderColor: tema.borde }]}>
         {pedido.items.map((item, indice) => (
           <View key={`${item.descripcion}-${indice}`} style={estilos.fila}>
             <Text style={[estilos.item, { color: tema.texto }]}>
               {item.cantidad} × {item.descripcion}
+              {item.proveedor?.nombre ? ` · ${item.proveedor.nombre}` : ""}
             </Text>
             <Text style={[estilos.item, { color: tema.texto }]}>
               {dinero.format(Number(item.precioEstimado) * item.cantidad)}
@@ -54,14 +76,40 @@ export function TarjetaPedido({ pedido, es, tema, ...permisos }: Propiedades) {
           </Text>
         </View>
       </View>
-      {permisos.puedeAlmacen && siguienteEstado[pedido.estado] && (
-        <Pressable style={estilos.secundario} onPress={permisos.alAvanzar}>
-          <Ionicons name="cube-outline" color={colores.azul} size={18} />
-          <Text style={estilos.secundarioTexto}>
-            {es ? "Avanzar estado" : "Advance status"}
+      {permisos.puedeAsignarProveedor &&
+        pedido.estado === "PENDIENTE_PEDIR" && (
+          <Pressable
+            style={estilos.boton}
+            onPress={permisos.alAsignarProveedor}
+          >
+            <Ionicons name="business-outline" color="white" size={18} />
+            <Text style={estilos.botonTexto}>
+              {es ? "Asignar proveedor" : "Assign supplier"}
+            </Text>
+          </Pressable>
+        )}
+      {permisos.puedeAlmacen &&
+        pedido.estado !== "PENDIENTE_PEDIR" &&
+        siguienteEstado[pedido.estado] && (
+          <Pressable style={estilos.secundario} onPress={permisos.alAvanzar}>
+            <Ionicons name="cube-outline" color={colores.azul} size={18} />
+            <Text style={estilos.secundarioTexto}>
+              {es
+                ? (accionesEs[siguienteEstado[pedido.estado]] ?? "Avanzar")
+                : siguienteEstado[pedido.estado] === "RECIBIDO_ALMACEN"
+                  ? "Confirm receipt"
+                  : "Mark ready to deliver"}
+            </Text>
+          </Pressable>
+        )}
+      {!permisos.puedeAsignarProveedor &&
+        pedido.estado === "PENDIENTE_PEDIR" && (
+          <Text style={estilos.espera}>
+            {es
+              ? "Espera: Administración, Contabilidad o Almacén asignarán al proveedor."
+              : "Waiting: Administration, Accounting, or Warehouse will assign the supplier."}
           </Text>
-        </Pressable>
-      )}
+        )}
       {permisos.puedeEntregar &&
         ["RECIBIDO_ALMACEN", "LISTO_ENTREGA"].includes(pedido.estado) && (
           <Pressable style={estilos.boton} onPress={permisos.alEntregar}>
@@ -128,4 +176,12 @@ const estilos = StyleSheet.create({
     gap: 7,
   },
   secundarioTexto: { color: colores.azul, fontWeight: "800" },
+  espera: {
+    color: "#8a3b12",
+    backgroundColor: "#fff2e8",
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 11,
+    lineHeight: 16,
+  },
 });

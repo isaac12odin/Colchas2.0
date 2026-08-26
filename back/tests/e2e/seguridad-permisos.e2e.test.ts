@@ -17,7 +17,7 @@ afterAll(() => prisma.$disconnect());
 describe.sequential("seguridad de sesión", () => {
   it("publica salud y disponibilidad real de PostgreSQL sin autenticación", async () => {
     const salud = await request(app).get("/salud").expect(200);
-    expect(salud.body).toMatchObject({ estado: "ok", servicio: "nexo-api" });
+    expect(salud.body).toMatchObject({ estado: "ok", servicio: "vektra-api" });
     const lista = await request(app).get("/salud/listo").expect(200);
     expect(lista.body).toMatchObject({
       estado: "listo",
@@ -35,7 +35,7 @@ describe.sequential("seguridad de sesión", () => {
     expect(manipulado.body.error.codigo).toBe("SESION_EXPIRADA");
   });
 
-  it("obliga a cambiar la contraseña temporal mediante una sesión web real", async () => {
+  it("permite operar sin obligar a cambiar la contraseña del primer acceso", async () => {
     const escenario = new EscenarioPrueba();
     const contrasenaTemporal = "TemporalE2E!2026";
     const contrasenaNueva = "DefinitivaE2E!2026";
@@ -61,8 +61,7 @@ describe.sequential("seguridad de sesión", () => {
       expect(cookies.join(";")).toContain("csrf_token=");
       expect(acceso.body.usuario.debeCambiarContrasena).toBe(true);
 
-      const bloqueada = await agente.get("/api/v1/clientes").expect(428);
-      expect(bloqueada.body.error.codigo).toBe("CAMBIO_CONTRASENA_REQUERIDO");
+      await agente.get("/api/v1/clientes").expect(200);
       await agente.get("/api/v1/auth/sesion").expect(200);
 
       await agente
@@ -165,7 +164,80 @@ describe.sequential("seguridad de sesión", () => {
         .post("/api/v1/auth/renovar")
         .send({ refreshToken: acceso.body.refreshToken })
         .expect(401);
-      expect(reutilizacion.body.error.codigo).toBe("REFRESCO_INVALIDO");
+      expect(reutilizacion.body.error.codigo).toBe("REFRESCO_REUTILIZADO");
+      await request(app)
+        .post("/api/v1/auth/renovar")
+        .send({ refreshToken: renovada.body.refreshToken })
+        .expect(401);
+    } finally {
+      await escenario.limpiar();
+    }
+  });
+
+  it.each([RolUsuario.ALMACENISTA, RolUsuario.COBRADOR])(
+    "reserva el acceso web de %s y mantiene disponible el móvil",
+    async (rol) => {
+      const escenario = new EscenarioPrueba();
+      const contrasena = "simple6";
+      try {
+        const usuario = await escenario.crearUsuarioAutenticable(
+          rol,
+          contrasena,
+        );
+        const web = await request(app)
+          .post("/api/v1/auth/iniciar-sesion")
+          .set(
+            "X-Forwarded-For",
+            `10.31.1.${rol === RolUsuario.COBRADOR ? 2 : 1}`,
+          )
+          .send({ correo: usuario.correo, contrasena, cliente: "WEB" })
+          .expect(403);
+        expect(web.body.error.codigo).toBe("ROL_EXCLUSIVO_MOVIL");
+
+        await request(app)
+          .post("/api/v1/auth/iniciar-sesion")
+          .set(
+            "X-Forwarded-For",
+            `10.31.2.${rol === RolUsuario.COBRADOR ? 2 : 1}`,
+          )
+          .send({ correo: usuario.correo, contrasena, cliente: "MOVIL" })
+          .expect(200);
+      } finally {
+        await escenario.limpiar();
+      }
+    },
+  );
+
+  it("permite consumir un refresh token una sola vez aun con concurrencia", async () => {
+    const escenario = new EscenarioPrueba();
+    const contrasena = "ClaveRefreshConcurrente!2026";
+    try {
+      const usuario = await escenario.crearUsuarioAutenticable(
+        RolUsuario.COBRADOR,
+        contrasena,
+      );
+      const acceso = await request(app)
+        .post("/api/v1/auth/iniciar-sesion")
+        .send({ correo: usuario.correo, contrasena, cliente: "MOVIL" })
+        .expect(200);
+      const respuestas = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          request(app)
+            .post("/api/v1/auth/renovar")
+            .send({ refreshToken: acceso.body.refreshToken }),
+        ),
+      );
+      expect(
+        respuestas.filter((respuesta) => respuesta.status === 200),
+      ).toHaveLength(1);
+      expect(
+        respuestas.filter((respuesta) => respuesta.status === 401),
+      ).toHaveLength(9);
+      expect(
+        await prisma.sesion.count({
+          where: { usuarioId: usuario.id, revocadaEn: null },
+        }),
+      ).toBe(0);
     } finally {
       await escenario.limpiar();
     }
@@ -233,17 +305,21 @@ describe.sequential("seguridad de sesión", () => {
         RolUsuario.CONTABLE,
         contrasena,
       );
-      for (let intento = 0; intento < 5; intento += 1) {
-        await request(app)
-          .post("/api/v1/auth/iniciar-sesion")
-          .set("X-Forwarded-For", "10.32.0.1")
-          .send({
-            correo: usuario.correo,
-            contrasena: `Incorrecta!${intento}XYZ`,
-            cliente: "MOVIL",
-          })
-          .expect(401);
-      }
+      const intentos = await Promise.all(
+        Array.from({ length: 5 }, (_, intento) =>
+          request(app)
+            .post("/api/v1/auth/iniciar-sesion")
+            .set("X-Forwarded-For", `10.32.0.${intento + 1}`)
+            .send({
+              correo: usuario.correo,
+              contrasena: `Incorrecta!${intento}XYZ`,
+              cliente: "MOVIL",
+            }),
+        ),
+      );
+      expect(intentos.every((respuesta) => respuesta.status === 401)).toBe(
+        true,
+      );
       const bloqueada = await request(app)
         .post("/api/v1/auth/iniciar-sesion")
         .set("X-Forwarded-For", "10.32.0.1")
@@ -336,13 +412,15 @@ describe.sequential("seguridad de sesión", () => {
         RolUsuario.VENDEDOR,
         contrasena,
       );
-      for (let indice = 1; indice <= 6; indice += 1) {
-        await request(app)
-          .post("/api/v1/auth/iniciar-sesion")
-          .set("X-Forwarded-For", `10.34.${indice}.1`)
-          .send({ correo: usuario.correo, contrasena, cliente: "MOVIL" })
-          .expect(200);
-      }
+      const inicios = await Promise.all(
+        Array.from({ length: 10 }, (_, indice) =>
+          request(app)
+            .post("/api/v1/auth/iniciar-sesion")
+            .set("X-Forwarded-For", `10.34.${indice + 1}.1`)
+            .send({ correo: usuario.correo, contrasena, cliente: "MOVIL" }),
+        ),
+      );
+      expect(inicios.every((respuesta) => respuesta.status === 200)).toBe(true);
       expect(
         await prisma.sesion.count({
           where: { usuarioId: usuario.id, revocadaEn: null },
@@ -352,6 +430,75 @@ describe.sequential("seguridad de sesión", () => {
         await prisma.sesion.count({
           where: { usuarioId: usuario.id, revocadaEn: { not: null } },
         }),
+      ).toBe(5);
+    } finally {
+      await escenario.limpiar();
+    }
+  });
+});
+
+describe.sequential("continuidad administrativa", () => {
+  it("revoca inmediatamente el access token al cambiar rol o desactivar", async () => {
+    const escenario = new EscenarioPrueba();
+    const contrasena = "RevocacionInmediata!2026";
+    try {
+      const administrador = await escenario.crearUsuario(
+        RolUsuario.ADMINISTRADOR,
+      );
+      const objetivo = await escenario.crearUsuarioAutenticable(
+        RolUsuario.COBRADOR,
+        contrasena,
+      );
+      const acceso = await request(app)
+        .post("/api/v1/auth/iniciar-sesion")
+        .set("X-Forwarded-For", "10.45.0.1")
+        .send({ correo: objetivo.correo, contrasena, cliente: "MOVIL" })
+        .expect(200);
+
+      await request(app)
+        .patch(`/api/v1/usuarios/${objetivo.id}`)
+        .set(cabeceras(administrador.token))
+        .send({ rol: RolUsuario.VENDEDOR })
+        .expect(200);
+
+      const revocada = await request(app)
+        .get("/api/v1/rutas")
+        .set(cabeceras(acceso.body.accessToken))
+        .expect(401);
+      expect(revocada.body.error.codigo).toBe("SESION_REVOCADA");
+    } finally {
+      await escenario.limpiar();
+    }
+  });
+
+  it("dos administradores no pueden degradarse mutuamente a la vez", async () => {
+    const escenario = new EscenarioPrueba();
+    try {
+      const [administradorA, administradorB] = await Promise.all([
+        escenario.crearUsuario(RolUsuario.ADMINISTRADOR),
+        escenario.crearUsuario(RolUsuario.ADMINISTRADOR),
+      ]);
+      const respuestas = await Promise.all([
+        request(app)
+          .patch(`/api/v1/usuarios/${administradorB.id}`)
+          .set(cabeceras(administradorA.token))
+          .send({ rol: RolUsuario.CONTABLE }),
+        request(app)
+          .patch(`/api/v1/usuarios/${administradorA.id}`)
+          .set(cabeceras(administradorB.token))
+          .send({ rol: RolUsuario.CONTABLE }),
+      ]);
+      expect(respuestas.map((respuesta) => respuesta.status).sort()).toEqual([
+        200, 422,
+      ]);
+      expect(
+        await prisma.usuario.count({
+          where: {
+            id: { in: [administradorA.id, administradorB.id] },
+            rol: RolUsuario.ADMINISTRADOR,
+            activo: true,
+          },
+        }),
       ).toBe(1);
     } finally {
       await escenario.limpiar();
@@ -360,6 +507,78 @@ describe.sequential("seguridad de sesión", () => {
 });
 
 describe.sequential("autorización por asignación de datos", () => {
+  it("deja la ruta sin cobrador sólo en web y atribuye el cobro al administrador", async () => {
+    const escenario = new EscenarioPrueba();
+    try {
+      const [administrador, cobrador] = await Promise.all([
+        escenario.crearUsuario(RolUsuario.ADMINISTRADOR),
+        escenario.crearUsuario(RolUsuario.COBRADOR),
+      ]);
+      const localidad = await escenario.crearLocalidad(31);
+      const cliente = await escenario.crearCliente(localidad.id, {
+        indice: 31,
+        saldo: 500,
+      });
+      const rutaWeb = await escenario.crearRuta(
+        [localidad.id],
+        [cliente.id],
+        DiaSemana.MIERCOLES,
+      );
+
+      const vistaAdministrador = await request(app)
+        .get("/api/v1/rutas")
+        .set(cabeceras(administrador.token))
+        .expect(200);
+      expect(
+        vistaAdministrador.body.datos.map((ruta: { id: string }) => ruta.id),
+      ).toContain(rutaWeb.id);
+
+      const vistaCobrador = await request(app)
+        .get("/api/v1/rutas")
+        .set(cabeceras(cobrador.token))
+        .expect(200);
+      expect(
+        vistaCobrador.body.datos.map((ruta: { id: string }) => ruta.id),
+      ).not.toContain(rutaWeb.id);
+      await request(app)
+        .get(`/api/v1/rutas/${rutaWeb.id}/jornada`)
+        .set(cabeceras(cobrador.token))
+        .expect(403);
+
+      const fecha = new Date();
+      const captura = await request(app)
+        .post(`/api/v1/rutas/${rutaWeb.id}/visitas`)
+        .set(cabeceras(administrador.token))
+        .send({
+          clienteId: cliente.id,
+          fechaProgramada: fecha.toISOString(),
+          fechaVisita: fecha.toISOString(),
+          resultado: "PAGO",
+          abono: {
+            monto: 100,
+            metodo: "EFECTIVO",
+            fechaAbono: fecha.toISOString(),
+          },
+        })
+        .expect(201);
+
+      expect(captura.body.visita).toMatchObject({
+        rutaId: rutaWeb.id,
+        clienteId: cliente.id,
+        usuarioId: administrador.id,
+        fueraDeRuta: false,
+      });
+      expect(captura.body.abono).toMatchObject({
+        clienteId: cliente.id,
+        usuarioId: administrador.id,
+        saldoAnterior: 500,
+        saldoNuevo: 400,
+      });
+    } finally {
+      await escenario.limpiar();
+    }
+  });
+
   it("aísla clientes, expedientes, abonos y rutas entre cobradores", async () => {
     const escenario = new EscenarioPrueba();
     try {
@@ -395,12 +614,12 @@ describe.sequential("autorización por asignación de datos", () => {
         .get("/api/v1/clientes?limite=100")
         .set(cabeceras(cobradorA.token))
         .expect(200);
-      expect(clientes.body.datos.map((item: { id: string }) => item.id)).toContain(
-        clienteA.id,
-      );
-      expect(clientes.body.datos.map((item: { id: string }) => item.id)).not.toContain(
-        clienteB.id,
-      );
+      expect(
+        clientes.body.datos.map((item: { id: string }) => item.id),
+      ).toContain(clienteA.id);
+      expect(
+        clientes.body.datos.map((item: { id: string }) => item.id),
+      ).not.toContain(clienteB.id);
       await request(app)
         .get(`/api/v1/clientes/${clienteB.id}`)
         .set(cabeceras(cobradorA.token))
@@ -441,12 +660,41 @@ describe.sequential("autorización por asignación de datos", () => {
   });
 });
 
+describe.sequential("minimización de proveedores", () => {
+  it("Contabilidad recibe sólo id y nombre en el selector", async () => {
+    const escenario = new EscenarioPrueba();
+    try {
+      const contable = await escenario.crearUsuario(RolUsuario.CONTABLE);
+      const proveedor = await escenario.crearProveedor();
+      const respuesta = await request(app)
+        .get("/api/v1/proveedores/opciones")
+        .set(cabeceras(contable.token))
+        .expect(200);
+      const encontrado = respuesta.body.datos.find(
+        (actual: { id: string }) => actual.id === proveedor.id,
+      );
+      expect(encontrado).toEqual({
+        id: proveedor.id,
+        nombre: proveedor.nombre,
+      });
+      expect(JSON.stringify(encontrado)).not.toContain("5550009999");
+    } finally {
+      await escenario.limpiar();
+    }
+  });
+});
+
 const casosDenegados = [
   [RolUsuario.CONTABLE, "POST", "/api/v1/inventario/productos"],
   [RolUsuario.VENDEDOR, "GET", "/api/v1/reportes/resumen"],
   [RolUsuario.ALMACENISTA, "GET", "/api/v1/cortes"],
   [RolUsuario.COBRADOR, "POST", "/api/v1/compras"],
   [RolUsuario.VENDEDOR, "POST", "/api/v1/proveedores"],
+  [RolUsuario.VENDEDOR, "GET", "/api/v1/proveedores"],
+  [RolUsuario.COBRADOR, "GET", "/api/v1/proveedores"],
+  [RolUsuario.CONTABLE, "GET", "/api/v1/proveedores"],
+  [RolUsuario.VENDEDOR, "GET", "/api/v1/proveedores/opciones"],
+  [RolUsuario.COBRADOR, "GET", "/api/v1/proveedores/opciones"],
   [RolUsuario.ALMACENISTA, "POST", "/api/v1/devoluciones"],
   [RolUsuario.CONTABLE, "POST", "/api/v1/importaciones/excel"],
   [RolUsuario.COBRADOR, "GET", "/api/v1/auditoria"],

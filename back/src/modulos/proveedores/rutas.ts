@@ -17,15 +17,32 @@ const esquemaProveedor = z.object({
   activo: z.boolean().optional(),
 });
 
-rutasProveedores.get("/", async (req, res) => {
-  const incluirInactivos = req.query.incluirInactivos === "true";
-  const datos = await prisma.proveedor.findMany({
-    where: incluirInactivos ? {} : { activo: true },
-    include: { _count: { select: { compras: true, itemsPedido: true } } },
-    orderBy: { nombre: "asc" },
-  });
-  res.json({ datos });
-});
+rutasProveedores.get(
+  "/opciones",
+  permitirPermiso("PROVEEDORES_SELECCIONAR"),
+  async (_req, res) => {
+    const datos = await prisma.proveedor.findMany({
+      where: { activo: true },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: "asc" },
+    });
+    res.json({ datos });
+  },
+);
+
+rutasProveedores.get(
+  "/",
+  permitirPermiso("PROVEEDORES_CONSULTAR"),
+  async (req, res) => {
+    const incluirInactivos = req.query.incluirInactivos === "true";
+    const datos = await prisma.proveedor.findMany({
+      where: incluirInactivos ? {} : { activo: true },
+      include: { _count: { select: { compras: true, itemsPedido: true } } },
+      orderBy: { nombre: "asc" },
+    });
+    res.json({ datos });
+  },
+);
 
 rutasProveedores.post(
   "/",
@@ -33,7 +50,14 @@ rutasProveedores.post(
   async (req, res) => {
     const datos = esquemaProveedor.parse(req.body);
     const proveedor = await prisma.proveedor.create({ data: datos });
-    await auditar(req, "CREAR", "Proveedor", proveedor.id, undefined, proveedor);
+    await auditar(
+      req,
+      "CREAR",
+      "Proveedor",
+      proveedor.id,
+      undefined,
+      proveedor,
+    );
     res.status(201).json(proveedor);
   },
 );
@@ -50,7 +74,14 @@ rutasProveedores.patch(
       where: { id: antes.id },
       data: datos,
     });
-    await auditar(req, "ACTUALIZAR", "Proveedor", proveedor.id, antes, proveedor);
+    await auditar(
+      req,
+      "ACTUALIZAR",
+      "Proveedor",
+      proveedor.id,
+      antes,
+      proveedor,
+    );
     res.json(proveedor);
   },
 );

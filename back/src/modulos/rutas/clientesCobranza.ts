@@ -9,6 +9,7 @@ import {
   filtroClientesDelActor,
   type ActorDatos,
 } from "../../seguridad/alcanceDatos.js";
+import { obtenerResumenesCarteraClientes } from "../cobranza/resumenesCartera.js";
 
 export const incluirClienteCobranza = Prisma.validator<Prisma.ClienteInclude>()(
   {
@@ -102,7 +103,10 @@ export async function obtenerJornadaRuta(
 
   const visitas = await prisma.visitaCobranza.findMany({
     where: { rutaId, fechaProgramada: fecha },
-    include: { cliente: { include: incluirClienteCobranza } },
+    include: {
+      cliente: { include: incluirClienteCobranza },
+      abonos: { where: { anuladoEn: null }, select: { monto: true } },
+    },
   });
   const visitaPorCliente = new Map(
     visitas.map((visita) => [visita.clienteId, visita]),
@@ -124,6 +128,11 @@ export async function obtenerJornadaRuta(
         fueraDeRuta: true,
       }),
     );
+  const todos = [...clientesAsignados, ...extraordinarios];
+  const estadosCuenta = await obtenerResumenesCarteraClientes(
+    todos.map((cliente) => cliente.id),
+    fecha,
+  );
 
   return {
     id: ruta.id,
@@ -134,7 +143,10 @@ export async function obtenerJornadaRuta(
       ...localidad,
       orden,
     })),
-    clientes: [...clientesAsignados, ...extraordinarios],
+    clientes: todos.map((cliente) => ({
+      ...cliente,
+      estadoCuenta: estadosCuenta.get(cliente.id),
+    })),
   };
 }
 
@@ -154,10 +166,17 @@ export async function buscarClientesExtraordinarios(
     orderBy: { nombreCompleto: "asc" },
     take: 5_000,
   });
-  return clientes
+  const encontrados = clientes
     .map((cliente, indice) => presentarClienteDirectorio(cliente, indice + 1))
     .filter((cliente) => coincideCliente(cliente, buscar))
     .slice(0, 20);
+  const estadosCuenta = await obtenerResumenesCarteraClientes(
+    encontrados.map((cliente) => cliente.id),
+  );
+  return encontrados.map((cliente) => ({
+    ...cliente,
+    estadoCuenta: estadosCuenta.get(cliente.id),
+  }));
 }
 
 export async function obtenerDirectorioCobranza(actor: ActorDatos) {
@@ -178,7 +197,14 @@ export async function obtenerDirectorioCobranza(actor: ActorDatos) {
     orderBy: { nombreCompleto: "asc" },
     take: 2_000,
   });
-  return clientes.map((cliente, indice) =>
+  const directorio = clientes.map((cliente, indice) =>
     presentarClienteDirectorio(cliente, indice + 1),
   );
+  const estadosCuenta = await obtenerResumenesCarteraClientes(
+    directorio.map((cliente) => cliente.id),
+  );
+  return directorio.map((cliente) => ({
+    ...cliente,
+    estadoCuenta: estadosCuenta.get(cliente.id),
+  }));
 }

@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Camera, Plus, RotateCcw, Search } from "lucide-react";
 import { api, ErrorApi } from "@/lib/api";
+import { usarDatosVivos } from "@/lib/usarDatosVivos";
 import type { Pagina } from "@/lib/tipos";
 import {
   EncabezadoPagina,
@@ -119,6 +120,7 @@ export default function PaginaDevoluciones() {
       .catch((e) => establecerError(e.message));
   }, [pagina, buscar]);
   useEffect(cargar, [cargar]);
+  usarDatosVivos(cargar);
   useEffect(() => {
     if (!puedeAutorizar) return;
     api<{ datos: OperadorCaja[] }>("/cortes/operadores")
@@ -277,6 +279,7 @@ export default function PaginaDevoluciones() {
           puedeAutorizar ? (
             <button
               className="boton-primario"
+              data-capacitacion="devoluciones.nueva.abrir"
               onClick={() => establecerModal(true)}
             >
               <Plus size={17} /> Devolución
@@ -301,17 +304,24 @@ export default function PaginaDevoluciones() {
             />
             <input
               className="campo pl-10"
+              data-capacitacion="devoluciones.listado.buscar"
               value={buscar}
               onChange={(e) => establecerBuscar(e.target.value)}
               placeholder="Folio, venta o cliente"
             />
           </div>
-          <button className="boton-secundario">Buscar</button>
+          <button
+            className="boton-secundario"
+            data-capacitacion="devoluciones.listado.buscar-boton"
+          >
+            Buscar
+          </button>
         </form>
         <div className="divide-y">
           {respuesta?.datos.map((devolucion) => (
             <article
               key={devolucion.id}
+              data-capacitacion="devoluciones.listado.registro"
               className="flex flex-wrap items-center justify-between gap-4 p-5"
             >
               <div>
@@ -344,6 +354,7 @@ export default function PaginaDevoluciones() {
                   <a
                     href={`/api/devoluciones/${devolucion.id}/evidencia`}
                     target="_blank"
+                    data-capacitacion="devoluciones.evidencia"
                     className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600"
                   >
                     <Camera size={14} /> Evidencia
@@ -374,11 +385,12 @@ export default function PaginaDevoluciones() {
         titulo="Registrar devolución"
       >
         {!venta ? (
-          <div>
+          <div data-capacitacion="devoluciones.venta.seleccion">
             <label>
               <span className="etiqueta">Buscar venta confirmada</span>
               <input
                 className="campo"
+                data-capacitacion="devoluciones.venta.buscar"
                 value={buscarVenta}
                 onChange={(e) => establecerBuscarVenta(e.target.value)}
                 placeholder="Folio o cliente"
@@ -389,6 +401,7 @@ export default function PaginaDevoluciones() {
                 <button
                   key={item.id}
                   type="button"
+                  data-capacitacion="devoluciones.venta.elegir"
                   className="flex w-full justify-between p-3 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
                   onClick={() => void elegirVenta(item.id)}
                 >
@@ -404,7 +417,11 @@ export default function PaginaDevoluciones() {
             </div>
           </div>
         ) : (
-          <form onSubmit={registrar} className="space-y-5">
+          <form
+            onSubmit={registrar}
+            className="space-y-5"
+            data-capacitacion="devoluciones.formulario"
+          >
             <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">
               <strong>
                 {venta.folio} ·{" "}
@@ -415,6 +432,7 @@ export default function PaginaDevoluciones() {
             <div className="flex gap-2">
               <button
                 type="button"
+                data-capacitacion="devoluciones.tipo.parcial"
                 className={
                   tipo === "PARCIAL" ? "boton-primario" : "boton-secundario"
                 }
@@ -424,6 +442,7 @@ export default function PaginaDevoluciones() {
               </button>
               <button
                 type="button"
+                data-capacitacion="devoluciones.tipo.total"
                 className={
                   tipo === "TOTAL" ? "boton-primario" : "boton-secundario"
                 }
@@ -433,6 +452,7 @@ export default function PaginaDevoluciones() {
               </button>
               <button
                 type="button"
+                data-capacitacion="devoluciones.tipo.cambio"
                 className={
                   tipo === "CAMBIO" ? "boton-primario" : "boton-secundario"
                 }
@@ -462,6 +482,7 @@ export default function PaginaDevoluciones() {
                       <span className="etiqueta">Cantidad</span>
                       <input
                         className="campo"
+                        data-capacitacion="devoluciones.cantidad"
                         type="number"
                         min="0"
                         max={maximo}
@@ -479,7 +500,10 @@ export default function PaginaDevoluciones() {
               })}
             </div>
             {tipo === "CAMBIO" && (
-              <div className="rounded-xl border border-blue-200 p-4 dark:border-blue-900">
+              <div
+                className="rounded-xl border border-blue-200 p-4 dark:border-blue-900"
+                data-capacitacion="devoluciones.reemplazo"
+              >
                 <h3 className="mb-3 font-semibold">Pedido de reemplazo</h3>
                 <SelectorProductoRemoto
                   valor={reemplazo}
@@ -490,6 +514,7 @@ export default function PaginaDevoluciones() {
                   <span className="etiqueta">Cantidad del reemplazo</span>
                   <input
                     className="campo"
+                    data-capacitacion="devoluciones.reemplazo.cantidad"
                     type="number"
                     min="1"
                     value={cantidadReemplazo}
@@ -505,7 +530,10 @@ export default function PaginaDevoluciones() {
                 </p>
               </div>
             )}
-            <div className="grid gap-3 rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-950 sm:grid-cols-3">
+            <div
+              className="grid gap-3 rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-950 sm:grid-cols-3"
+              data-capacitacion="devoluciones.resumen"
+            >
               <div>
                 <span className="text-xs text-slate-500">Total devuelto</span>
                 <strong className="block">{dinero.format(total)}</strong>
@@ -527,7 +555,12 @@ export default function PaginaDevoluciones() {
                   <span className="etiqueta">
                     Método del reembolso entregado
                   </span>
-                  <select name="metodoReembolso" className="campo" required>
+                  <select
+                    name="metodoReembolso"
+                    className="campo"
+                    data-capacitacion="devoluciones.reembolso.metodo"
+                    required
+                  >
                     <option value="EFECTIVO">Efectivo</option>
                     <option value="TRANSFERENCIA">Transferencia</option>
                     <option value="TARJETA">Tarjeta</option>
@@ -538,6 +571,7 @@ export default function PaginaDevoluciones() {
                   <span className="etiqueta">Caja que entrega el dinero</span>
                   <select
                     className="campo"
+                    data-capacitacion="devoluciones.reembolso.operador"
                     value={operadorId}
                     onChange={(e) => establecerOperadorId(e.target.value)}
                     required
@@ -557,6 +591,7 @@ export default function PaginaDevoluciones() {
               <textarea
                 name="motivo"
                 className="campo min-h-24 py-3"
+                data-capacitacion="devoluciones.motivo"
                 minLength={10}
                 required
               />
@@ -568,6 +603,7 @@ export default function PaginaDevoluciones() {
               <input
                 name="evidencia"
                 className="campo py-2"
+                data-capacitacion="devoluciones.foto"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 capture="environment"
@@ -578,6 +614,7 @@ export default function PaginaDevoluciones() {
               <button
                 type="button"
                 className="boton-secundario"
+                data-capacitacion="devoluciones.venta.cambiar"
                 onClick={() => {
                   establecerVenta(null);
                   establecerCantidades({});
@@ -587,6 +624,7 @@ export default function PaginaDevoluciones() {
               </button>
               <button
                 className="boton-primario"
+                data-capacitacion="devoluciones.guardar"
                 disabled={
                   total <= 0 ||
                   (reembolso > 0 && !operadorId) ||

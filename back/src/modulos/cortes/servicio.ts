@@ -36,6 +36,7 @@ async function calcularCorteConCliente(
   fecha: string,
 ) {
   const { desde, hasta } = rangoDiaMexico(fecha);
+  const diaOperativo = fechaOperativa(fecha);
   const [operador, abonos, ventas, entregas, devoluciones, existente] =
     await Promise.all([
       cliente.usuario.findFirst({
@@ -50,7 +51,7 @@ async function calcularCorteConCliente(
         where: {
           usuarioId: usuarioOperadorId,
           anuladoEn: null,
-          fechaAbono: { gte: desde, lte: hasta },
+          fechaOperativa: diaOperativo,
         },
         select: { monto: true, metodo: true },
       }),
@@ -61,14 +62,14 @@ async function calcularCorteConCliente(
           // Una venta cancelada sigue representando dinero recibido; su
           // devolución se resta por separado para que el corte conserve ambos movimientos.
           estado: { in: ["CONFIRMADA", "CANCELADA"] },
-          fechaVenta: { gte: desde, lte: hasta },
+          fechaOperativa: diaOperativo,
         },
         select: { total: true, metodoPago: true },
       }),
       cliente.pedidoVenta.count({
         where: {
           entregadoPorId: usuarioOperadorId,
-          entregadoEn: { gte: desde, lte: hasta },
+          fechaOperativaEntrega: diaOperativo,
         },
       }),
       cliente.devolucion.findMany({
@@ -102,19 +103,19 @@ async function calcularCorteConCliente(
     TARJETA: 0,
     OTRO: 0,
   };
-  abonos.forEach((abono) =>
-    acumular(importes, abono.metodo, Number(abono.monto)),
-  );
-  ventas.forEach((venta) =>
-    acumular(importes, venta.metodoPago, Number(venta.total)),
-  );
-  devoluciones.forEach((devolucion) =>
+  abonos.forEach((abono) => {
+    acumular(importes, abono.metodo, Number(abono.monto));
+  });
+  ventas.forEach((venta) => {
+    acumular(importes, venta.metodoPago, Number(venta.total));
+  });
+  devoluciones.forEach((devolucion) => {
     acumular(
       importes,
       devolucion.metodoReembolso,
       -Number(devolucion.montoReembolsado),
-    ),
-  );
+    );
+  });
   for (const metodo of Object.values(MetodoPago))
     importes[metodo] = Number(importes[metodo].toFixed(2));
 

@@ -20,6 +20,10 @@ const evidenciaValida = {
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
 };
 
+function primerVencimientoFuturo() {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000);
+}
+
 beforeAll(asegurarBaseDePruebas);
 afterAll(() => prisma.$disconnect());
 
@@ -78,7 +82,7 @@ describe.sequential("ventas e inventario bajo condiciones adversas", () => {
           plan: {
             periodicidad: "SEMANAL",
             montoCuota: 100,
-            primerVencimiento: new Date(),
+            primerVencimiento: primerVencimientoFuturo(),
           },
         })
         .expect(422);
@@ -120,7 +124,7 @@ describe.sequential("ventas e inventario bajo condiciones adversas", () => {
           plan: {
             periodicidad: "SEMANAL",
             montoCuota: 100,
-            primerVencimiento: new Date(),
+            primerVencimiento: primerVencimientoFuturo(),
           },
         })
         .expect(422);
@@ -155,7 +159,7 @@ describe.sequential("ventas e inventario bajo condiciones adversas", () => {
           plan: {
             periodicidad: "SEMANAL",
             montoCuota: 100,
-            primerVencimiento: new Date(),
+            primerVencimiento: primerVencimientoFuturo(),
           },
         })
         .expect(422);
@@ -402,7 +406,7 @@ describe.sequential("abonos y saldo bajo condiciones adversas", () => {
           plan: {
             periodicidad: "SEMANAL",
             montoCuota: 100,
-            primerVencimiento: new Date(),
+            primerVencimiento: primerVencimientoFuturo(),
           },
         })
         .expect(201);
@@ -850,7 +854,7 @@ describe.sequential("devoluciones y cambios adversariales", () => {
               plan: {
                 periodicidad: "SEMANAL",
                 montoCuota: 100,
-                primerVencimiento: new Date(),
+                primerVencimiento: primerVencimientoFuturo(),
               },
             })
             .expect(201)
@@ -932,7 +936,7 @@ describe.sequential("devoluciones y cambios adversariales", () => {
           plan: {
             periodicidad: "SEMANAL",
             montoCuota: 100,
-            primerVencimiento: new Date(),
+            primerVencimiento: primerVencimientoFuturo(),
           },
         })
         .expect(201);
@@ -1090,7 +1094,7 @@ describe.sequential("devoluciones y cambios adversariales", () => {
           plan: {
             periodicidad: "SEMANAL",
             montoCuota: 100,
-            primerVencimiento: new Date(),
+            primerVencimiento: primerVencimientoFuturo(),
           },
         })
         .expect(201);
@@ -1145,7 +1149,15 @@ describe.sequential("compras, proveedores y cortes adversariales", () => {
       await request(app)
         .patch(`/api/v1/pedidos/${pedido.body.id}/estado`)
         .set(cabeceras(admin.token))
-        .send({ estado: "PEDIDO_PROVEEDOR" })
+        .send({
+          estado: "PEDIDO_PROVEEDOR",
+          proveedores: [
+            {
+              itemPedidoId: pedido.body.items[0].id,
+              proveedorId: proveedor.id,
+            },
+          ],
+        })
         .expect(200);
       const respuesta = await request(app)
         .post("/api/v1/compras")

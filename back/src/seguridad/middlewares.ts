@@ -3,8 +3,13 @@ import type { RolUsuario } from "@prisma/client";
 import { ErrorAplicacion } from "../compartido/errores.js";
 import { validarTokenAcceso } from "./tokens.js";
 import { rolTienePermiso, type Permiso } from "./permisos.js";
+import { prisma } from "../infraestructura/prisma.js";
 
-export function autenticar(req: Request, _res: Response, next: NextFunction) {
+export async function autenticar(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) {
   const encabezado = req.headers.authorization;
   const token = encabezado?.startsWith("Bearer ")
     ? encabezado.slice(7)
@@ -12,7 +17,7 @@ export function autenticar(req: Request, _res: Response, next: NextFunction) {
   if (!token)
     throw new ErrorAplicacion("NO_AUTENTICADO", "Debe iniciar sesion.", 401);
 
-  let identidad;
+  let identidad: ReturnType<typeof validarTokenAcceso>;
   try {
     identidad = validarTokenAcceso(token);
   } catch {
@@ -22,20 +27,30 @@ export function autenticar(req: Request, _res: Response, next: NextFunction) {
       401,
     );
   }
-  const rutaPermitida =
-    req.originalUrl.includes("/auth/sesion") ||
-    req.originalUrl.includes("/auth/cambiar-contrasena");
-  if (identidad.debeCambiarContrasena && !rutaPermitida) {
+  const usuarioActual = await prisma.usuario.findUnique({
+    where: { id: identidad.sub },
+    select: {
+      id: true,
+      correo: true,
+      rol: true,
+      activo: true,
+      tokenVersion: true,
+    },
+  });
+  if (
+    !usuarioActual?.activo ||
+    identidad.tokenVersion !== usuarioActual.tokenVersion ||
+    identidad.rol !== usuarioActual.rol
+  )
     throw new ErrorAplicacion(
-      "CAMBIO_CONTRASENA_REQUERIDO",
-      "Debe cambiar la contrasena temporal antes de operar.",
-      428,
+      "SESION_REVOCADA",
+      "La sesión fue revocada por un cambio de seguridad. Inicie sesión nuevamente.",
+      401,
     );
-  }
   req.usuario = {
-    id: identidad.sub,
-    correo: identidad.correo,
-    rol: identidad.rol,
+    id: usuarioActual.id,
+    correo: usuarioActual.correo,
+    rol: usuarioActual.rol,
   };
   next();
 }

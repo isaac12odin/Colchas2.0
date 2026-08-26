@@ -1,15 +1,22 @@
 import type { Jornada, ClienteJornada } from "../../tipos";
 import type { OperacionLocal } from "../../almacenLocal";
+import { redondearMoneda } from "../../utilidades/dinero";
 
 export type ResultadoVisita = "PAGO" | "NO_PAGO" | "AUSENTE";
 export type MetodoAbono = "EFECTIVO" | "TRANSFERENCIA";
 
 export function cuotaEsperada(cliente: ClienteJornada) {
+  if (cliente.estadoCuenta) return cliente.estadoCuenta.cobrarHoy;
   const cuota = cliente.ventas?.flatMap(
     (venta) => venta.planPago?.cuotas ?? [],
   )[0];
-  return cuota
-    ? Math.max(0, Number(cuota.monto) - Number(cuota.montoPagado))
+  if (!cuota) return 0;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const fecha = cuota.fechaVence.slice(0, 10);
+  return fecha <= hoy
+    ? redondearMoneda(
+        Math.max(0, Number(cuota.monto) - Number(cuota.montoPagado)),
+      )
     : 0;
 }
 
@@ -88,7 +95,9 @@ export function aplicarVisitaLocal(
               ? {
                   ...cliente.saldo,
                   saldoActual: String(
-                    Math.max(0, Number(cliente.saldo.saldoActual) - monto),
+                    redondearMoneda(
+                      Math.max(0, Number(cliente.saldo.saldoActual) - monto),
+                    ),
                   ),
                 }
               : cliente.saldo,

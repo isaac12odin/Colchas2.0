@@ -15,6 +15,7 @@ describe("rutas flexibles", () => {
       localidadIds: ["11111111-1111-4111-8111-111111111111"],
     };
     expect(esquemaRuta.parse(base).localidadIds).toHaveLength(1);
+    expect(esquemaRuta.parse(base).incluirClientesLocalidades).toBe(false);
     expect(
       esquemaRuta.parse({
         ...base,
@@ -24,6 +25,18 @@ describe("rutas flexibles", () => {
         ],
       }).localidadIds,
     ).toHaveLength(2);
+  });
+
+  it("permite operar desde web sin asignar un cobrador móvil", () => {
+    const rutaAdministrativa = esquemaRuta.parse({
+      nombre: "Ruta web centro",
+      diaSemana: "MARTES",
+      cobradorId: null,
+      localidadIds: ["11111111-1111-4111-8111-111111111111"],
+      clienteIds: ["22222222-2222-4222-8222-222222222222"],
+    });
+
+    expect(rutaAdministrativa.cobradorId).toBeNull();
   });
 
   it("combina clientes de localidades sin duplicarlos", () => {

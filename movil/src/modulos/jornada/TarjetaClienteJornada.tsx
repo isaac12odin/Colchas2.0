@@ -80,7 +80,15 @@ function Insignias({
     <View style={estilos.insignias}>
       {esperada > 0 && (
         <Text style={estilos.cuota}>
-          {es ? "Hoy" : "Today"} {dinero.format(esperada)}
+          {cliente.estadoCuenta?.vencido
+            ? `${es ? "Vencido" : "Overdue"} ${dinero.format(cliente.estadoCuenta.vencido)}`
+            : `${es ? "Hoy" : "Today"} ${dinero.format(esperada)}`}
+        </Text>
+      )}
+      {esperada === 0 && cliente.estadoCuenta?.proximoVencimiento && (
+        <Text style={estilos.proximo}>
+          {es ? "Próximo" : "Next"} {cliente.estadoCuenta.proximoVencimiento.slice(5)} ·{" "}
+          {dinero.format(cliente.estadoCuenta.abonoPeriodico)}
         </Text>
       )}
       {cliente.pedidos.length > 0 && (
@@ -136,6 +144,7 @@ const estilos = StyleSheet.create({
   direccion: { color: colores.gris, fontSize: 11, marginTop: 3 },
   insignias: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 7 },
   cuota: { color: "#0e6027", backgroundColor: "#defbe6", ...insignia },
+  proximo: { color: "#0043ce", backgroundColor: "#edf5ff", ...insignia },
   entrega: { color: "#6929c4", backgroundColor: "#f6f2ff", ...insignia },
   riesgo: { color: "#8a3b12", backgroundColor: "#fff2e8", ...insignia },
   extraordinaria: { color: "#0043ce", backgroundColor: "#edf5ff", ...insignia },

@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Image,
   Platform,
   Pressable,
   SafeAreaView,
@@ -59,13 +60,15 @@ export default function IniciarSesion() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={estilos.contenido}
       >
-        <View style={estilos.marca}>
-          <Ionicons name="layers" size={25} color="white" />
-        </View>
-        <Text style={[estilos.titulo, { color: tema.texto }]}>Nexo</Text>
+        <Image
+          source={require("../assets/vektra-logo-compact.png")}
+          resizeMode="contain"
+          style={estilos.logo}
+          accessibilityLabel="Vektra · Precision in Motion"
+        />
         <Text style={estilos.subtitulo}>
           {es
-            ? "Cobranza e inventario, aun sin señal."
+            ? "PRECISION IN MOTION · Cobranza e inventario, aun sin señal."
             : "Collections and inventory, even offline."}
         </Text>
         <View
@@ -149,15 +152,7 @@ const estilos = StyleSheet.create({
   pagina: { flex: 1 },
   contenido: { flex: 1, justifyContent: "center", padding: 24 },
   centro: { flex: 1, alignItems: "center", justifyContent: "center" },
-  marca: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: colores.azul,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  titulo: { fontSize: 34, fontWeight: "700", marginTop: 16 },
+  logo: { width: 235, height: 150, alignSelf: "center" },
   subtitulo: {
     fontSize: 16,
     color: colores.gris,

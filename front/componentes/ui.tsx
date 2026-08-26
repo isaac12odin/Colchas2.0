@@ -1,7 +1,7 @@
 "use client";
 
-import { ReactNode } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ReactNode } from "react";
 import { usarAplicacion } from "./proveedores";
 
 export function EncabezadoPagina({
@@ -71,25 +71,31 @@ export function Modal({
   abierto,
   cerrar,
   titulo,
+  ancho = "normal",
   children,
 }: {
   abierto: boolean;
   cerrar: () => void;
   titulo: string;
+  ancho?: "normal" | "amplio" | "pantalla";
   children: ReactNode;
 }) {
   if (!abierto) return null;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-end bg-black/45 p-0 sm:place-items-center sm:p-5">
+    <div
+      className="fixed inset-0 z-50 grid place-items-end bg-black/45 p-0 sm:place-items-center sm:p-5"
+      data-modal-operativo
+    >
       <button
         className="absolute inset-0"
         onClick={cerrar}
         aria-label="Cerrar"
+        data-modal-fondo
       />
       <div
         role="dialog"
         aria-modal="true"
-        className="relative max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-2xl sm:rounded-2xl sm:p-7"
+        className={`relative max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 sm:rounded-2xl sm:p-7 ${ancho === "pantalla" ? "sm:max-w-7xl" : ancho === "amplio" ? "sm:max-w-4xl" : "sm:max-w-2xl"}`}
       >
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-semibold">{titulo}</h2>

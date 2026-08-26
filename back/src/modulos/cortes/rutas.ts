@@ -6,11 +6,16 @@ import { autenticar, permitirPermiso } from "../../seguridad/middlewares.js";
 import { crearPagina, esquemaPaginacion } from "../../compartido/paginacion.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
 import { calcularCorte, cerrarCorte } from "./servicio.js";
+import { dineroNoNegativo } from "../../compartido/dinero.js";
 
 export const rutasCortes = Router();
 rutasCortes.use(autenticar, permitirPermiso("CORTES_CONSULTAR"));
 
-function protegerOperador(rol: RolUsuario, usuarioId: string, solicitado: string) {
+function protegerOperador(
+  rol: RolUsuario,
+  usuarioId: string,
+  solicitado: string,
+) {
   if (rol === RolUsuario.COBRADOR && usuarioId !== solicitado)
     throw new ErrorAplicacion(
       "OPERADOR_PROHIBIDO",
@@ -24,7 +29,10 @@ rutasCortes.get("/operadores", async (req, res) => {
     where:
       req.usuario!.rol === RolUsuario.COBRADOR
         ? { id: req.usuario!.id }
-        : { activo: true, rol: { in: [RolUsuario.COBRADOR, RolUsuario.ADMINISTRADOR] } },
+        : {
+            activo: true,
+            rol: { in: [RolUsuario.COBRADOR, RolUsuario.ADMINISTRADOR] },
+          },
     select: { id: true, nombre: true, rol: true },
     orderBy: { nombre: "asc" },
   });
@@ -66,10 +74,10 @@ rutasCortes.post("/", permitirPermiso("CORTES_CERRAR"), async (req, res) => {
     .object({
       usuarioOperadorId: z.string().uuid(),
       fecha: z.string(),
-      efectivo: z.coerce.number().min(0),
-      transferencia: z.coerce.number().min(0),
-      tarjeta: z.coerce.number().min(0),
-      otro: z.coerce.number().min(0),
+      efectivo: dineroNoNegativo,
+      transferencia: dineroNoNegativo,
+      tarjeta: dineroNoNegativo,
+      otro: dineroNoNegativo,
       firmaNombre: z.string().trim().min(3).max(180),
       confirmacion: z.string(),
       notas: z.string().trim().max(1000).optional(),

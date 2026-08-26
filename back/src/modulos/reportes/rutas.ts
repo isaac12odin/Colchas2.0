@@ -37,7 +37,10 @@ rutasReportes.get("/resumen", async (req, res) => {
     .enum(["MES", "BIMESTRE", "SEMESTRE", "ANIO"])
     .default("MES")
     .parse(req.query.periodo);
-  const fecha = z.coerce.date().default(new Date()).parse(req.query.fecha);
+  const fecha = z.coerce
+    .date()
+    .default(() => new Date())
+    .parse(req.query.fecha);
   const { desde, hasta } = rangoPeriodo(periodo, fecha);
   const [
     ventas,
@@ -146,7 +149,7 @@ rutasReportes.get("/ventas.xlsx", async (req, res) => {
     orderBy: { fechaVenta: "asc" },
   });
   const libro = new ExcelJS.Workbook();
-  libro.creator = "Nexo Cobranza";
+  libro.creator = "Vektra";
   const hoja = libro.addWorksheet("Ventas");
   hoja.columns = [
     { header: "Folio", key: "folio", width: 20 },
@@ -195,9 +198,9 @@ rutasReportes.get("/ventas.xlsx", async (req, res) => {
   };
   hoja.views = [{ state: "frozen", ySplit: 1 }];
   hoja.autoFilter = `A1:I${Math.max(1, hoja.rowCount)}`;
-  ["E", "F", "G", "H", "I"].forEach(
-    (columna) => (hoja.getColumn(columna).numFmt = "$#,##0.00"),
-  );
+  ["E", "F", "G", "H", "I"].forEach((columna) => {
+    hoja.getColumn(columna).numFmt = "$#,##0.00";
+  });
   const buffer = await libro.xlsx.writeBuffer();
   res.setHeader(
     "Content-Type",
@@ -230,7 +233,7 @@ rutasReportes.get("/clientes.xlsx", async (_req, res) => {
     { header: "Vencido", key: "vencido", width: 15 },
     { header: "Riesgo", key: "riesgo", width: 14 },
   ];
-  clientes.forEach((cliente) =>
+  clientes.forEach((cliente) => {
     hoja.addRow({
       tarjeta: cliente.numeroTarjeta ?? "",
       cliente: cliente.nombreCompleto,
@@ -239,8 +242,8 @@ rutasReportes.get("/clientes.xlsx", async (_req, res) => {
       saldo: Number(cliente.saldo?.saldoActual ?? 0),
       vencido: Number(cliente.saldo?.vencidoActual ?? 0),
       riesgo: cliente.evaluacionesRiesgo[0]?.nivel ?? "SIN CALCULAR",
-    }),
-  );
+    });
+  });
   const filaTotal = hoja.rowCount + 2;
   hoja.getCell(`D${filaTotal}`).value = "TOTALES";
   hoja.getCell(`E${filaTotal}`).value = {
@@ -305,11 +308,11 @@ rutasReportes.get("/pedidos-pendientes.pdf", async (_req, res) => {
         continued: false,
       });
     documento.fontSize(9).fillColor("#525252").text(`Estado: ${pedido.estado}`);
-    pedido.items.forEach((item) =>
+    pedido.items.forEach((item) => {
       documento
         .fillColor("#161616")
-        .text(`  ${item.cantidad} × ${item.descripcion}`),
-    );
+        .text(`  ${item.cantidad} × ${item.descripcion}`);
+    });
     documento.moveDown(0.7);
   }
   if (pedidos.length === 0)

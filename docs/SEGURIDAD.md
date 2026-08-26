@@ -3,15 +3,15 @@
 ## Implementado
 
 - Contraseñas Argon2id con 64 MiB de memoria y tres iteraciones.
-- JWT de acceso de 15 minutos; refresh token rotatorio, registrado como hash y revocable.
+- JWT de acceso de 15 minutos; refresh token rotatorio, registrado como hash y revocable. El consumo y creación sucesora ocurren en una transacción y los clientes comparten una sola renovación en vuelo.
 - En web, tokens en cookies `HttpOnly`, `SameSite=Lax` y `Secure` en producción.
 - Protección CSRF de doble envío para mutaciones web.
 - Bearer tokens guardados en SecureStore para la app móvil.
-- Teléfono y dirección cifrados en PostgreSQL con AES-256-GCM; hash separado para búsqueda exacta de teléfono.
+- Teléfono y dirección cifrados en PostgreSQL con AES-256-GCM; la búsqueda exacta de teléfono usa HMAC-SHA-256 versionado con una clave dedicada.
 - Jornadas y cola móvil en SQLCipher; clave en SecureStore ligada al dispositivo.
 - Autorización por fila: toda ruta nueva exige cobrador; una ruta heredada sin asignación queda inaccesible para Cobranza. El rol `COBRADOR` sólo consulta u opera rutas, clientas, expedientes, ventas, pedidos y abonos dentro de su cartera.
 - Directorio extraordinario limitado a clientas activas que pertenecen a otra ruta vigente del mismo cobrador. Incluye los datos necesarios para encontrarlas en campo y permanece cifrado en SQLCipher, aislado por usuario.
-- Bitácora móvil con secuencia y HMAC-SHA-512 por operación y lote. El servidor exige las huellas, reconstruye la cadena y conserva un ancla independiente por usuario/dispositivo.
+- Bitácora móvil con secuencia y HMAC-SHA-512 por operación y lote. El servidor exige las huellas, reconstruye la cadena y conserva un ancla independiente por usuario/dispositivo. Los rechazos de negocio quedan como recibos terminales sin bloquear la cola.
 - Datos offline aislados por usuario cuando un teléfono es compartido.
 - Helmet, CORS de origen explícito, rate limiting de acceso, límite de cuerpo y redacción de secretos en logs.
 - Roles comprobados en la API; ocultar un menú nunca sustituye la autorización del servidor.
@@ -36,7 +36,7 @@ No se agrega un cifrado casero entre JavaScript y la API. En producción se exig
 ## Antes de producción
 
 1. Reemplace los secretos de `.env`; no reutilice los valores de ejemplo. El seed exige credenciales administrativas explícitas y aleatorias y no tiene fallback.
-2. Use un administrador de secretos y una clave de cifrado con rotación documentada.
+2. Use un administrador de secretos y claves independientes `FIELD_ENCRYPTION_KEY`/`SEARCH_HMAC_KEY` con rotación documentada.
 3. Obligue el cambio de la contraseña inicial y habilite el MFA ya incluido desde **Mi perfil**.
 4. Termine TLS en un proxy, active HSTS y no publique PostgreSQL.
 5. Limite la red de PostgreSQL a la API, use un usuario sin privilegios de superusuario y copias cifradas.
@@ -45,9 +45,19 @@ No se agrega un cifrado casero entre JavaScript y la API. En producción se exig
 8. Ejecute análisis SAST, dependencias, pentest y restauración de respaldos antes de manejar datos reales.
 9. Defina retención, avisos de privacidad y permisos conforme a la legislación aplicable.
 
+## Modelo de amenazas resumido
+
+**Activos:** dinero/saldos, inventario, PII, credenciales, evidencia, libros/auditoría y continuidad. **Límites de confianza:** navegador, teléfono/SQLCipher, Internet/TLS, Nginx, API, PostgreSQL y almacenamiento de backups.
+
+Se contemplan robo de credenciales, CSRF, escalamiento de rol, acceso a cartera ajena, precios manipulados, carreras financieras, repetición/reordenamiento offline, extracción de una copia de DB, teléfono perdido y restauración destructiva. Los controles principales son MFA/Argon2/sesiones rotatorias, autorización por fila, precio/fecha/dinero autoritativos, candados/compensaciones, HMAC/recibos, AES-GCM/HMAC de búsqueda, proxy TLS y restauración con guardarraíl.
+
+Riesgo aceptado: un teléfono completamente comprometido que conserva token y clave HMAC puede fabricar operaciones futuras dentro del permiso del cobrador; no puede reescribir historia ya anclada. Se contiene con MDM, revocación, límites, corte y conciliación. Rate limiting es por instancia hasta adoptar un almacén distribuido. La disponibilidad depende de un único PostgreSQL/host mientras no se implemente alta disponibilidad.
+
+La respuesta a dispositivo, DB o filtración vive en `docs/runbooks/`; privacidad y retención en `docs/PRIVACIDAD_DATOS.md`. Cambiar rol, desactivar usuario o restablecer contraseña revoca refresh tokens; el access token puede vivir como máximo 15 minutos, riesgo residual que exige contención adicional en incidentes críticos.
+
 ## Estado de dependencias
 
-Al 19 de agosto de 2026, la auditoría pasó de 16 hallazgos (8 altos y 8 moderados) a 8 altos y 0 moderados/críticos. `uuid` quedó fijado en la versión corregida tanto para ExcelJS como para Xcode. Los ocho avisos restantes pertenecen al conjunto oficial de compilación Expo/React Native (Metro/CLI y `image-size`); el registro todavía no publica una versión corregida compatible con Expo SDK 57 y la propuesta automática de npm es un downgrade mayor a Expo 53, por lo que no se aplica a ciegas.
+El resultado vigente no se fija aquí porque cambia con cada instalación. CI debe adjuntar `npm audit --omit=dev` para backend/monorepo, Expo Doctor, análisis APK/AAB y escaneo de imagen. Las excepciones transitivas de Expo/Metro se registran en deuda técnica con versión, exposición y fecha de revisión; nunca se aplica automáticamente un downgrade mayor para silenciar el reporte.
 
 El Dockerfile del backend hace una instalación de producción exclusiva de `@nexo/back` y la etapa final no copia el `node_modules` general de compilación. Una instalación aislada de sus 230 paquetes runtime reportó 0 vulnerabilidades y no contenía Expo, Metro ni Next. Antes de liberar se debe repetir `npm audit --omit=dev`, Expo Doctor, el análisis del APK/AAB y un escaneo de la imagen construida; los avisos móviles siguen siendo deuda de proveedor que debe revisarse cuando Expo publique una actualización compatible.
 

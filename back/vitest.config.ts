@@ -13,6 +13,7 @@ export default defineConfig({
       JWT_ACCESS_SECRET: "access-de-prueba-con-mas-de-32-caracteres-seguros",
       JWT_REFRESH_SECRET: "refresh-de-prueba-con-mas-de-32-caracteres-seguros",
       FIELD_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      SEARCH_HMAC_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
     },
   },
 });

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { DiaSemana, Prisma } from "@prisma/client";
+import { DiaSemana, Prisma, RolUsuario } from "@prisma/client";
 import { z } from "zod";
 import ExcelJS from "exceljs";
 import { prisma } from "../../infraestructura/prisma.js";
@@ -7,15 +7,44 @@ import { autenticar, permitirPermiso } from "../../seguridad/middlewares.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
 import {
   cifrarCampo,
+  descifrarCampo,
   hashBusqueda,
   normalizarTelefono,
+  VERSION_HASH_BUSQUEDA,
 } from "../../compartido/cifrado.js";
+import { dineroNoNegativo, dineroPositivo } from "../../compartido/dinero.js";
 
 export const rutasImportaciones = Router();
-rutasImportaciones.use(
-  autenticar,
-  permitirPermiso("IMPORTACIONES_EJECUTAR"),
-);
+rutasImportaciones.use(autenticar, permitirPermiso("IMPORTACIONES_EJECUTAR"));
+
+async function buscarClientePorTelefono(
+  tx: Prisma.TransactionClient,
+  telefono: string,
+) {
+  const actual = await tx.cliente.findFirst({
+    where: {
+      telefonoHash: hashBusqueda(telefono),
+      telefonoHashVersion: VERSION_HASH_BUSQUEDA,
+    },
+    include: { saldo: true },
+  });
+  if (actual) return actual;
+  const legados = await tx.cliente.findMany({
+    where: {
+      telefonoHashVersion: 0,
+      telefonoUltimos4: telefono.slice(-4),
+    },
+    include: { saldo: true },
+    take: 100,
+  });
+  return (
+    legados.find(
+      (cliente) =>
+        normalizarTelefono(descifrarCampo(cliente.telefonoCifrado)) ===
+        telefono,
+    ) ?? null
+  );
+}
 
 function texto(valor: ExcelJS.CellValue) {
   if (valor === null || valor === undefined) return "";
@@ -37,6 +66,25 @@ function numero(valor: ExcelJS.CellValue, campo: string, fila: number) {
   return convertido;
 }
 
+function numeroMonetario(
+  valor: ExcelJS.CellValue,
+  campo: string,
+  fila: number,
+  positivo = false,
+) {
+  const convertido = Number(texto(valor) || 0);
+  const validado = (positivo ? dineroPositivo : dineroNoNegativo).safeParse(
+    convertido,
+  );
+  if (!validado.success)
+    throw new ErrorAplicacion(
+      "IMPORTACION_INVALIDA",
+      `${campo} debe ser finito y usar máximo dos decimales en la fila ${fila}.`,
+      422,
+    );
+  return validado.data;
+}
+
 function filas(hoja?: ExcelJS.Worksheet) {
   if (!hoja) return [];
   const resultado: ExcelJS.Row[] = [];
@@ -51,6 +99,24 @@ function filas(hoja?: ExcelJS.Worksheet) {
       resultado.push(fila);
   });
   return resultado;
+}
+
+async function resolverCategoriaImportada(
+  tx: Prisma.TransactionClient,
+  nombreRecibido: string,
+) {
+  const nombre = nombreRecibido || "Sin clasificar";
+  const existente = await tx.categoriaProducto.findFirst({
+    where: { nombre: { equals: nombre, mode: "insensitive" } },
+  });
+  if (existente)
+    return existente.activo
+      ? existente
+      : tx.categoriaProducto.update({
+          where: { id: existente.id },
+          data: { activo: true },
+        });
+  return tx.categoriaProducto.create({ data: { nombre, orden: 100 } });
 }
 
 function diaSemana(valor: string) {
@@ -77,12 +143,14 @@ function agregarEncabezado(hoja: ExcelJS.Worksheet, columnas: string[]) {
     fgColor: { argb: "FF0F62FE" },
   };
   hoja.views = [{ state: "frozen", ySplit: 1 }];
-  columnas.forEach((_, indice) => (hoja.getColumn(indice + 1).width = 22));
+  columnas.forEach((_, indice) => {
+    hoja.getColumn(indice + 1).width = 22;
+  });
 }
 
 rutasImportaciones.get("/plantilla.xlsx", async (_req, res) => {
   const libro = new ExcelJS.Workbook();
-  libro.creator = "Nexo Cobranza";
+  libro.creator = "Vektra";
   agregarEncabezado(libro.addWorksheet("Localidades"), ["Nombre", "Estado"]);
   agregarEncabezado(libro.addWorksheet("Productos"), [
     "SKU",
@@ -110,6 +178,7 @@ rutasImportaciones.get("/plantilla.xlsx", async (_req, res) => {
     "Nombre",
     "Dia",
     "LocalidadesSeparadasPorPuntoYComa",
+    "CorreoCobradorOpcional",
   ]);
   agregarEncabezado(libro.addWorksheet("RutaClientes"), [
     "Ruta",
@@ -118,15 +187,24 @@ rutasImportaciones.get("/plantilla.xlsx", async (_req, res) => {
   ]);
   const instrucciones = libro.addWorksheet("LEEME");
   instrucciones.addRows([
-    ["Importacion inicial segura de Nexo"],
+    ["Importación inicial segura de Vektra"],
     ["1. No cambie los nombres de las hojas ni encabezados."],
     ["2. Importe localidades antes de referenciarlas en clientes o rutas."],
     ["3. Una tarjeta solo se acepta cuando SaldoInicial es mayor que cero."],
     ["4. Para RutaClientes use tarjeta o telefono; no necesita ambos."],
-    ["5. La importacion es transaccional: si una fila falla no se guarda ninguna."],
+    [
+      "5. Sin CorreoCobradorOpcional la ruta queda disponible sólo para cobranza administrativa en web.",
+    ],
+    [
+      "6. La importacion es transaccional: si una fila falla no se guarda ninguna.",
+    ],
   ]);
   instrucciones.getColumn(1).width = 95;
-  instrucciones.getRow(1).font = { bold: true, size: 16, color: { argb: "FF0F62FE" } };
+  instrucciones.getRow(1).font = {
+    bold: true,
+    size: 16,
+    color: { argb: "FF0F62FE" },
+  };
   const buffer = await libro.xlsx.writeBuffer();
   res.setHeader(
     "Content-Type",
@@ -134,7 +212,7 @@ rutasImportaciones.get("/plantilla.xlsx", async (_req, res) => {
   );
   res.setHeader(
     "Content-Disposition",
-    'attachment; filename="plantilla-importacion-nexo.xlsx"',
+    'attachment; filename="plantilla-importacion-vektra.xlsx"',
   );
   res.send(Buffer.from(buffer));
 });
@@ -196,32 +274,62 @@ rutasImportaciones.post("/excel", async (req, res) => {
             `Producto incompleto en la fila ${fila.number}.`,
             422,
           );
-        const existencia = Math.trunc(numero(fila.getCell(7).value, "Existencia", fila.number));
+        const existencia = Math.trunc(
+          numero(fila.getCell(7).value, "Existencia", fila.number),
+        );
         const existente = await tx.producto.findUnique({ where: { sku } });
+        const categoria = await resolverCategoriaImportada(
+          tx,
+          texto(fila.getCell(4).value),
+        );
         const producto = await tx.producto.upsert({
           where: { sku },
           create: {
             sku,
             nombre,
             marca,
-            categoria: texto(fila.getCell(4).value) || undefined,
+            categoria: categoria.nombre,
+            categoriaId: categoria.id,
             codigoBarras: texto(fila.getCell(5).value) || undefined,
             codigoQr: texto(fila.getCell(6).value) || undefined,
             existencia,
-            existenciaMinima: Math.trunc(numero(fila.getCell(8).value, "Existencia minima", fila.number)),
-            precioCompra: numero(fila.getCell(9).value, "Precio compra", fila.number),
-            precioVenta: numero(fila.getCell(10).value, "Precio venta", fila.number),
+            existenciaMinima: Math.trunc(
+              numero(fila.getCell(8).value, "Existencia minima", fila.number),
+            ),
+            precioCompra: numeroMonetario(
+              fila.getCell(9).value,
+              "Precio compra",
+              fila.number,
+            ),
+            precioVenta: numeroMonetario(
+              fila.getCell(10).value,
+              "Precio venta",
+              fila.number,
+              true,
+            ),
           },
           update: {
             nombre,
             marca,
-            categoria: texto(fila.getCell(4).value) || null,
+            categoria: categoria.nombre,
+            categoriaId: categoria.id,
             codigoBarras: texto(fila.getCell(5).value) || null,
             codigoQr: texto(fila.getCell(6).value) || null,
             existencia,
-            existenciaMinima: Math.trunc(numero(fila.getCell(8).value, "Existencia minima", fila.number)),
-            precioCompra: numero(fila.getCell(9).value, "Precio compra", fila.number),
-            precioVenta: numero(fila.getCell(10).value, "Precio venta", fila.number),
+            existenciaMinima: Math.trunc(
+              numero(fila.getCell(8).value, "Existencia minima", fila.number),
+            ),
+            precioCompra: numeroMonetario(
+              fila.getCell(9).value,
+              "Precio compra",
+              fila.number,
+            ),
+            precioVenta: numeroMonetario(
+              fila.getCell(10).value,
+              "Precio venta",
+              fila.number,
+              true,
+            ),
             activo: true,
           },
         });
@@ -231,7 +339,8 @@ rutasImportaciones.post("/excel", async (req, res) => {
             data: {
               productoId: producto.id,
               usuarioId: req.usuario!.id,
-              tipo: existencia > anterior ? "AJUSTE_POSITIVO" : "AJUSTE_NEGATIVO",
+              tipo:
+                existencia > anterior ? "AJUSTE_POSITIVO" : "AJUSTE_NEGATIVO",
               cantidad: Math.abs(existencia - anterior),
               existenciaAntes: anterior,
               existenciaDespues: existencia,
@@ -248,9 +357,17 @@ rutasImportaciones.post("/excel", async (req, res) => {
         const direccion = texto(fila.getCell(3).value);
         const localidadNombre = texto(fila.getCell(4).value);
         const estado = texto(fila.getCell(5).value);
-        const saldoInicial = numero(fila.getCell(6).value, "Saldo inicial", fila.number);
+        const saldoInicial = numeroMonetario(
+          fila.getCell(6).value,
+          "Saldo inicial",
+          fila.number,
+        );
         const numeroTarjeta = texto(fila.getCell(7).value) || null;
-        if (nombreCompleto.length < 3 || telefono.length < 7 || direccion.length < 5)
+        if (
+          nombreCompleto.length < 3 ||
+          telefono.length < 7 ||
+          direccion.length < 5
+        )
           throw new ErrorAplicacion(
             "IMPORTACION_INVALIDA",
             `Cliente incompleto en la fila ${fila.number}.`,
@@ -272,16 +389,17 @@ rutasImportaciones.post("/excel", async (req, res) => {
             422,
           );
         const telefonoHash = hashBusqueda(telefono);
-        const existente = await tx.cliente.findFirst({
-          where: {
-            OR: [
-              { telefonoHash },
-              ...(numeroTarjeta ? [{ numeroTarjeta }] : []),
-            ],
-          },
-          include: { saldo: true },
-        });
-        if (existente && Number(existente.saldo?.saldoActual ?? 0) !== saldoInicial)
+        const existente =
+          (numeroTarjeta
+            ? await tx.cliente.findUnique({
+                where: { numeroTarjeta },
+                include: { saldo: true },
+              })
+            : null) ?? (await buscarClientePorTelefono(tx, telefono));
+        if (
+          existente &&
+          Number(existente.saldo?.saldoActual ?? 0) !== saldoInicial
+        )
           throw new ErrorAplicacion(
             "SALDO_EXISTENTE",
             `El cliente de la fila ${fila.number} ya tiene un saldo diferente; no se duplico.`,
@@ -294,11 +412,16 @@ rutasImportaciones.post("/excel", async (req, res) => {
               nombreCompleto,
               telefonoCifrado: cifrarCampo(telefono),
               telefonoHash,
+              telefonoHashVersion: VERSION_HASH_BUSQUEDA,
               telefonoUltimos4: telefono.slice(-4),
               direccionCifrada: cifrarCampo(direccion),
               localidadId: localidad.id,
               numeroTarjeta,
-              limiteCredito: numero(fila.getCell(8).value, "Limite", fila.number),
+              limiteCredito: numeroMonetario(
+                fila.getCell(8).value,
+                "Limite",
+                fila.number,
+              ),
               activo: true,
             },
           });
@@ -308,11 +431,16 @@ rutasImportaciones.post("/excel", async (req, res) => {
               nombreCompleto,
               telefonoCifrado: cifrarCampo(telefono),
               telefonoHash,
+              telefonoHashVersion: VERSION_HASH_BUSQUEDA,
               telefonoUltimos4: telefono.slice(-4),
               direccionCifrada: cifrarCampo(direccion),
               localidadId: localidad.id,
               numeroTarjeta,
-              limiteCredito: numero(fila.getCell(8).value, "Limite", fila.number),
+              limiteCredito: numeroMonetario(
+                fila.getCell(8).value,
+                "Limite",
+                fila.number,
+              ),
               saldo: {
                 create: {
                   saldoActual: saldoInicial,
@@ -339,6 +467,7 @@ rutasImportaciones.post("/excel", async (req, res) => {
       for (const fila of filas(libro.getWorksheet("Rutas"))) {
         const nombre = texto(fila.getCell(1).value);
         const dia = diaSemana(texto(fila.getCell(2).value));
+        const correoCobrador = texto(fila.getCell(4).value).toLowerCase();
         const nombresLocalidad = texto(fila.getCell(3).value)
           .split(";")
           .map((valor) => valor.trim())
@@ -350,7 +479,10 @@ rutasImportaciones.post("/excel", async (req, res) => {
             422,
           );
         const localidadesRuta = await tx.localidad.findMany({
-          where: { nombre: { in: nombresLocalidad, mode: "insensitive" }, activo: true },
+          where: {
+            nombre: { in: nombresLocalidad, mode: "insensitive" },
+            activo: true,
+          },
         });
         if (localidadesRuta.length !== nombresLocalidad.length)
           throw new ErrorAplicacion(
@@ -358,10 +490,39 @@ rutasImportaciones.post("/excel", async (req, res) => {
             `Revise las localidades de la ruta en la fila ${fila.number}.`,
             422,
           );
+        const [rutaExistente, cobrador] = await Promise.all([
+          tx.ruta.findUnique({ where: { nombre } }),
+          correoCobrador
+            ? tx.usuario.findFirst({
+                where: {
+                  correo: correoCobrador,
+                  rol: RolUsuario.COBRADOR,
+                  activo: true,
+                },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+        ]);
+        if (correoCobrador && !cobrador)
+          throw new ErrorAplicacion(
+            "COBRADOR_NO_ENCONTRADO",
+            `El cobrador de la ruta en la fila ${fila.number} no existe, está inactivo o no tiene rol COBRADOR.`,
+            422,
+          );
+        const cobradorId = cobrador?.id ?? rutaExistente?.cobradorId ?? null;
         const ruta = await tx.ruta.upsert({
           where: { nombre },
-          create: { nombre, diaSemana: dia },
-          update: { diaSemana: dia, activa: true },
+          create: {
+            nombre,
+            diaSemana: dia,
+            cobradorId,
+            activa: true,
+          },
+          update: {
+            diaSemana: dia,
+            cobradorId,
+            activa: true,
+          },
         });
         await tx.rutaLocalidad.deleteMany({ where: { rutaId: ruta.id } });
         await tx.rutaLocalidad.createMany({
@@ -372,15 +533,25 @@ rutasImportaciones.post("/excel", async (req, res) => {
           })),
         });
         const clientesRuta = await tx.cliente.findMany({
-          where: { activo: true, localidadId: { in: localidadesRuta.map((l) => l.id) } },
+          where: {
+            activo: true,
+            localidadId: { in: localidadesRuta.map((l) => l.id) },
+          },
           orderBy: { nombreCompleto: "asc" },
         });
         for (let orden = 0; orden < clientesRuta.length; orden += 1)
           await tx.rutaCliente.upsert({
             where: {
-              rutaId_clienteId: { rutaId: ruta.id, clienteId: clientesRuta[orden]!.id },
+              rutaId_clienteId: {
+                rutaId: ruta.id,
+                clienteId: clientesRuta[orden]!.id,
+              },
             },
-            create: { rutaId: ruta.id, clienteId: clientesRuta[orden]!.id, orden },
+            create: {
+              rutaId: ruta.id,
+              clienteId: clientesRuta[orden]!.id,
+              orden,
+            },
             update: { activo: true, orden },
           });
         rutas += 1;
@@ -392,11 +563,9 @@ rutasImportaciones.post("/excel", async (req, res) => {
         });
         const tarjeta = texto(fila.getCell(2).value);
         const telefono = normalizarTelefono(texto(fila.getCell(3).value));
-        const cliente = await tx.cliente.findFirst({
-          where: tarjeta
-            ? { numeroTarjeta: tarjeta }
-            : { telefonoHash: hashBusqueda(telefono) },
-        });
+        const cliente = tarjeta
+          ? await tx.cliente.findUnique({ where: { numeroTarjeta: tarjeta } })
+          : await buscarClientePorTelefono(tx, telefono);
         if (!ruta || !cliente)
           throw new ErrorAplicacion(
             "ASIGNACION_INVALIDA",
@@ -404,7 +573,9 @@ rutasImportaciones.post("/excel", async (req, res) => {
             422,
           );
         await tx.rutaCliente.upsert({
-          where: { rutaId_clienteId: { rutaId: ruta.id, clienteId: cliente.id } },
+          where: {
+            rutaId_clienteId: { rutaId: ruta.id, clienteId: cliente.id },
+          },
           create: { rutaId: ruta.id, clienteId: cliente.id },
           update: { activo: true },
         });
@@ -415,12 +586,21 @@ rutasImportaciones.post("/excel", async (req, res) => {
           usuarioId: req.usuario!.id,
           accion: "IMPORTAR_EXCEL",
           entidad: "Importacion",
-          datosDespues: { localidades, productos, clientes, rutas, asignaciones },
+          datosDespues: {
+            localidades,
+            productos,
+            clientes,
+            rutas,
+            asignaciones,
+          },
         },
       });
       return { localidades, productos, clientes, rutas, asignaciones };
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60_000 },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      timeout: 60_000,
+    },
   );
   res.status(201).json({ resumen });
 });

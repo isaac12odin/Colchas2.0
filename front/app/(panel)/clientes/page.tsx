@@ -2,7 +2,16 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Banknote, CreditCard, Eye, MapPin, Plus, Search } from "lucide-react";
+import {
+  Banknote,
+  CreditCard,
+  Edit3,
+  Eye,
+  MapPin,
+  Plus,
+  Route as RouteIcon,
+  Search,
+} from "lucide-react";
 import { api, ErrorApi } from "@/lib/api";
 import type { Pagina } from "@/lib/tipos";
 import {
@@ -13,6 +22,9 @@ import {
   Paginador,
 } from "@/componentes/ui";
 import { usarAplicacion } from "@/componentes/proveedores";
+import { FormularioAbonoRapido } from "@/modulos/cobranza/FormularioAbonoRapido";
+import { usarDatosVivos } from "@/lib/usarDatosVivos";
+import { usarAccionInicial } from "@/lib/usarAccionInicial";
 
 interface Cliente {
   id: string;
@@ -47,6 +59,7 @@ export default function PaginaClientes() {
   const [modalNuevo, establecerModalNuevo] = useState(false);
   const [modalLocalidad, establecerModalLocalidad] = useState(false);
   const [clienteAbono, establecerClienteAbono] = useState<Cliente | null>(null);
+  const [abonoAbierto, establecerAbonoAbierto] = useState(false);
   const [tarjetaCliente, establecerTarjetaCliente] = useState<Cliente | null>(
     null,
   );
@@ -63,6 +76,7 @@ export default function PaginaClientes() {
       .catch((e) => establecerError(e.message));
   }, [pagina, buscar]);
   useEffect(cargar, [cargar]);
+  usarDatosVivos(cargar);
   useEffect(() => {
     api<{ datos: Localidad[] }>("/localidades")
       .then((r) => {
@@ -116,26 +130,6 @@ export default function PaginaClientes() {
       establecerError(e instanceof ErrorApi ? e.message : "Error");
     }
   }
-  async function abonar(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
-    if (!clienteAbono) return;
-    const form = new FormData(evento.currentTarget);
-    try {
-      await api("/abonos", {
-        method: "POST",
-        body: JSON.stringify({
-          clienteId: clienteAbono.id,
-          monto: Number(form.get("monto")),
-          metodo: form.get("metodo"),
-          fechaAbono: new Date().toISOString(),
-        }),
-      });
-      establecerClienteAbono(null);
-      cargar();
-    } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
-    }
-  }
   async function guardarTarjeta(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     if (!tarjetaCliente) return;
@@ -155,10 +149,17 @@ export default function PaginaClientes() {
     usuario?.rol === "ADMINISTRADOR" ||
     usuario?.rol === "CONTABLE" ||
     usuario?.rol === "VENDEDOR";
-  const puedeAbonar =
-    usuario?.rol === "ADMINISTRADOR" ||
-    usuario?.rol === "CONTABLE" ||
-    usuario?.rol === "COBRADOR";
+  const puedeCobrarRuta =
+    usuario?.rol === "ADMINISTRADOR" || usuario?.rol === "COBRADOR";
+  const puedeAbonarDirecto =
+    usuario?.rol === "ADMINISTRADOR" || usuario?.rol === "CONTABLE";
+  usarAccionInicial((accion) => {
+    if (accion === "nuevo" && puedeCapturar) establecerModalNuevo(true);
+    if (accion === "abono" && puedeAbonarDirecto) {
+      establecerClienteAbono(null);
+      establecerAbonoAbierto(true);
+    }
+  });
 
   return (
     <>
@@ -170,30 +171,57 @@ export default function PaginaClientes() {
             : "Customer records, balance, card, and history."
         }
         accion={
-          puedeCapturar ? (
+          puedeCapturar || puedeAbonarDirecto || puedeCobrarRuta ? (
             <div className="flex flex-wrap gap-2">
+              {puedeCobrarRuta && (
+                <Link
+                  href="/rutas?accion=cobrar"
+                  className="boton-primario"
+                  data-capacitacion="clientes.cobranza-ruta.abrir"
+                >
+                  <RouteIcon size={18} />
+                  {es ? "Capturar cobranza" : "Record collections"}
+                </Link>
+              )}
+              {puedeAbonarDirecto && (
+                <button
+                  className="boton-secundario"
+                  data-capacitacion="clientes.abono.abrir"
+                  onClick={() => {
+                    establecerClienteAbono(null);
+                    establecerAbonoAbierto(true);
+                  }}
+                >
+                  <Banknote size={18} />
+                  {es ? "Abono directo" : "Direct payment"}
+                </button>
+              )}
               {usuario?.rol === "ADMINISTRADOR" && (
                 <button
                   className="boton-secundario"
                   onClick={() => establecerModalLocalidad(true)}
+                  data-capacitacion="clientes.localidad.abrir"
                 >
                   <MapPin size={18} />
                   {es ? "Localidad" : "Location"}
                 </button>
               )}
-              <button
-                className="boton-primario"
-                onClick={() => establecerModalNuevo(true)}
-              >
-                <Plus size={18} />
-                {t.nuevo}
-              </button>
+              {puedeCapturar && (
+                <button
+                  className="boton-primario"
+                  onClick={() => establecerModalNuevo(true)}
+                  data-capacitacion="clientes.alta.abrir"
+                >
+                  <Plus size={18} />
+                  {t.nuevo}
+                </button>
+              )}
             </div>
           ) : undefined
         }
       />
       {error && <MensajeError mensaje={error} />}
-      <div className="panel overflow-hidden">
+      <div className="panel overflow-hidden" data-capacitacion="clientes.lista">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -201,6 +229,7 @@ export default function PaginaClientes() {
             cargar();
           }}
           className="flex gap-2 border-b p-4"
+          data-capacitacion="clientes.busqueda"
         >
           <div className="relative flex-1">
             <Search
@@ -209,6 +238,7 @@ export default function PaginaClientes() {
             />
             <input
               className="campo pl-10"
+              data-capacitacion="clientes.busqueda.campo"
               placeholder={
                 es
                   ? "Nombre, teléfono, dirección, tarjeta o localidad"
@@ -218,7 +248,12 @@ export default function PaginaClientes() {
               onChange={(e) => establecerBuscar(e.target.value)}
             />
           </div>
-          <button className="boton-secundario">{t.buscar}</button>
+          <button
+            className="boton-secundario"
+            data-capacitacion="clientes.busqueda.ejecutar"
+          >
+            {t.buscar}
+          </button>
         </form>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[880px] text-left text-sm">
@@ -240,6 +275,7 @@ export default function PaginaClientes() {
                 <tr
                   key={cliente.id}
                   className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  data-capacitacion="clientes.lista.fila"
                 >
                   <td className="px-4 py-3">
                     <p className="font-semibold">{cliente.nombreCompleto}</p>
@@ -260,6 +296,7 @@ export default function PaginaClientes() {
                       <button
                         className="inline-flex items-center gap-1.5 font-mono font-semibold text-blue-700 hover:underline"
                         onClick={() => establecerTarjetaCliente(cliente)}
+                        data-capacitacion="clientes.tarjeta.abrir"
                       >
                         <CreditCard size={15} />
                         {cliente.numeroTarjeta ?? (es ? "Asignar" : "Assign")}
@@ -287,19 +324,35 @@ export default function PaginaClientes() {
                         href={`/clientes/${cliente.id}`}
                         className="boton-secundario whitespace-nowrap px-3"
                         title={es ? "Ver expediente" : "View account"}
+                        data-capacitacion="clientes.expediente.abrir"
                       >
                         <Eye size={17} />
                       </Link>
-                      {puedeAbonar &&
-                        Number(cliente.saldo?.saldoActual ?? 0) > 0 && (
-                        <button
-                          className="boton-secundario whitespace-nowrap"
-                          onClick={() => establecerClienteAbono(cliente)}
+                      {puedeCapturar && (
+                        <Link
+                          href={`/clientes/${cliente.id}?accion=editar`}
+                          className="boton-secundario whitespace-nowrap px-3"
+                          title={es ? "Editar cliente" : "Edit customer"}
+                          aria-label={`${es ? "Editar" : "Edit"} ${cliente.nombreCompleto}`}
+                          data-capacitacion="clientes.edicion.abrir"
                         >
-                          <Banknote size={17} />
-                          {es ? "Abonar" : "Payment"}
-                        </button>
+                          <Edit3 size={17} />
+                        </Link>
                       )}
+                      {puedeAbonarDirecto &&
+                        Number(cliente.saldo?.saldoActual ?? 0) > 0 && (
+                          <button
+                            className="boton-secundario whitespace-nowrap"
+                            data-capacitacion="clientes.abono.cliente-actual.abrir"
+                            onClick={() => {
+                              establecerClienteAbono(cliente);
+                              establecerAbonoAbierto(true);
+                            }}
+                          >
+                            <Banknote size={17} />
+                            {es ? "Abonar" : "Payment"}
+                          </button>
+                        )}
                     </div>
                   </td>
                 </tr>
@@ -325,7 +378,11 @@ export default function PaginaClientes() {
         cerrar={() => establecerModalNuevo(false)}
         titulo={es ? "Nuevo cliente" : "New customer"}
       >
-        <form onSubmit={crear} className="grid gap-4 sm:grid-cols-2">
+        <form
+          onSubmit={crear}
+          className="grid gap-4 sm:grid-cols-2"
+          data-capacitacion="clientes.alta.formulario"
+        >
           <label className="sm:col-span-2">
             <span className="etiqueta">
               {es ? "Nombre completo" : "Full name"}
@@ -333,13 +390,20 @@ export default function PaginaClientes() {
             <input
               name="nombreCompleto"
               className="campo"
+              data-capacitacion="clientes.alta.nombre"
               required
               minLength={3}
             />
           </label>
           <label>
             <span className="etiqueta">{es ? "Teléfono" : "Phone"}</span>
-            <input name="telefono" className="campo" required inputMode="tel" />
+            <input
+              name="telefono"
+              className="campo"
+              required
+              inputMode="tel"
+              data-capacitacion="clientes.alta.telefono"
+            />
           </label>
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -351,6 +415,7 @@ export default function PaginaClientes() {
                   type="button"
                   className="text-xs font-semibold text-blue-600 hover:underline"
                   onClick={() => establecerModalLocalidad(true)}
+                  data-capacitacion="clientes.alta.localidad-crear"
                 >
                   {es ? "+ Crear localidad" : "+ Create location"}
                 </button>
@@ -358,6 +423,7 @@ export default function PaginaClientes() {
             </div>
             <input
               className="campo mb-2"
+              data-capacitacion="clientes.alta.localidad-buscar"
               value={buscarLocalidad}
               onChange={(evento) =>
                 establecerBuscarLocalidad(evento.target.value)
@@ -371,13 +437,17 @@ export default function PaginaClientes() {
             <select
               name="localidadId"
               className="campo"
+              data-capacitacion="clientes.alta.localidad"
               required
               value={localidadSeleccionada}
               onChange={(evento) =>
                 establecerLocalidadSeleccionada(evento.target.value)
               }
             >
-              <option value="">
+              <option
+                value=""
+                data-capacitacion="clientes.alta.localidad.opcion"
+              >
                 {localidades.length
                   ? "—"
                   : es
@@ -391,7 +461,11 @@ export default function PaginaClientes() {
                     .includes(buscarLocalidad.toLocaleLowerCase("es-MX")),
                 )
                 .map((l) => (
-                  <option key={l.id} value={l.id}>
+                  <option
+                    key={l.id}
+                    value={l.id}
+                    data-capacitacion="clientes.alta.localidad.opcion"
+                  >
                     {l.nombre}, {l.estado}
                   </option>
                 ))}
@@ -402,6 +476,7 @@ export default function PaginaClientes() {
             <textarea
               name="direccion"
               className="campo min-h-24 py-3"
+              data-capacitacion="clientes.alta.direccion"
               required
             />
           </label>
@@ -414,23 +489,29 @@ export default function PaginaClientes() {
             <input
               name="limiteCredito"
               className="campo"
+              data-capacitacion="clientes.alta.limite-credito"
               type="number"
               min="0"
               step="0.01"
               defaultValue="0"
             />
           </label>
-          <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
+          <div
+            className="sm:col-span-2 flex justify-end gap-2 pt-2"
+            data-capacitacion="clientes.alta.revision"
+          >
             <button
               type="button"
               className="boton-secundario"
               onClick={() => establecerModalNuevo(false)}
+              data-capacitacion="clientes.alta.cancelar"
             >
               {t.cancelar}
             </button>
             <button
               className="boton-primario disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!localidadSeleccionada}
+              data-capacitacion="clientes.alta.guardar"
             >
               {t.guardar}
             </button>
@@ -445,7 +526,11 @@ export default function PaginaClientes() {
         }}
         titulo={es ? "Nueva localidad" : "New location"}
       >
-        <form onSubmit={crearLocalidad} className="space-y-4">
+        <form
+          onSubmit={crearLocalidad}
+          className="space-y-4"
+          data-capacitacion="clientes.localidad.formulario"
+        >
           {errorLocalidad && <MensajeError mensaje={errorLocalidad} />}
           <label>
             <span className="etiqueta">
@@ -454,6 +539,7 @@ export default function PaginaClientes() {
             <input
               name="nombre"
               className="campo"
+              data-capacitacion="clientes.localidad.nombre"
               placeholder={es ? "Ej. San Miguel" : "E.g. San Miguel"}
               minLength={2}
               maxLength={120}
@@ -466,13 +552,17 @@ export default function PaginaClientes() {
             <input
               name="estado"
               className="campo"
+              data-capacitacion="clientes.localidad.estado"
               placeholder={es ? "Ej. Puebla" : "E.g. Puebla"}
               minLength={2}
               maxLength={120}
               required
             />
           </label>
-          <p className="text-xs leading-5 text-slate-500">
+          <p
+            className="text-xs leading-5 text-slate-500"
+            data-capacitacion="clientes.localidad.revision"
+          >
             {es
               ? "Al guardarla quedará seleccionada automáticamente en el cliente nuevo."
               : "After saving, it will be selected automatically for the new customer."}
@@ -482,10 +572,16 @@ export default function PaginaClientes() {
               type="button"
               className="boton-secundario"
               onClick={() => establecerModalLocalidad(false)}
+              data-capacitacion="clientes.localidad.cancelar"
             >
               {t.cancelar}
             </button>
-            <button className="boton-primario">{t.guardar}</button>
+            <button
+              className="boton-primario"
+              data-capacitacion="clientes.localidad.guardar"
+            >
+              {t.guardar}
+            </button>
           </div>
         </form>
       </Modal>
@@ -494,8 +590,15 @@ export default function PaginaClientes() {
         cerrar={() => establecerTarjetaCliente(null)}
         titulo={`${es ? "Asignar tarjeta" : "Assign card"} · ${tarjetaCliente?.nombreCompleto ?? ""}`}
       >
-        <form onSubmit={guardarTarjeta} className="space-y-4">
-          <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">
+        <form
+          onSubmit={guardarTarjeta}
+          className="space-y-4"
+          data-capacitacion="clientes.tarjeta.formulario"
+        >
+          <p
+            className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100"
+            data-capacitacion="clientes.tarjeta.revision"
+          >
             {es
               ? "Tú decides el número. Permanecerá mientras el cliente tenga saldo y se quitará al liquidar."
               : "You choose the number. It remains while a balance exists and is removed after payoff."}
@@ -507,6 +610,7 @@ export default function PaginaClientes() {
             <input
               name="numeroTarjeta"
               className="campo"
+              data-capacitacion="clientes.tarjeta.numero"
               defaultValue={tarjetaCliente?.numeroTarjeta ?? ""}
               minLength={3}
               maxLength={30}
@@ -519,59 +623,37 @@ export default function PaginaClientes() {
               type="button"
               className="boton-secundario"
               onClick={() => establecerTarjetaCliente(null)}
+              data-capacitacion="clientes.tarjeta.cancelar"
             >
               {t.cancelar}
             </button>
-            <button className="boton-primario">{t.guardar}</button>
+            <button
+              className="boton-primario"
+              data-capacitacion="clientes.tarjeta.guardar"
+            >
+              {t.guardar}
+            </button>
           </div>
         </form>
       </Modal>
       <Modal
-        abierto={Boolean(clienteAbono)}
-        cerrar={() => establecerClienteAbono(null)}
-        titulo={`${es ? "Registrar abono" : "Record payment"} · ${clienteAbono?.nombreCompleto ?? ""}`}
+        abierto={abonoAbierto}
+        cerrar={() => {
+          establecerAbonoAbierto(false);
+          establecerClienteAbono(null);
+        }}
+        titulo={`${es ? "Registrar abono" : "Record payment"}${clienteAbono ? ` · ${clienteAbono.nombreCompleto}` : ""}`}
       >
-        <form onSubmit={abonar} className="space-y-4">
-          <div className="rounded-lg bg-marca-50 p-4 text-sm text-marca-900 dark:bg-marca-900/30 dark:text-blue-100">
-            {es ? "Saldo actual" : "Current balance"}:{" "}
-            <strong>
-              {dinero.format(Number(clienteAbono?.saldo?.saldoActual ?? 0))}
-            </strong>
-          </div>
-          <label>
-            <span className="etiqueta">{es ? "Monto" : "Amount"}</span>
-            <input
-              name="monto"
-              className="campo"
-              type="number"
-              min="0.01"
-              max={Number(clienteAbono?.saldo?.saldoActual ?? 0)}
-              step="0.01"
-              required
-            />
-          </label>
-          <label>
-            <span className="etiqueta">{es ? "Método" : "Method"}</span>
-            <select name="metodo" className="campo">
-              <option value="EFECTIVO">{es ? "Efectivo" : "Cash"}</option>
-              <option value="TRANSFERENCIA">
-                {es ? "Transferencia" : "Transfer"}
-              </option>
-              <option value="TARJETA">{es ? "Tarjeta" : "Card"}</option>
-              <option value="OTRO">{es ? "Otro" : "Other"}</option>
-            </select>
-          </label>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              className="boton-secundario"
-              onClick={() => establecerClienteAbono(null)}
-            >
-              {t.cancelar}
-            </button>
-            <button className="boton-primario">{t.guardar}</button>
-          </div>
-        </form>
+        <FormularioAbonoRapido
+          key={`${clienteAbono?.id ?? "buscar"}-${String(abonoAbierto)}`}
+          clienteInicial={clienteAbono}
+          es={es}
+          alCancelar={() => {
+            establecerAbonoAbierto(false);
+            establecerClienteAbono(null);
+          }}
+          alActualizar={cargar}
+        />
       </Modal>
     </>
   );

@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Barcode, Edit3, Plus, Search, Trash2 } from "lucide-react";
-import { api, ErrorApi } from "@/lib/api";
-import type { Pagina } from "@/lib/tipos";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Boxes, Plus, Search, Trash2 } from "lucide-react";
+
+import { usarAplicacion } from "@/componentes/proveedores";
 import {
   EncabezadoPagina,
   EstadoVacio,
@@ -11,74 +11,125 @@ import {
   Modal,
   Paginador,
 } from "@/componentes/ui";
-import { usarAplicacion } from "@/componentes/proveedores";
-
-interface Producto {
-  id: string;
-  sku: string;
-  nombre: string;
-  marca: string;
-  codigoBarras: string | null;
-  codigoQr: string | null;
-  categoria: string | null;
-  existencia: number;
-  existenciaMinima: number;
-  precioVenta: string;
-  precioCompra: string;
-  activo: boolean;
-}
-const dinero = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "MXN",
-});
+import { api, ErrorApi } from "@/lib/api";
+import { usarDatosVivos } from "@/lib/usarDatosVivos";
+import type { Pagina } from "@/lib/tipos";
+import { FormularioProducto } from "@/modulos/inventario/FormularioProducto";
+import { GuiaAlmacen } from "@/modulos/inventario/GuiaAlmacen";
+import { TarjetaProducto } from "@/modulos/inventario/TarjetaProducto";
+import type {
+  CatalogosProducto,
+  CategoriaProducto,
+  DatosProductoWeb,
+  ProductoInventario,
+} from "@/modulos/inventario/tipos";
+import { usarAccionInicial } from "@/lib/usarAccionInicial";
 
 export default function PaginaInventario() {
   const { t, idioma, usuario } = usarAplicacion();
-  const [respuesta, establecerRespuesta] = useState<Pagina<Producto> | null>(
-    null,
-  );
+  const es = idioma === "es";
+  const [respuesta, establecerRespuesta] =
+    useState<Pagina<ProductoInventario> | null>(null);
   const [pagina, establecerPagina] = useState(1);
   const [buscar, establecerBuscar] = useState("");
-  const [modal, establecerModal] = useState(false);
-  const [ajuste, establecerAjuste] = useState<Producto | null>(null);
-  const [productoEditar, establecerProductoEditar] = useState<Producto | null>(null);
-  const [productoBaja, establecerProductoBaja] = useState<Producto | null>(
-    null,
-  );
+  const [termino, establecerTermino] = useState("");
+  const [nuevo, establecerNuevo] = useState(false);
+  const [productoEditar, establecerProductoEditar] =
+    useState<ProductoInventario | null>(null);
+  const [ajuste, establecerAjuste] = useState<ProductoInventario | null>(null);
+  const [productoBaja, establecerProductoBaja] =
+    useState<ProductoInventario | null>(null);
+  const [guardando, establecerGuardando] = useState(false);
   const [error, establecerError] = useState("");
-  const es = idioma === "es";
+  const [catalogos, establecerCatalogos] = useState<CatalogosProducto>({
+    marcas: [],
+    categorias: [],
+  });
+  const [categoriaId, establecerCategoriaId] = useState("");
+
   const puedeGestionar =
     usuario?.rol === "ADMINISTRADOR" || usuario?.rol === "ALMACENISTA";
-  const cargar = useCallback(
-    () =>
-      api<Pagina<Producto>>(
-        `/inventario/productos?pagina=${pagina}&limite=20&buscar=${encodeURIComponent(buscar)}`,
-      )
-        .then(establecerRespuesta)
-        .catch((e) => establecerError(e.message)),
-    [pagina, buscar],
-  );
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  usarAccionInicial((accion) => {
+    if (accion === "nuevo" && puedeGestionar) establecerNuevo(true);
+  });
+  const cargar = useCallback(() => {
+    establecerError("");
+    return api<Pagina<ProductoInventario>>(
+      `/inventario/productos?pagina=${pagina}&limite=18&buscar=${encodeURIComponent(buscar)}${categoriaId ? `&categoriaId=${encodeURIComponent(categoriaId)}` : ""}`,
+    )
+      .then(establecerRespuesta)
+      .catch((e) => establecerError(e.message));
+  }, [pagina, buscar, categoriaId]);
 
-  async function crear(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
-    const valores = Object.fromEntries(new FormData(evento.currentTarget));
+  useEffect(() => void cargar(), [cargar]);
+  useEffect(() => {
+    void api<CatalogosProducto>("/inventario/catalogos-producto")
+      .then(establecerCatalogos)
+      .catch(() => undefined);
+  }, []);
+  usarDatosVivos(cargar);
+
+  async function guardarProducto(datos: DatosProductoWeb) {
+    establecerGuardando(true);
+    establecerError("");
     try {
-      await api("/inventario/productos", {
-        method: "POST",
-        body: JSON.stringify(valores),
-      });
-      establecerModal(false);
-      cargar();
+      if (productoEditar) {
+        await api(`/inventario/productos/${productoEditar.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(datos),
+        });
+        establecerProductoEditar(null);
+      } else {
+        await api("/inventario/productos", {
+          method: "POST",
+          body: JSON.stringify(datos),
+        });
+        establecerNuevo(false);
+      }
+      await cargar();
     } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      establecerError(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No fue posible guardar el producto."
+            : "The product could not be saved.",
+      );
+    } finally {
+      establecerGuardando(false);
     }
   }
+
+  async function crearCategoria(nombre: string) {
+    try {
+      const categoria = await api<CategoriaProducto>(
+        "/inventario/categorias-producto",
+        { method: "POST", body: JSON.stringify({ nombre }) },
+      );
+      establecerCatalogos((actuales) => ({
+        ...actuales,
+        categorias: [
+          ...actuales.categorias.filter((actual) => actual.id !== categoria.id),
+          categoria,
+        ].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
+      }));
+      return categoria;
+    } catch (e) {
+      establecerError(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No fue posible crear la agrupación."
+            : "The group could not be created.",
+      );
+      return null;
+    }
+  }
+
   async function guardarAjuste(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     if (!ajuste) return;
+    establecerGuardando(true);
     const valores = Object.fromEntries(new FormData(evento.currentTarget));
     try {
       await api(`/inventario/productos/${ajuste.id}/ajuste`, {
@@ -86,36 +137,20 @@ export default function PaginaInventario() {
         body: JSON.stringify(valores),
       });
       establecerAjuste(null);
-      cargar();
+      await cargar();
     } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      establecerError(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No fue posible ajustar la existencia."
+            : "Stock could not be adjusted.",
+      );
+    } finally {
+      establecerGuardando(false);
     }
   }
-  async function guardarProducto(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
-    if (!productoEditar) return;
-    const formulario = new FormData(evento.currentTarget);
-    try {
-      await api(`/inventario/productos/${productoEditar.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          sku: formulario.get("sku"),
-          nombre: formulario.get("nombre"),
-          marca: formulario.get("marca"),
-          categoria: formulario.get("categoria") || undefined,
-          codigoBarras: formulario.get("codigoBarras") || null,
-          codigoQr: formulario.get("codigoQr") || null,
-          existenciaMinima: Number(formulario.get("existenciaMinima")),
-          precioCompra: Number(formulario.get("precioCompra")),
-          precioVenta: Number(formulario.get("precioVenta")),
-        }),
-      });
-      establecerProductoEditar(null);
-      cargar();
-    } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
-    }
-  }
+
   async function darDeBaja() {
     if (!productoBaja) return;
     try {
@@ -123,9 +158,15 @@ export default function PaginaInventario() {
         method: "DELETE",
       });
       establecerProductoBaja(null);
-      cargar();
+      await cargar();
     } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      establecerError(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No fue posible dar de baja el producto."
+            : "The product could not be deactivated.",
+      );
       establecerProductoBaja(null);
     }
   }
@@ -136,306 +177,212 @@ export default function PaginaInventario() {
         titulo={t.inventario}
         descripcion={
           es
-            ? "Existencias, costos, precios y códigos de escaneo."
-            : "Stock, costs, prices, and scannable codes."
+            ? "Productos visuales, existencias, precios y códigos en un solo lugar."
+            : "Visual catalog, stock, prices, and codes in one place."
         }
         accion={
           puedeGestionar ? (
             <button
               className="boton-primario"
-              onClick={() => establecerModal(true)}
+              onClick={() => establecerNuevo(true)}
+              data-capacitacion="inventario.producto.abrir"
             >
-              <Plus size={18} />
-              {es ? "Producto" : "Product"}
+              <Plus size={18} /> {es ? "Nuevo producto" : "New product"}
             </button>
           ) : undefined
         }
       />
       {error && <MensajeError mensaje={error} />}
-      <div className="panel overflow-hidden">
+      {puedeGestionar && <GuiaAlmacen es={es} />}
+
+      <section
+        className="panel mb-5 p-4"
+        data-capacitacion="inventario.busqueda"
+      >
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
+          className="flex flex-col gap-2 sm:flex-row"
+          onSubmit={(evento) => {
+            evento.preventDefault();
             establecerPagina(1);
-            cargar();
+            establecerBuscar(termino.trim());
           }}
-          className="flex gap-2 border-b p-4"
         >
           <div className="relative flex-1">
             <Search
-              size={18}
               className="absolute left-3 top-3 text-slate-400"
+              size={18}
             />
             <input
               className="campo pl-10"
-              value={buscar}
-              onChange={(e) => establecerBuscar(e.target.value)}
+              data-capacitacion="inventario.busqueda.campo"
+              value={termino}
+              onChange={(evento) => establecerTermino(evento.target.value)}
               placeholder={
                 es
-                  ? "SKU, producto, marca o código"
-                  : "SKU, product, brand, or code"
+                  ? "Producto, marca, SKU o código"
+                  : "Product, brand, SKU, or code"
               }
             />
           </div>
-          <button className="boton-secundario">{t.buscar}</button>
+          <button
+            className="boton-secundario"
+            data-capacitacion="inventario.busqueda.ejecutar"
+          >
+            {t.buscar}
+          </button>
         </form>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-950">
-              <tr>
-                <th className="px-4 py-3">SKU</th>
-                <th className="px-4 py-3">{es ? "Producto" : "Product"}</th>
-                <th className="px-4 py-3">{es ? "Código" : "Code"}</th>
-                <th className="px-4 py-3 text-right">
-                  {es ? "Existencia" : "Stock"}
-                </th>
-                <th className="px-4 py-3 text-right">
-                  {es ? "Compra" : "Cost"}
-                </th>
-                <th className="px-4 py-3 text-right">
-                  {es ? "Venta" : "Price"}
-                </th>
-                <th />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {respuesta?.datos.map((p) => (
-                <tr
-                  key={p.id}
-                  className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                >
-                  <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
-                  <td className="px-4 py-3">
-                    <p className="font-semibold">{p.nombre}</p>
-                    <p className="text-xs text-slate-500">{p.marca}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1.5 font-mono text-xs">
-                      <Barcode size={15} />
-                      {p.codigoBarras ?? "—"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span
-                      className={
-                        p.existencia <= p.existenciaMinima
-                          ? "font-bold text-red-600"
-                          : "font-semibold"
-                      }
-                    >
-                      {p.existencia}
-                    </span>
-                    {p.existencia <= p.existenciaMinima && (
-                      <AlertTriangle className="ml-2 inline" size={15} />
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {dinero.format(Number(p.precioCompra))}
-                  </td>
-                  <td className="px-4 py-3 text-right font-semibold">
-                    {dinero.format(Number(p.precioVenta))}
-                  </td>
-                  <td className="px-4 py-3">
-                    {puedeGestionar && (
-                      <div className="flex justify-end gap-2">
-                        <button
-                          className="boton-secundario px-3"
-                          onClick={() => establecerProductoEditar(p)}
-                          title={es ? "Editar producto" : "Edit product"}
-                        >
-                          <Edit3 size={17} />
-                        </button>
-                        <button
-                          className="boton-secundario"
-                          onClick={() => establecerAjuste(p)}
-                        >
-                          {es ? "Ajustar" : "Adjust"}
-                        </button>
-                        <button
-                          className="boton-secundario px-3 text-red-600"
-                          onClick={() => establecerProductoBaja(p)}
-                          title={es ? "Dar de baja" : "Deactivate"}
-                        >
-                          <Trash2 size={17} />
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          <button
+            type="button"
+            className={categoriaId ? "boton-secundario" : "boton-primario"}
+            onClick={() => {
+              establecerCategoriaId("");
+              establecerPagina(1);
+            }}
+          >
+            {es ? "Todos" : "All"}
+          </button>
+          {catalogos.categorias.map((categoria) => (
+            <button
+              key={categoria.id}
+              type="button"
+              className={
+                categoriaId === categoria.id
+                  ? "boton-primario"
+                  : "boton-secundario"
+              }
+              onClick={() => {
+                establecerCategoriaId(categoria.id);
+                establecerPagina(1);
+              }}
+            >
+              {categoria.nombre}
+            </button>
+          ))}
         </div>
-        {respuesta?.datos.length === 0 && (
-          <EstadoVacio texto={es ? "No hay productos." : "No products."} />
-        )}
-        {respuesta && (
+      </section>
+
+      {respuesta && respuesta.datos.length > 0 ? (
+        <div
+          className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3"
+          data-capacitacion="inventario.lista"
+        >
+          {respuesta.datos.map((producto) => (
+            <TarjetaProducto
+              key={producto.id}
+              producto={producto}
+              es={es}
+              puedeGestionar={puedeGestionar}
+              alEditar={() => establecerProductoEditar(producto)}
+              alAjustar={() => establecerAjuste(producto)}
+              alDarDeBaja={() => establecerProductoBaja(producto)}
+            />
+          ))}
+        </div>
+      ) : respuesta ? (
+        <div className="panel">
+          <EstadoVacio
+            texto={
+              buscar
+                ? es
+                  ? "No encontramos productos con esa búsqueda."
+                  : "No products matched that search."
+                : es
+                  ? "Aún no hay productos. Crea el primero para comenzar a vender."
+                  : "There are no products yet. Create the first one to start selling."
+            }
+          />
+        </div>
+      ) : (
+        <div className="panel grid min-h-48 place-items-center text-sm text-slate-500">
+          <span>
+            <Boxes className="mr-2 inline" size={18} />{" "}
+            {es ? "Cargando inventario…" : "Loading inventory…"}
+          </span>
+        </div>
+      )}
+
+      {respuesta && respuesta.paginacion.totalPaginas > 1 && (
+        <div className="panel mt-5">
           <Paginador
             pagina={respuesta.paginacion.pagina}
             totalPaginas={respuesta.paginacion.totalPaginas}
             cambiar={establecerPagina}
           />
-        )}
-      </div>
+        </div>
+      )}
+
       <Modal
-        abierto={modal}
-        cerrar={() => establecerModal(false)}
+        abierto={nuevo}
+        cerrar={() => establecerNuevo(false)}
         titulo={es ? "Nuevo producto" : "New product"}
+        ancho="amplio"
       >
-        <form onSubmit={crear} className="grid gap-4 sm:grid-cols-2">
-          <label>
-            <span className="etiqueta">SKU</span>
-            <input name="sku" className="campo" required />
-          </label>
-          <label>
-            <span className="etiqueta">{es ? "Marca" : "Brand"}</span>
-            <input name="marca" className="campo" required />
-          </label>
-          <label className="sm:col-span-2">
-            <span className="etiqueta">
-              {es ? "Nombre del producto" : "Product name"}
-            </span>
-            <input name="nombre" className="campo" required />
-          </label>
-          <label>
-            <span className="etiqueta">
-              {es ? "Código de barras" : "Barcode"}
-            </span>
-            <input name="codigoBarras" className="campo" />
-          </label>
-          <label>
-            <span className="etiqueta">{es ? "Código QR" : "QR code"}</span>
-            <input name="codigoQr" className="campo" />
-          </label>
-          <label>
-            <span className="etiqueta">{es ? "Precio compra" : "Cost"}</span>
-            <input
-              name="precioCompra"
-              className="campo"
-              type="number"
-              min="0"
-              step="0.01"
-              required
-            />
-          </label>
-          <label>
-            <span className="etiqueta">
-              {es ? "Precio venta" : "Sale price"}
-            </span>
-            <input
-              name="precioVenta"
-              className="campo"
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
-            />
-          </label>
-          <label>
-            <span className="etiqueta">
-              {es ? "Existencia inicial" : "Initial stock"}
-            </span>
-            <input
-              name="existenciaInicial"
-              className="campo"
-              type="number"
-              min="0"
-              defaultValue="0"
-            />
-          </label>
-          <label>
-            <span className="etiqueta">
-              {es ? "Existencia mínima" : "Minimum stock"}
-            </span>
-            <input
-              name="existenciaMinima"
-              className="campo"
-              type="number"
-              min="0"
-              defaultValue="0"
-            />
-          </label>
-          <div className="sm:col-span-2 flex justify-end gap-2">
-            <button
-              type="button"
-              className="boton-secundario"
-              onClick={() => establecerModal(false)}
-            >
-              {t.cancelar}
-            </button>
-            <button className="boton-primario">{t.guardar}</button>
-          </div>
-        </form>
+        <FormularioProducto
+          es={es}
+          guardando={guardando}
+          cancelar={t.cancelar}
+          marcas={catalogos.marcas}
+          categorias={catalogos.categorias}
+          alCrearCategoria={crearCategoria}
+          alCancelar={() => establecerNuevo(false)}
+          alGuardar={guardarProducto}
+        />
       </Modal>
+
       <Modal
         abierto={Boolean(productoEditar)}
         cerrar={() => establecerProductoEditar(null)}
-        titulo={`${es ? "Editar producto" : "Edit product"} · ${productoEditar?.nombre ?? ""}`}
+        titulo={`${es ? "Editar" : "Edit"} · ${productoEditar?.nombre ?? ""}`}
+        ancho="amplio"
       >
         {productoEditar && (
-          <form onSubmit={guardarProducto} className="grid gap-4 sm:grid-cols-2">
-            <label><span className="etiqueta">SKU</span><input name="sku" className="campo" defaultValue={productoEditar.sku} required /></label>
-            <label><span className="etiqueta">Marca</span><input name="marca" className="campo" defaultValue={productoEditar.marca} required /></label>
-            <label className="sm:col-span-2"><span className="etiqueta">Nombre</span><input name="nombre" className="campo" defaultValue={productoEditar.nombre} required /></label>
-            <label><span className="etiqueta">Categoría</span><input name="categoria" className="campo" defaultValue={productoEditar.categoria ?? ""} /></label>
-            <label><span className="etiqueta">Existencia mínima</span><input name="existenciaMinima" className="campo" type="number" min="0" defaultValue={productoEditar.existenciaMinima} required /></label>
-            <label><span className="etiqueta">Código de barras</span><input name="codigoBarras" className="campo" defaultValue={productoEditar.codigoBarras ?? ""} /></label>
-            <label><span className="etiqueta">Código QR</span><input name="codigoQr" className="campo" defaultValue={productoEditar.codigoQr ?? ""} /></label>
-            <label><span className="etiqueta">Precio compra</span><input name="precioCompra" className="campo" type="number" min="0" step="0.01" defaultValue={productoEditar.precioCompra} required /></label>
-            <label><span className="etiqueta">Precio venta</span><input name="precioVenta" className="campo" type="number" min="0.01" step="0.01" defaultValue={productoEditar.precioVenta} required /></label>
-            <p className="sm:col-span-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-950">La existencia se modifica únicamente con Ajustar o Compras para conservar su historial.</p>
-            <div className="sm:col-span-2 flex justify-end gap-2"><button type="button" className="boton-secundario" onClick={() => establecerProductoEditar(null)}>Cancelar</button><button className="boton-primario">Guardar cambios</button></div>
-          </form>
+          <FormularioProducto
+            key={productoEditar.id}
+            producto={productoEditar}
+            es={es}
+            guardando={guardando}
+            cancelar={t.cancelar}
+            marcas={catalogos.marcas}
+            categorias={catalogos.categorias}
+            alCrearCategoria={crearCategoria}
+            alCancelar={() => establecerProductoEditar(null)}
+            alGuardar={guardarProducto}
+          />
         )}
       </Modal>
-      <Modal
-        abierto={Boolean(productoBaja)}
-        cerrar={() => establecerProductoBaja(null)}
-        titulo={es ? "Dar de baja producto" : "Deactivate product"}
-      >
-        <div className="space-y-4">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
-            <strong className="block">{productoBaja?.nombre}</strong>
-            <p className="mt-2 leading-6">
-              {es
-                ? "Dejará de aparecer en inventario, ventas y pedidos nuevos. Las ventas realizadas conservarán su nombre, SKU, marca, costo y precio originales."
-                : "It will disappear from inventory, new sales, and new orders. Completed sales retain the original name, SKU, brand, cost, and price."}
-            </p>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              className="boton-secundario"
-              onClick={() => establecerProductoBaja(null)}
-            >
-              {t.cancelar}
-            </button>
-            <button
-              className="boton-primario bg-red-600 hover:bg-red-700"
-              onClick={() => void darDeBaja()}
-            >
-              <Trash2 size={17} />
-              {es ? "Dar de baja" : "Deactivate"}
-            </button>
-          </div>
-        </div>
-      </Modal>
+
       <Modal
         abierto={Boolean(ajuste)}
         cerrar={() => establecerAjuste(null)}
         titulo={`${es ? "Ajustar existencia" : "Adjust stock"} · ${ajuste?.nombre ?? ""}`}
       >
-        <form onSubmit={guardarAjuste} className="space-y-4">
-          <p className="rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-950">
+        <form
+          onSubmit={guardarAjuste}
+          className="space-y-4"
+          data-capacitacion="inventario.ajuste.formulario"
+        >
+          <div
+            className="rounded-xl bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100"
+            data-capacitacion="inventario.ajuste.existencia-actual"
+          >
             {es ? "Existencia actual" : "Current stock"}:{" "}
-            <strong>{ajuste?.existencia}</strong>
-          </p>
+            <strong className="text-lg">{ajuste?.existencia}</strong>
+          </div>
           <label>
             <span className="etiqueta">
               {es
                 ? "Cantidad (+ entrada / − salida)"
                 : "Quantity (+ in / − out)"}
             </span>
-            <input name="cantidad" className="campo" type="number" required />
+            <input
+              name="cantidad"
+              className="campo"
+              data-capacitacion="inventario.ajuste.cantidad"
+              type="number"
+              required
+              autoFocus
+            />
           </label>
           <label>
             <span className="etiqueta">
@@ -444,21 +391,75 @@ export default function PaginaInventario() {
             <textarea
               name="notas"
               className="campo min-h-24 py-3"
+              data-capacitacion="inventario.ajuste.motivo"
               required
               minLength={3}
             />
           </label>
-          <div className="flex justify-end gap-2">
+          <div
+            className="flex justify-end gap-2"
+            data-capacitacion="inventario.ajuste.revision"
+          >
             <button
               type="button"
               className="boton-secundario"
               onClick={() => establecerAjuste(null)}
+              data-capacitacion="inventario.ajuste.cancelar"
             >
               {t.cancelar}
             </button>
-            <button className="boton-primario">{t.guardar}</button>
+            <button
+              className="boton-primario"
+              disabled={guardando}
+              data-capacitacion="inventario.ajuste.guardar"
+            >
+              {guardando
+                ? es
+                  ? "Guardando…"
+                  : "Saving…"
+                : es
+                  ? "Aplicar ajuste"
+                  : "Apply adjustment"}
+            </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        abierto={Boolean(productoBaja)}
+        cerrar={() => establecerProductoBaja(null)}
+        titulo={es ? "Dar de baja producto" : "Deactivate product"}
+      >
+        <div
+          className="space-y-4"
+          data-capacitacion="inventario.baja.formulario"
+        >
+          <div
+            className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
+            data-capacitacion="inventario.baja.revision"
+          >
+            <strong className="block text-base">{productoBaja?.nombre}</strong>
+            {es
+              ? "Dejará de aparecer en ventas y pedidos nuevos. Las ventas realizadas conservarán nombre, marca, costo y precio históricos."
+              : "It will no longer appear in new sales or orders. Existing sales keep the historical name, brand, cost, and price."}
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              className="boton-secundario"
+              onClick={() => establecerProductoBaja(null)}
+              data-capacitacion="inventario.baja.cancelar"
+            >
+              {t.cancelar}
+            </button>
+            <button
+              className="boton-primario bg-red-600 hover:bg-red-700"
+              onClick={() => void darDeBaja()}
+              data-capacitacion="inventario.baja.confirmar"
+            >
+              <Trash2 size={17} /> {es ? "Dar de baja" : "Deactivate"}
+            </button>
+          </div>
+        </div>
       </Modal>
     </>
   );

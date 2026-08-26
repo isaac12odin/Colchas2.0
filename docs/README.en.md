@@ -1,6 +1,6 @@
-# Nexo Collections — English guide
+# Vektra Collections - English guide
 
-Nexo is a modular collections, route, sales, order, and inventory platform. The product catalog is industry-neutral, so it works for blankets as well as other retail businesses.
+Vektra is a modular collections, route, sales, order, and inventory platform. The product catalog is industry-neutral, so it works for blankets as well as other retail businesses.
 
 ## Applications
 
@@ -25,12 +25,15 @@ npm run dev
 
 Open `http://localhost:3000`. Start mobile development with `npm run dev:movil`. Use a development build for SQLCipher; Expo Go does not include this custom native option.
 
-There are no built-in administrator credentials. Set an explicit `SEED_ADMIN_EMAIL` and a random 16+ character `SEED_ADMIN_PASSWORD` containing upper/lowercase letters, a number, and a symbol. The seed fails closed when either value is missing, weak, or matches a known example, and the resulting administrator must change it before accessing operational data.
+The EAS `preview` and `production` profiles already target `https://nexo.deadcode.cloud/api/v1`. Build an internal Android APK with `npm run build:android:preview -w movil`, or production artifacts with `npm run build:android -w movil` and `npm run build:ios -w movil`.
+
+There are no built-in administrator credentials. Set explicit `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` values. The seed fails closed when either value is missing or matches a known example. Administrator-created passwords work immediately and do not require a first-login change.
 
 ## Domain behavior
 
 - Confirmed sales decrease inventory; purchases increase it.
-- Customer card numbers are entered manually by an administrator, accountant, seller, or field collector when outstanding credit is opened; Nexo never generates them and clears them after payoff.
+- Warehouse users and administrators can create or edit products with a camera/gallery photo; the phone reduces it before the API validates and stores it privately.
+- Customer card numbers are entered manually by an administrator, accountant, seller, or field collector when outstanding credit is opened; Vektra never generates them and clears them after payoff.
 - Each credit sale owns its payment schedule; terms do not belong to the customer record.
 - Payments settle the oldest installments first and trigger a fresh risk assessment.
 - New orders can only reference active registered products; names and prices are filled from the catalog.
@@ -42,13 +45,19 @@ There are no built-in administrator credentials. Set an explicit `SEED_ADMIN_EMA
 - Catalog prices are resolved by the server. Only administrators may authorize overrides or discounts, and no sale may go below recorded cost.
 - Refunds record the accounting/administrative authorizer separately from the administrator or collector whose cash drawer pays the money. That operator's daily ledger is locked and charged, so an approved refund cannot bypass a signed close.
 - Destructive restore tests query PostgreSQL `current_database()` and proceed only when the connected database name ends exactly in `_restore_test`; text elsewhere in the URL is never accepted as proof.
-- The temporary bootstrap password cannot access operational data until it is replaced with a 12+ character password containing upper/lowercase letters, a number, and a symbol.
+- Passwords use a six-character minimum. Administration can reset any account, including its own, and the new password works immediately.
 
 ## Role-aware access
 
-All five roles can sign in. Administrators can use every module; accounting receives financial and read-oriented tools; sellers capture customers, orders, sales, and active cards without seeing purchase costs; warehouse users open inventory and order fulfillment; collectors open routes, field sales, delivery, and encrypted synchronization. Web and mobile navigation guards reject direct links outside the user's role, while the API independently authorizes every sensitive action.
+Administrators, accounting, and sellers can use the web portal. Warehouse and collector accounts sign in only through the mobile app. Administrators can use every module; accounting receives financial and read-oriented tools; sellers capture customers, orders, sales, and active cards without seeing purchase costs; warehouse users open inventory and order fulfillment; collectors open routes, field sales, delivery, and encrypted synchronization. Navigation guards reject direct links outside the user's role, while the API independently authorizes every sensitive action.
+
+## In-app training
+
+Web and mobile training first explain prerequisites and the correct setup order for each role. Simple actions use guided walkthroughs. Credit sales, payments, order delivery, returns, and synchronization conflict correction use full in-memory simulators that reproduce the operational forms, accept wrong choices, explain each rejection, and show simulated balance, stock, and cash-closing consequences without any API call. Credit delivery suggests an editable due date seven days ahead and rejects past dates. Return authorization is taught only to Administration and Accounting; Warehouse receives a separate read-only physical inspection walkthrough.
 
 Read the Spanish architecture, security, API, and operations documents for the canonical engineering detail. The source uses descriptive Spanish identifiers consistently so new team members can trace business language directly into code.
+
+English documentation is intentionally a technical summary, not full parity with the Spanish operating, privacy, incident, or role manuals. Spanish is the canonical operational language until every English document receives human review.
 
 ## Architecture governance
 

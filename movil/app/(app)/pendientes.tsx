@@ -8,8 +8,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import {
   leerHistorialOperaciones,
   obtenerEstadoCola,
@@ -19,6 +19,7 @@ import {
 import { obtenerConectividad, sincronizarPendientes } from "@/src/api";
 import { colores, usarTema } from "@/src/tema";
 import { usarSesion } from "@/src/sesion";
+import { usarDatosVivosMovil } from "@/src/usarDatosVivosMovil";
 
 const iconos = {
   VISITA: "location" as const,
@@ -34,6 +35,7 @@ const etiquetas: Record<string, string> = {
 };
 
 export default function Pendientes() {
+  const router = useRouter();
   const tema = usarTema();
   const { idioma } = usarSesion();
   const es = idioma === "es";
@@ -43,6 +45,7 @@ export default function Pendientes() {
   const [estado, establecerEstado] = useState({
     pendientes: 0,
     errores: 0,
+    rechazadas: 0,
     sincronizadas: 0,
     enviando: 0,
     porEnviar: 0,
@@ -52,20 +55,19 @@ export default function Pendientes() {
   const [conectada, establecerConectada] = useState(false);
   const [enviando, establecerEnviando] = useState(false);
 
-  const cargar = useCallback(() => {
-    void Promise.all([
+  const cargar = useCallback(async () => {
+    const [estadoLocal, historial, revision, red] = await Promise.all([
       obtenerEstadoCola(),
       leerHistorialOperaciones(80),
       verificarIntegridadOperaciones(),
       obtenerConectividad().catch(() => ({ conectada: false })),
-    ]).then(([estadoLocal, historial, revision, red]) => {
-      establecerEstado(estadoLocal);
-      establecerOperaciones(historial);
-      establecerIntegridad(revision.valida);
-      establecerConectada(red.conectada);
-    });
+    ]);
+    establecerEstado(estadoLocal);
+    establecerOperaciones(historial);
+    establecerIntegridad(revision.valida);
+    establecerConectada(red.conectada);
   }, []);
-  useFocusEffect(cargar);
+  usarDatosVivosMovil(cargar, 15_000);
 
   async function sincronizar() {
     establecerEnviando(true);
@@ -77,7 +79,7 @@ export default function Pendientes() {
           ? `${resultado.exitosas} confirmadas · ${resultado.fallidas} requieren atención`
           : `${resultado.exitosas} confirmed · ${resultado.fallidas} require attention`,
       );
-      cargar();
+      await cargar();
     } catch (error) {
       Alert.alert(
         es ? "No se pudo sincronizar" : "Unable to synchronize",
@@ -87,7 +89,7 @@ export default function Pendientes() {
             ? "Tus datos siguen guardados."
             : "Your data remains saved.",
       );
-      cargar();
+      await cargar();
     } finally {
       establecerEnviando(false);
     }
@@ -190,6 +192,10 @@ export default function Pendientes() {
                   valor: estado.sincronizadas,
                   etiqueta: es ? "Confirmadas" : "Confirmed",
                 },
+                {
+                  valor: estado.rechazadas,
+                  etiqueta: es ? "Rechazadas" : "Rejected",
+                },
               ].map((dato) => (
                 <View key={dato.etiqueta} style={estilos.dato}>
                   <Text style={[estilos.numero, { color: tema.texto }]}>
@@ -259,9 +265,38 @@ export default function Pendientes() {
                 · {item.hashIntegridad.slice(0, 10).toUpperCase()}
               </Text>
               {item.ultimoError && (
-                <Text style={estilos.error} numberOfLines={2}>
-                  {item.ultimoError}
-                </Text>
+                <>
+                  <Text style={estilos.error} numberOfLines={3}>
+                    {item.codigoError ? `${item.codigoError}: ` : ""}
+                    {item.ultimoError}
+                  </Text>
+                  {item.estado === "RECHAZADA" && (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        es
+                          ? "Corregir mediante una captura nueva"
+                          : "Correct with a new entry"
+                      }
+                      onPress={() =>
+                        router.push(
+                          item.tipo === "VENTA"
+                            ? "/venta"
+                            : item.tipo === "ENTREGA"
+                              ? "/pedidos"
+                              : "/rutas",
+                        )
+                      }
+                      style={estilos.corregir}
+                    >
+                      <Text style={estilos.corregirTexto}>
+                        {es
+                          ? `Corregir con nueva captura · folio ${item.id.slice(-8).toUpperCase()}`
+                          : `Correct with a new entry · receipt ${item.id.slice(-8).toUpperCase()}`}
+                      </Text>
+                    </Pressable>
+                  )}
+                </>
               )}
             </View>
             <View
@@ -269,7 +304,7 @@ export default function Pendientes() {
                 estilos.estado,
                 item.estado === "SINCRONIZADA"
                   ? estilos.estadoBien
-                  : item.estado === "ERROR"
+                  : item.estado === "ERROR" || item.estado === "RECHAZADA"
                     ? estilos.estadoError
                     : estilos.estadoPendiente,
               ]}
@@ -279,7 +314,7 @@ export default function Pendientes() {
                   estilos.estadoTexto,
                   item.estado === "SINCRONIZADA"
                     ? { color: colores.verde }
-                    : item.estado === "ERROR"
+                    : item.estado === "ERROR" || item.estado === "RECHAZADA"
                       ? { color: colores.rojo }
                       : { color: "#8a3b12" },
                 ]}
@@ -363,6 +398,8 @@ const estilos = StyleSheet.create({
   operacionTipo: { fontWeight: "800", fontSize: 12 },
   operacionFecha: { color: colores.gris, fontSize: 9, marginTop: 3 },
   error: { color: colores.rojo, fontSize: 9, marginTop: 3 },
+  corregir: { marginTop: 8, alignSelf: "flex-start" },
+  corregirTexto: { color: colores.azul, fontSize: 10, fontWeight: "800" },
   estado: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
   estadoBien: { backgroundColor: "#defbe6" },
   estadoError: { backgroundColor: "#fff1f1" },

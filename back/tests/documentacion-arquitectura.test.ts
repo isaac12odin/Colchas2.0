@@ -13,7 +13,10 @@ const guia = readFileSync(
   new URL("../../docs/GUIA_DESARROLLO.md", import.meta.url),
   "utf8",
 );
-const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+const readme = readFileSync(
+  new URL("../../README.md", import.meta.url),
+  "utf8",
+);
 
 function extraerEntrada(documento: string, id: string) {
   const inicio = documento.indexOf(`## ${id}`);

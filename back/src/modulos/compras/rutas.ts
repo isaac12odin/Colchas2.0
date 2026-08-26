@@ -4,20 +4,21 @@ import { prisma } from "../../infraestructura/prisma.js";
 import { autenticar, permitirPermiso } from "../../seguridad/middlewares.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
 import { crearPagina, esquemaPaginacion } from "../../compartido/paginacion.js";
+import { dineroPositivo } from "../../compartido/dinero.js";
 
 export const rutasCompras = Router();
 rutasCompras.use(autenticar, permitirPermiso("COMPRAS_GESTIONAR"));
 
 const esquemaCompra = z.object({
   proveedorId: z.string().uuid(),
-  fechaCompra: z.coerce.date().default(new Date()),
+  fechaCompra: z.coerce.date().default(() => new Date()),
   notas: z.string().trim().max(1000).optional(),
   items: z
     .array(
       z.object({
         productoId: z.string().uuid(),
         cantidad: z.coerce.number().int().positive(),
-        costoUnitario: z.coerce.number().positive(),
+        costoUnitario: dineroPositivo,
         itemPedidoId: z.string().uuid().optional(),
       }),
     )

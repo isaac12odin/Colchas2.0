@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "Nexo Cobranza",
-    "slug": "nexo-cobranza",
+    "name": "Vektra",
+    "slug": "vektra",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "nexo",
+    "scheme": "vektra",
+    "icon": "./assets/vektra-icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -17,7 +18,8 @@
       "package": "com.nexo.cobranza",
       "allowBackup": false,
       "adaptiveIcon": {
-        "backgroundColor": "#0f62fe"
+        "foregroundImage": "./assets/vektra-icon-foreground.png",
+        "backgroundColor": "#f5f8fc"
       }
     },
     "plugins": [
@@ -29,7 +31,23 @@
           "useSQLCipher": true
         }
       ],
-      "expo-font"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Vektra usa tus fotos únicamente para identificar productos del inventario.",
+          "cameraPermission": "Vektra usa la cámara para fotografiar productos y leer códigos QR o de barras.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Vektra usa la cámara para fotografiar productos y leer códigos QR o de barras.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,0 +1,17 @@
+[Unit]
+Description=Nexo - respaldo cifrado, verificación y copia externa
+After=docker.service postgresql.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/Colchas2.0
+EnvironmentFile=/etc/nexo/nexo.env
+ExecStart=/usr/bin/docker compose -f /etc/nexo/compose.yml run --rm migracion npm run backup
+ExecStartPost=/var/www/Colchas2.0/scripts/copiar-respaldo-externo.sh
+User=root
+Nice=10
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/respaldos
+NoNewPrivileges=true

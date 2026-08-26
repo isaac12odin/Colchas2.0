@@ -11,8 +11,189 @@ import { ErrorAplicacion } from "../../compartido/errores.js";
 import { hashesIguales } from "./integridad.js";
 
 export const rutasSincronizacion = Router();
+rutasSincronizacion.use(autenticar);
+
+rutasSincronizacion.get(
+  "/revisiones",
+  permitir(RolUsuario.ADMINISTRADOR, RolUsuario.CONTABLE),
+  async (req, res) => {
+    const pendientes = req.query.pendientes !== "false";
+    const datos = await prisma.operacionSincronizada.findMany({
+      where: pendientes ? { requiereRevision: true } : {},
+      select: {
+        id: true,
+        idOperacion: true,
+        tipo: true,
+        estado: true,
+        codigoError: true,
+        mensajeError: true,
+        dispositivoId: true,
+        creadaEnCliente: true,
+        procesadaEn: true,
+        diferenciaRelojSegundos: true,
+        requiereRevision: true,
+        revisadaEn: true,
+        resolucion: true,
+        operacionCompensatoriaId: true,
+        usuario: { select: { id: true, nombre: true, correo: true } },
+        revisadaPor: { select: { id: true, nombre: true } },
+      },
+      orderBy: { procesadaEn: "desc" },
+      take: 200,
+    });
+    res.json({ datos });
+  },
+);
+
+rutasSincronizacion.patch(
+  "/revisiones/:id/resolver",
+  permitir(RolUsuario.ADMINISTRADOR, RolUsuario.CONTABLE),
+  async (req, res) => {
+    const datos = z
+      .object({
+        resolucion: z.string().trim().min(10).max(1000),
+        operacionCompensatoriaId: z.string().trim().min(8).max(100).optional(),
+      })
+      .parse(req.body);
+    const operacion = await prisma.$transaction(async (tx) => {
+      const actual = await tx.operacionSincronizada.findUniqueOrThrow({
+        where: { id: String(req.params.id) },
+      });
+      if (actual.estado !== "RECHAZADA")
+        throw new ErrorAplicacion(
+          "REVISION_NO_APLICA",
+          "Sólo una operación rechazada puede cerrarse mediante revisión.",
+          422,
+        );
+      if (!actual.requiereRevision)
+        throw new ErrorAplicacion(
+          "REVISION_YA_RESUELTA",
+          "La operación ya tiene una resolución administrativa.",
+          409,
+        );
+      const actualizada = await tx.operacionSincronizada.update({
+        where: { id: actual.id },
+        data: {
+          requiereRevision: false,
+          revisadaEn: new Date(),
+          revisadaPorId: req.usuario!.id,
+          resolucion: datos.resolucion,
+          operacionCompensatoriaId: datos.operacionCompensatoriaId,
+        },
+      });
+      await tx.auditoria.create({
+        data: {
+          usuarioId: req.usuario!.id,
+          accion: "RESOLVER_RECHAZO_OFFLINE",
+          entidad: "OperacionSincronizada",
+          entidadId: actual.id,
+          datosAntes: {
+            codigoError: actual.codigoError,
+            requiereRevision: true,
+          },
+          datosDespues: {
+            resolucion: datos.resolucion,
+            operacionCompensatoriaId: datos.operacionCompensatoriaId,
+          },
+        },
+      });
+      return actualizada;
+    });
+    res.json(operacion);
+  },
+);
+
+rutasSincronizacion.post(
+  "/dispositivos/:id/reemplazar",
+  permitir(RolUsuario.ADMINISTRADOR),
+  async (req, res) => {
+    const datos = z
+      .object({
+        dispositivoId: z.string().trim().min(3).max(120),
+        claveIntegridad: z.string().regex(/^[a-f0-9]{64}$/i),
+        usuarioId: z.string().uuid().optional(),
+        motivo: z.string().trim().min(10).max(500),
+      })
+      .parse(req.body);
+    const reemplazo = await prisma.$transaction(async (tx) => {
+      const anterior = await tx.dispositivoSincronizacion.findUniqueOrThrow({
+        where: { id: String(req.params.id) },
+      });
+      const usuarioId = datos.usuarioId ?? anterior.usuarioId;
+      const operador = await tx.usuario.findFirst({
+        where: {
+          id: usuarioId,
+          activo: true,
+          rol: { in: [RolUsuario.ADMINISTRADOR, RolUsuario.COBRADOR] },
+        },
+        select: { id: true },
+      });
+      if (!operador)
+        throw new ErrorAplicacion(
+          "OPERADOR_DISPOSITIVO_INVALIDO",
+          "El nuevo responsable debe ser administrador o cobrador activo.",
+          422,
+        );
+      const activosDestino = await tx.dispositivoSincronizacion.count({
+        where: {
+          usuarioId,
+          activo: true,
+          ...(usuarioId === anterior.usuarioId
+            ? { id: { not: anterior.id } }
+            : {}),
+        },
+      });
+      if (activosDestino >= 5)
+        throw new ErrorAplicacion(
+          "LIMITE_DISPOSITIVOS",
+          "El nuevo responsable ya tiene cinco equipos activos.",
+          409,
+        );
+      await tx.dispositivoSincronizacion.update({
+        where: { id: anterior.id },
+        data: { activo: false },
+      });
+      const nuevo = await tx.dispositivoSincronizacion.create({
+        data: {
+          usuarioId,
+          dispositivoId: datos.dispositivoId,
+          claveIntegridadCifrada: cifrarCampo(datos.claveIntegridad),
+        },
+      });
+      await tx.auditoria.create({
+        data: {
+          usuarioId: req.usuario!.id,
+          accion: "REEMPLAZAR_DISPOSITIVO",
+          entidad: "DispositivoSincronizacion",
+          entidadId: nuevo.id,
+          datosAntes: {
+            id: anterior.id,
+            dispositivoId: anterior.dispositivoId,
+            usuarioId: anterior.usuarioId,
+            ultimaSecuencia: anterior.ultimaSecuencia,
+            ultimoHash: anterior.ultimoHash,
+          },
+          datosDespues: {
+            dispositivoId: nuevo.dispositivoId,
+            usuarioId,
+            motivo: datos.motivo,
+            cadenaNueva: "GENESIS",
+          },
+        },
+      });
+      return nuevo;
+    });
+    res.status(201).json({
+      id: reemplazo.id,
+      dispositivoId: reemplazo.dispositivoId,
+      usuarioId: reemplazo.usuarioId,
+      ultimaSecuencia: reemplazo.ultimaSecuencia,
+      ultimoHash: reemplazo.ultimoHash,
+    });
+  },
+);
+
 rutasSincronizacion.use(
-  autenticar,
   permitir(RolUsuario.ADMINISTRADOR, RolUsuario.COBRADOR),
 );
 
@@ -30,11 +211,19 @@ rutasSincronizacion.get("/catalogo", async (_req, res) => {
       codigoQr: true,
       existencia: true,
       precioVenta: true,
+      fotoMime: true,
+      fotoActualizadaEn: true,
       actualizadoEn: true,
     },
     orderBy: [{ marca: "asc" }, { nombre: "asc" }],
   });
-  res.json({ datos, generadoEn: new Date() });
+  res.json({
+    datos: datos.map(({ fotoMime, ...producto }) => ({
+      ...producto,
+      tieneFoto: Boolean(fotoMime),
+    })),
+    generadoEn: new Date(),
+  });
 });
 
 rutasSincronizacion.post("/dispositivos/registrar", async (req, res) => {

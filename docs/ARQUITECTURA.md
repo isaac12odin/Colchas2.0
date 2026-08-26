@@ -75,13 +75,13 @@ En web, los flujos de ventas y pedidos separan carga/mutaciones en hooks, tablas
 
 El móvil aplica el patrón outbox: primero confirma en una transacción SQLCipher la operación y su proyección visible; después intenta enviarla. Cada registro tiene secuencia, huella anterior, HMAC-SHA-512, estado, intentos y último error. La clave de integridad se guarda por separado en SecureStore y se registra por TLS al enrolar el dispositivo.
 
-PostgreSQL conserva por usuario/dispositivo la última secuencia y hash aceptados. La API toma un candado sobre esa ancla, exige HMAC en cada operación y en el lote, vuelve a calcularlos y rechaza cambios, huecos, duplicados con contenido distinto o reordenamientos. El lote se aplica completo en una sola transacción: si una regla de saldo, stock, precio, pedido o alcance falla, tampoco avanza la cadena. `OperacionSincronizada` y los identificadores móviles estables hacen idempotente un reintento idéntico.
+PostgreSQL conserva por usuario/dispositivo la última secuencia y hash aceptados. La API toma un candado sobre esa ancla, exige HMAC en cada operación y en el lote, vuelve a calcularlos y rechaza cambios, huecos, duplicados con contenido distinto o reordenamientos. Dentro de la transacción del lote, cada operación usa un `SAVEPOINT`: una regla de negocio inválida se revierte, genera un recibo terminal `RECHAZADA` y permite avanzar la cadena; un error técnico inesperado revierte el lote completo para reintentar. `OperacionSincronizada` y los identificadores móviles estables hacen idempotente un reintento idéntico. El móvil envía prefijos de 100 hasta drenar la cola, por lo que nunca supera el límite de 500.
 
 Este mecanismo evidencia manipulación de la historia anclada, pero no promete inmutabilidad absoluta ante un teléfono totalmente comprometido que todavía conserve sesión y clave válidas. La revocación administrativa del dispositivo, MDM y los controles de precio, cartera y corte limitan ese riesgo.
 
 ### Cobranza fuera de ruta
 
-`RutaLocalidad` modela una ruta de una o muchas localidades, `RutaCliente` conserva la asignación ordenada y `Ruta.cobradorId` define al responsable. Los filtros de datos de la API se aplican además del permiso por rol. El directorio móvil sólo contiene clientas de rutas activas asignadas a ese cobrador. Una visita extraordinaria puede ser fuera de la ruta abierta, pero la clienta debe pertenecer a otra ruta activa del mismo cobrador. PostgreSQL deriva `fueraDeRuta`; la interfaz no puede elegirlo ni modificar `RutaCliente`.
+`RutaLocalidad` modela una ruta de una o muchas localidades y `RutaCliente` conserva la asignación ordenada. `Ruta.cobradorId` es opcional: sin valor la ruta es operable sólo por Administración en web; con valor también entra al alcance móvil del cobrador asignado. Los filtros de datos de la API se aplican además del permiso por rol. El directorio móvil sólo contiene clientas de rutas activas asignadas a ese cobrador. Una visita extraordinaria puede ser fuera de la ruta abierta, pero para un cobrador la clienta debe pertenecer a otra ruta activa que también tenga asignada. PostgreSQL deriva `fueraDeRuta`; la interfaz no puede elegirlo ni modificar `RutaCliente`.
 
 ## Flujo de pedido
 
@@ -102,4 +102,4 @@ Sólo `ENTREGADO` crea una venta, descuenta inventario y, si es crédito, aument
 
 ## Escalabilidad
 
-La API es stateless salvo PostgreSQL. Puede ejecutar varias réplicas detrás de un balanceador. En producción conviene añadir Redis para límites distribuidos y trabajos programados, almacenamiento de objetos para comprobantes y un trabajador para reportes grandes. Los folios actuales son únicos y legibles; para contabilidad fiscal se debe integrar la serie consecutiva autorizada correspondiente.
+La API conserva estado en PostgreSQL y en el almacenamiento privado indicado por `IMAGE_STORAGE_DIR`. El despliegue actual usa una sola réplica con volumen persistente; para ejecutar varias réplicas se debe migrar esa carpeta a almacenamiento compartido u objetos privados. En producción conviene añadir Redis para límites distribuidos y trabajos programados, y un trabajador para reportes grandes. Los folios actuales son únicos y legibles; para contabilidad fiscal se debe integrar la serie consecutiva autorizada correspondiente.

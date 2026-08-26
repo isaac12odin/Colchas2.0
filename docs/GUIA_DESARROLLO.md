@@ -16,6 +16,8 @@
 - ¿Inventario, venta, saldo y bitácoras cambian atómicamente?
 - ¿El servidor recalcula precios, saldos y cuotas en vez de confiar en el cliente?
 - ¿El formulario funciona con teclado, móvil, modo oscuro y objetivos táctiles amplios?
+- ¿La operación frecuente se completa en tres etapas o menos y confirma su efecto real (saldo, stock o estado)?
+- ¿La página compone componentes pequeños y deja coordinación/estado en un hook `usar*.ts`?
 - ¿El cambio añade datos sensibles a logs, caché, respuestas o reportes?
 - ¿Existe una prueba de la regla crítica o de la regresión?
 - ¿El cambio contradice un ADR o cumple el disparador que obliga a sustituirlo?
@@ -46,4 +48,4 @@ Una refactorización que sólo cambia patrones o tecnología, sin mejorar una m�
 
 ## Seguridad de secretos
 
-No guardar contraseñas, JWT, claves SQLCipher o datos de tarjeta en código, AsyncStorage, logs o variables `NEXT_PUBLIC_*`. Las contraseñas iniciales son temporales y deben cambiarse en el primer acceso. En producción, los secretos se inyectan desde el gestor del entorno y la API sólo se publica detrás de HTTPS.
+No guardar contraseñas, JWT, claves SQLCipher o datos de tarjeta en código, AsyncStorage, logs o variables `NEXT_PUBLIC_*`. Las contraseñas creadas o restablecidas por administración funcionan de inmediato y no obligan a recorrer un cambio en el primer acceso. En producción, los secretos se inyectan desde el gestor del entorno y la API sólo se publica detrás de HTTPS.

@@ -1,4 +1,5 @@
 import type { Jornada, PedidoMovil } from "../../tipos";
+import { redondearMoneda } from "../../utilidades/dinero";
 import type { Periodicidad, TipoVenta } from "../ventas/dominioVenta";
 
 export const siguienteEstado: Record<string, string> = {
@@ -8,9 +9,11 @@ export const siguienteEstado: Record<string, string> = {
 };
 
 export function totalPedido(pedido: PedidoMovil) {
-  return pedido.items.reduce(
-    (suma, item) => suma + Number(item.precioEstimado) * item.cantidad,
-    0,
+  return redondearMoneda(
+    pedido.items.reduce(
+      (suma, item) => suma + Number(item.precioEstimado) * item.cantidad,
+      0,
+    ),
   );
 }
 
@@ -59,7 +62,6 @@ export function crearDatosEntrega(entrada: {
   cuota: string;
   fecha: string;
   fechaEntrega: string;
-  proveedores: Array<{ itemPedidoId: string; proveedorId: string }>;
 }) {
   const datos: Record<string, unknown> = {
     pedidoId: entrada.pedidoId,
@@ -71,7 +73,6 @@ export function crearDatosEntrega(entrada: {
         : undefined,
     metodoAnticipo: "EFECTIVO",
     fechaEntrega: entrada.fechaEntrega,
-    proveedores: entrada.proveedores,
   };
   if (entrada.tipo === "CREDITO" && entrada.total - entrada.anticipo > 0) {
     datos.plan = {
@@ -98,7 +99,9 @@ export function proyectarEntregaEnJornada(
             pedidos: cliente.pedidos.filter((pedido) => pedido.id !== pedidoId),
             saldo: {
               saldoActual: String(
-                Number(cliente.saldo?.saldoActual ?? 0) + montoFinanciado,
+                redondearMoneda(
+                  Number(cliente.saldo?.saldoActual ?? 0) + montoFinanciado,
+                ),
               ),
             },
           }

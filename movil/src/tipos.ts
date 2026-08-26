@@ -77,6 +77,15 @@ export interface ClienteJornada {
   }>;
   abonos: Array<{ fechaAbono: string; monto: string }>;
   evaluacionesRiesgo: Array<{ nivel: string; puntuacion?: number }>;
+  estadoCuenta?: {
+    saldoTotal: number;
+    abonoPeriodico: number;
+    vencido: number;
+    venceHoy: number;
+    cobrarHoy: number;
+    proximoVencimiento: string | null;
+    cuotasVencidas: number;
+  };
 }
 export interface Jornada {
   id: string;

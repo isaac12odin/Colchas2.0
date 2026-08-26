@@ -10,6 +10,9 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://nexo.deadcode.cloud/api/v1"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -29,6 +32,9 @@
     },
     "production": {
       "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://nexo.deadcode.cloud/api/v1"
+      },
       "android": {
         "buildType": "app-bundle"
       }

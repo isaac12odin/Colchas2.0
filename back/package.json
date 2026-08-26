@@ -17,9 +17,15 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
+    "db:migrar-imagenes": "tsx prisma/migrar-imagenes-a-archivos.ts",
+    "db:migrar-imagenes:prod": "node dist/prisma/migrar-imagenes-a-archivos.js",
     "db:seed": "tsx prisma/seed.ts",
+    "db:reindexar-telefonos": "tsx prisma/reindexar-telefonos.ts",
+    "reconciliar": "tsx scripts/reconciliar-proyecciones.ts",
     "db:demo": "tsx prisma/demo.ts",
     "db:demo:limpiar": "tsx prisma/demo-limpiar.ts",
+    "db:carga-volumen": "tsx prisma/carga-volumen.ts",
+    "db:carga-volumen:limpiar": "tsx prisma/carga-volumen.ts --limpiar",
     "db:studio": "prisma studio"
   },
   "prisma": {
@@ -40,6 +46,7 @@
     "pdfkit": "0.16.0",
     "pino": "9.7.0",
     "pino-http": "10.4.0",
+    "sharp": "0.35.3",
     "zod": "3.24.4"
   },
   "devDependencies": {

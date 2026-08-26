@@ -8,13 +8,16 @@ import {
   Text,
   View,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usarSesion } from "@/src/sesion";
 import { contarOperaciones } from "@/src/almacenLocal";
 import { colores, usarTema } from "@/src/tema";
 import { obtenerConectividad } from "@/src/api";
 import { puedeAccederModuloMovil, type ModuloMovil } from "@/src/permisos";
+import { usarDatosVivosMovil } from "@/src/usarDatosVivosMovil";
+import { AgendaCobranzaMovil } from "@/src/modulos/jornada/AgendaCobranzaMovil";
+import { GuiaRapidaRolMovil } from "@/src/modulos/capacitacion/GuiaRapidaRolMovil";
 
 export default function InicioMovil() {
   const { usuario, salir, idioma, alternarIdioma } = usarSesion();
@@ -22,17 +25,15 @@ export default function InicioMovil() {
   const es = idioma === "es";
   const [pendientes, establecerPendientes] = useState(0);
   const [conectada, establecerConectada] = useState(false);
-  useFocusEffect(
-    useCallback(() => {
-      void Promise.all([
-        contarOperaciones(),
-        obtenerConectividad().catch(() => ({ conectada: false })),
-      ]).then(([total, red]) => {
-        establecerPendientes(total);
-        establecerConectada(red.conectada);
-      });
-    }, []),
-  );
+  const cargar = useCallback(async () => {
+    const [total, red] = await Promise.all([
+      contarOperaciones(),
+      obtenerConectividad().catch(() => ({ conectada: false })),
+    ]);
+    establecerPendientes(total);
+    establecerConectada(red.conectada);
+  }, []);
+  usarDatosVivosMovil(cargar, 15_000);
   function confirmarSalida() {
     if (!pendientes) {
       void salir();
@@ -54,6 +55,15 @@ export default function InicioMovil() {
   }
   const modulos = (
     [
+      {
+        titulo: es ? "Practicar paso a paso" : "Practice step by step",
+        detalle: es
+          ? "Pantallas simuladas y pasos exactos por puesto"
+          : "Role tutorials, no data changes",
+        icono: "school" as const,
+        ruta: "/(app)/capacitacion" as const,
+        modulo: "capacitacion",
+      },
       {
         titulo: es ? "Rutas de cobranza" : "Collection routes",
         detalle: es
@@ -96,13 +106,20 @@ export default function InicioMovil() {
     ] satisfies Array<{
       titulo: string;
       detalle: string;
-      icono: "navigate" | "cube" | "receipt" | "bar-chart" | "cloud-upload";
+      icono:
+        | "navigate"
+        | "cube"
+        | "receipt"
+        | "bar-chart"
+        | "cloud-upload"
+        | "school";
       ruta:
         | "/(app)/rutas"
         | "/(app)/inventario"
         | "/(app)/pedidos"
         | "/(app)/resumen"
-        | "/(app)/pendientes";
+        | "/(app)/pendientes"
+        | "/(app)/capacitacion";
       modulo: ModuloMovil;
     }>
   ).filter((m) => usuario && puedeAccederModuloMovil(usuario.rol, m.modulo));
@@ -111,7 +128,7 @@ export default function InicioMovil() {
       <ScrollView contentContainerStyle={estilos.contenido}>
         <View style={estilos.encabezado}>
           <View>
-            <Text style={estilos.marca}>Nexo</Text>
+            <Text style={estilos.marca}>VEKTRA · PRECISION IN MOTION</Text>
             <Text style={[estilos.saludo, { color: tema.texto }]}>
               {es ? "Hola" : "Hello"}, {usuario?.nombre.split(" ")[0]}
             </Text>
@@ -157,6 +174,17 @@ export default function InicioMovil() {
             </Pressable>
           </View>
         </View>
+        {usuario &&
+          (usuario.rol === "COBRADOR" || usuario.rol === "ADMINISTRADOR") && (
+            <View style={estilos.agenda}>
+              <AgendaCobranzaMovil es={es} tema={tema} />
+            </View>
+          )}
+        {usuario && (
+          <View style={estilos.guia}>
+            <GuiaRapidaRolMovil rol={usuario.rol} tema={tema} es={es} />
+          </View>
+        )}
         <Text style={[estilos.seccion, { color: tema.texto }]}>
           {es ? "¿Qué vas a hacer?" : "What are you working on?"}
         </Text>
@@ -234,6 +262,8 @@ const estilos = StyleSheet.create({
     justifyContent: "center",
   },
   seccion: { fontSize: 18, fontWeight: "800", marginTop: 35, marginBottom: 14 },
+  agenda: { marginTop: 24 },
+  guia: { marginTop: 12 },
   lista: { gap: 12 },
   tarjeta: {
     minHeight: 88,

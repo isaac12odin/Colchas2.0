@@ -2,12 +2,21 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   randomBytes,
 } from "node:crypto";
 import { entorno } from "../configuracion/entorno.js";
 
 const algoritmo = "aes-256-gcm";
 const clave = Buffer.from(entorno.FIELD_ENCRYPTION_KEY, "base64");
+const claveBusqueda = Buffer.from(
+  entorno.SEARCH_HMAC_KEY ??
+    createHash("sha256")
+      .update(`nexo-busqueda-desarrollo:${entorno.FIELD_ENCRYPTION_KEY}`)
+      .digest("base64"),
+  "base64",
+);
+export const VERSION_HASH_BUSQUEDA = 1;
 
 /** Cifra datos personales en reposo. El canal de transporte debe usar TLS 1.2+ en produccion. */
 export function cifrarCampo(valor: string): string {
@@ -43,7 +52,9 @@ export function descifrarCampo(valor: string): string {
 }
 
 export function hashBusqueda(valor: string): string {
-  return createHash("sha256").update(valor.trim().toLowerCase()).digest("hex");
+  return createHmac("sha256", claveBusqueda)
+    .update(valor.trim().toLowerCase())
+    .digest("hex");
 }
 
 export function normalizarTelefono(valor: string): string {

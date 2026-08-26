@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert } from "react-native";
-import { useFocusEffect } from "expo-router";
 
-import { api, crearIdLocal } from "../../api";
+import { api, crearIdLocal, obtenerConectividad } from "../../api";
 import {
   contarOperaciones,
   encolarOperaciones,
@@ -10,6 +9,7 @@ import {
   leerJornada,
 } from "../../almacenLocal";
 import type { ClienteJornada, Jornada } from "../../tipos";
+import { usarDatosVivosMovil } from "../../usarDatosVivosMovil";
 import {
   aplicarVisitaLocal,
   agregarClienteExtraordinario,
@@ -42,7 +42,21 @@ export function usarJornadaRuta(rutaId: string, es: boolean) {
   const [guardando, establecerGuardando] = useState(false);
 
   const cargar = useCallback(async () => {
+    establecerCargando(true);
     try {
+      const totalPendientes = await contarOperaciones();
+      if (totalPendientes > 0) {
+        const [local, red] = await Promise.all([
+          leerJornada(rutaId, fecha),
+          obtenerConectividad().catch(() => ({ conectada: false })),
+        ]);
+        if (local) {
+          establecerJornada(local);
+          establecerPendientes(totalPendientes);
+          establecerOffline(!red.conectada);
+          return;
+        }
+      }
       const remota = await api<Jornada>(
         `/rutas/${rutaId}/jornada?fecha=${new Date(`${fecha}T12:00:00`).toISOString()}`,
       );
@@ -58,17 +72,7 @@ export function usarJornadaRuta(rutaId: string, es: boolean) {
     }
   }, [rutaId, fecha]);
 
-  useEffect(() => void cargar(), [cargar]);
-  useFocusEffect(
-    useCallback(() => {
-      void Promise.all([leerJornada(rutaId, fecha), contarOperaciones()]).then(
-        ([local, total]) => {
-          if (local) establecerJornada(local);
-          establecerPendientes(total);
-        },
-      );
-    }, [rutaId, fecha]),
-  );
+  usarDatosVivosMovil(cargar);
 
   const resumen = useMemo(() => calcularResumenJornada(jornada), [jornada]);
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Nexo - respaldo diario
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 America/Mexico_City
+Persistent=true
+RandomizedDelaySec=300
+Unit=nexo-respaldo.service
+
+[Install]
+WantedBy=timers.target

@@ -52,6 +52,7 @@ export default function PaginaReportes() {
           <span className="etiqueta">{es ? "Desde" : "From"}</span>
           <input
             className="campo"
+            data-capacitacion="reportes.desde"
             type="date"
             value={desde}
             onChange={(e) => establecerDesde(e.target.value)}
@@ -61,6 +62,7 @@ export default function PaginaReportes() {
           <span className="etiqueta">{es ? "Hasta" : "To"}</span>
           <input
             className="campo"
+            data-capacitacion="reportes.hasta"
             type="date"
             value={hasta}
             onChange={(e) => establecerHasta(e.target.value)}
@@ -68,7 +70,10 @@ export default function PaginaReportes() {
         </label>
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <article className="panel p-6">
+        <article
+          className="panel p-6"
+          data-capacitacion="reportes.exportacion.ventas"
+        >
           <FileSpreadsheet className="text-emerald-600" size={28} />
           <h2 className="mt-5 text-lg font-semibold">
             {es ? "Ventas y utilidad" : "Sales and profit"}
@@ -78,12 +83,19 @@ export default function PaginaReportes() {
               ? "Excel con filtros, costos, utilidad y fórmulas de totales."
               : "Excel with filters, cost, profit, and total formulas."}
           </p>
-          <a className="boton-primario mt-5 w-full" href={ventasUrl}>
+          <a
+            className="boton-primario mt-5 w-full"
+            href={ventasUrl}
+            data-capacitacion="reportes.ventas.excel"
+          >
             <Download size={17} />
             Excel
           </a>
         </article>
-        <article className="panel p-6">
+        <article
+          className="panel p-6"
+          data-capacitacion="reportes.exportacion.cartera"
+        >
           <FileSpreadsheet className="text-marca-500" size={28} />
           <h2 className="mt-5 text-lg font-semibold">
             {es ? "Cartera de clientes" : "Customer receivables"}
@@ -96,12 +108,16 @@ export default function PaginaReportes() {
           <a
             className="boton-primario mt-5 w-full"
             href="/api/reportes/clientes.xlsx"
+            data-capacitacion="reportes.cartera.excel"
           >
             <Download size={17} />
             Excel
           </a>
         </article>
-        <article className="panel p-6">
+        <article
+          className="panel p-6"
+          data-capacitacion="reportes.exportacion.pedidos"
+        >
           <FileText className="text-red-600" size={28} />
           <h2 className="mt-5 text-lg font-semibold">
             {es ? "Lista para surtir" : "Fulfillment list"}
@@ -114,13 +130,17 @@ export default function PaginaReportes() {
           <a
             className="boton-primario mt-5 w-full"
             href="/api/reportes/pedidos-pendientes.pdf"
+            data-capacitacion="reportes.surtir.pdf"
           >
             <Download size={17} />
             PDF
           </a>
         </article>
       </div>
-      <div className="panel mt-6 flex flex-col items-start justify-between gap-4 p-6 sm:flex-row sm:items-center">
+      <div
+        className="panel mt-6 flex flex-col items-start justify-between gap-4 p-6 sm:flex-row sm:items-center"
+        data-capacitacion="reportes.riesgo"
+      >
         <div>
           <h2 className="font-semibold">
             {es ? "Evaluación de riesgo" : "Risk assessment"}
@@ -131,7 +151,11 @@ export default function PaginaReportes() {
               : "Recalculate arrears, missed visits, and receivables behavior."}
           </p>
         </div>
-        <button className="boton-secundario" onClick={recalcular}>
+        <button
+          className="boton-secundario"
+          data-capacitacion="reportes.riesgo.recalcular"
+          onClick={recalcular}
+        >
           <RefreshCw size={17} />
           {es ? "Recalcular ahora" : "Recalculate"}
         </button>

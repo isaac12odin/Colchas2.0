@@ -2,6 +2,12 @@ import { PeriodicidadPago, Prisma, TipoVenta } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../infraestructura/prisma.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
+import { dineroNoNegativo, dineroPositivo } from "../../compartido/dinero.js";
+import {
+  contextoFechaOperacion,
+  validarFechaMonetaria,
+  validarPrimerVencimiento,
+} from "../../compartido/fechas.js";
 import { crearVentaEnTransaccion } from "../ventas/servicio.js";
 import {
   asegurarClienteAsignado,
@@ -13,23 +19,15 @@ export const esquemaEntregaPedido = z.object({
   idOperacionMovil: z.string().trim().min(8).max(100).optional(),
   tipo: z.nativeEnum(TipoVenta).default("CREDITO"),
   numeroTarjeta: z.string().trim().min(3).max(30).optional(),
-  anticipo: z.coerce.number().min(0).default(0),
+  anticipo: dineroNoNegativo.default(0),
   metodoAnticipo: z
     .enum(["EFECTIVO", "TRANSFERENCIA", "TARJETA", "OTRO"])
     .default("EFECTIVO"),
-  fechaEntrega: z.coerce.date().default(new Date()),
-  proveedores: z
-    .array(
-      z.object({
-        itemPedidoId: z.string().uuid(),
-        proveedorId: z.string().uuid(),
-      }),
-    )
-    .optional(),
+  fechaEntrega: z.coerce.date().default(() => new Date()),
   plan: z
     .object({
       periodicidad: z.nativeEnum(PeriodicidadPago),
-      montoCuota: z.coerce.number().positive(),
+      montoCuota: dineroPositivo,
       primerVencimiento: z.coerce.date(),
     })
     .optional(),
@@ -43,12 +41,35 @@ export async function entregarPedidoEnTransaccion(
   pedidoId: string,
   datos: EntregaPedido,
 ) {
+  const recibidaEnServidor = new Date();
+  validarFechaMonetaria(
+    datos.fechaEntrega,
+    recibidaEnServidor,
+    "La fecha de entrega",
+  );
+  if (datos.plan)
+    validarPrimerVencimiento(datos.fechaEntrega, datos.plan.primerVencimiento);
   const pedido = await tx.pedidoVenta.findUniqueOrThrow({
     where: { id: pedidoId },
     include: { items: true, venta: true },
   });
   await asegurarClienteAsignado(tx, actor, pedido.clienteId);
   if (pedido.estado === "ENTREGADO" && pedido.venta) {
+    if (datos.idOperacionMovil) {
+      if (pedido.venta.idOperacionMovil !== datos.idOperacionMovil)
+        throw new ErrorAplicacion(
+          "PEDIDO_YA_ENTREGADO",
+          `El pedido ya fue entregado en la venta ${pedido.venta.folio}. No se generó una segunda venta.`,
+          409,
+        );
+      const reintento = await crearVentaEnTransaccion(
+        tx,
+        actor,
+        construirEntradaVenta(pedido, datos),
+        pedido.id,
+      );
+      return { pedidoId: pedido.id, venta: reintento, idempotente: true };
+    }
     return { pedidoId: pedido.id, venta: pedido.venta, idempotente: true };
   }
   if (!["RECIBIDO_ALMACEN", "LISTO_ENTREGA"].includes(pedido.estado)) {
@@ -66,66 +87,32 @@ export async function entregarPedidoEnTransaccion(
     );
   }
 
-  if (datos.proveedores?.length) {
-    const mapa = new Map(
-      datos.proveedores.map((item) => [item.itemPedidoId, item.proveedorId]),
-    );
-    const proveedores = [...new Set(datos.proveedores.map((item) => item.proveedorId))];
-    const validos = await tx.proveedor.count({
-      where: { id: { in: proveedores }, activo: true },
-    });
-    if (validos !== proveedores.length)
-      throw new ErrorAplicacion(
-        "PROVEEDOR_INVALIDO",
-        "Seleccione proveedores activos para toda la mercancia.",
-        422,
-      );
-    for (const item of pedido.items) {
-      const proveedorId = mapa.get(item.id);
-      if (proveedorId)
-        await tx.itemPedidoVenta.update({
-          where: { id: item.id },
-          data: { proveedorId },
-        });
-    }
-  }
   const itemsSinProveedor = await tx.itemPedidoVenta.count({
     where: { pedidoId: pedido.id, proveedorId: null },
   });
   if (itemsSinProveedor > 0)
     throw new ErrorAplicacion(
       "PROVEEDOR_REQUERIDO",
-      "Antes de entregar indique quien surtio cada articulo.",
+      "Administracion, Contabilidad o Almacen deben asignar quien surtira cada articulo antes de la entrega.",
       422,
     );
 
   const venta = await crearVentaEnTransaccion(
     tx,
     actor,
-    {
-      idOperacionMovil: datos.idOperacionMovil,
-      clienteId: pedido.clienteId,
-      tipo: datos.tipo,
-      numeroTarjeta: datos.numeroTarjeta,
-      anticipo: datos.anticipo,
-      metodoAnticipo: datos.metodoAnticipo,
-      descuento: 0,
-      fechaVenta: datos.fechaEntrega,
-      notas: `Entrega del pedido ${pedido.folio}`,
-      items: pedido.items.map((item) => ({
-        productoId: item.productoId!,
-        cantidad: item.cantidad,
-        precioUnitario: Number(item.precioEstimado),
-      })),
-      plan: datos.plan,
-    },
+    construirEntradaVenta(pedido, datos),
     pedido.id,
+  );
+  const contextoFecha = contextoFechaOperacion(
+    datos.fechaEntrega,
+    recibidaEnServidor,
   );
   await tx.pedidoVenta.update({
     where: { id: pedido.id },
     data: {
       estado: "ENTREGADO",
       entregadoEn: datos.fechaEntrega,
+      fechaOperativaEntrega: contextoFecha.fechaOperativa,
       entregadoPorId: actor.id,
     },
   });
@@ -142,6 +129,38 @@ export async function entregarPedidoEnTransaccion(
     },
   });
   return { pedidoId: pedido.id, venta, idempotente: false };
+}
+
+function construirEntradaVenta(
+  pedido: {
+    id: string;
+    folio: string;
+    clienteId: string;
+    items: Array<{
+      productoId: string | null;
+      cantidad: number;
+      precioEstimado: Prisma.Decimal;
+    }>;
+  },
+  datos: EntregaPedido,
+) {
+  return {
+    idOperacionMovil: datos.idOperacionMovil,
+    clienteId: pedido.clienteId,
+    tipo: datos.tipo,
+    numeroTarjeta: datos.numeroTarjeta,
+    anticipo: datos.anticipo,
+    metodoAnticipo: datos.metodoAnticipo,
+    descuento: 0,
+    fechaVenta: datos.fechaEntrega,
+    notas: `Entrega del pedido ${pedido.folio}`,
+    items: pedido.items.map((item) => ({
+      productoId: item.productoId!,
+      cantidad: item.cantidad,
+      precioUnitario: Number(item.precioEstimado),
+    })),
+    plan: datos.plan,
+  };
 }
 
 export function entregarPedido(

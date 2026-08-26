@@ -1,12 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Layers3, LockKeyhole, Moon, Sun } from "lucide-react";
+import { ArrowRight, LockKeyhole, Moon, Smartphone, Sun } from "lucide-react";
 import { api, ErrorApi } from "@/lib/api";
 import type { UsuarioSesion } from "@/lib/tipos";
 import { usarAplicacion } from "@/componentes/proveedores";
 import { obtenerRutaInicialWeb } from "@/lib/permisos";
+import { CampoContrasena } from "@/componentes/CampoContrasena";
 
 export default function InicioSesion() {
   const {
@@ -39,18 +41,15 @@ export default function InicioSesion() {
       const respuesta = await api<{
         usuario?: UsuarioSesion;
         mfaRequerido?: boolean;
-      }>(
-        "/auth/iniciar-sesion",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            correo,
-            contrasena,
-            cliente: "WEB",
-            codigoMfa: codigoMfa || undefined,
-          }),
-        },
-      );
+      }>("/auth/iniciar-sesion", {
+        method: "POST",
+        body: JSON.stringify({
+          correo,
+          contrasena,
+          cliente: "WEB",
+          codigoMfa: codigoMfa || undefined,
+        }),
+      });
       if (respuesta.mfaRequerido) {
         establecerMfaRequerido(true);
         return;
@@ -73,41 +72,43 @@ export default function InicioSesion() {
 
   if (cargandoSesion || usuario)
     return (
-      <div className="grid min-h-screen place-items-center text-sm text-slate-500">
-        Nexo…
+      <div className="grid min-h-screen place-items-center text-sm text-slate-600">
+        Vektra…
       </div>
     );
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-[1.1fr_.9fr]">
-      <section className="relative hidden overflow-hidden bg-marca-900 p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-marca-500/30 blur-3xl" />
-        <div className="relative flex items-center gap-3 text-lg font-semibold">
-          <span className="grid h-10 w-10 place-items-center rounded-lg bg-white text-marca-700">
-            <Layers3 size={22} />
-          </span>
-          Nexo
-        </div>
-        <div className="relative max-w-xl">
-          <p className="mb-5 text-sm font-semibold uppercase tracking-[.25em] text-blue-200">
-            {es ? "Cobranza inteligente" : "Smarter collections"}
-          </p>
-          <h1 className="text-5xl font-semibold leading-[1.08]">
+    <main className="grid min-h-screen lg:grid-cols-[1.12fr_.88fr]">
+      <section className="relative hidden min-h-screen overflow-hidden bg-slate-950 text-white lg:block">
+        <video
+          className="absolute inset-0 h-full w-full object-cover"
+          src="/brand/vektra-motion.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          aria-label="Animación de Vektra"
+        />
+        <div className="absolute inset-0 bg-slate-950/45" />
+        <div className="relative flex h-full min-h-screen flex-col justify-between p-10 xl:p-14">
+          <Image
+            src="/brand/vektra-logo.webp"
+            alt="Vektra · Precision in Motion"
+            width={360}
+            height={180}
+            priority
+            className="h-32 w-auto object-contain object-left brightness-0 invert drop-shadow-lg"
+          />
+          <p className="max-w-lg text-lg font-medium leading-8 text-white drop-shadow-md">
             {es
-              ? "Tu operación completa, clara y en movimiento."
-              : "Your whole operation, clear and moving."}
-          </h1>
-          <p className="mt-6 max-w-lg text-lg leading-8 text-blue-100">
-            {es
-              ? "Clientes, rutas, ventas e inventario en un sistema diseñado para trabajar rápido incluso donde no hay señal."
-              : "Customers, routes, sales, and inventory in a system designed to move fast—even without a signal."}
+              ? "Control administrativo, ventas e inventario con información de la operación al día."
+              : "Administrative, sales, and inventory control with current operating data."}
           </p>
         </div>
-        <p className="relative text-sm text-blue-200">Nexo Cobranza · 2026</p>
       </section>
 
       <section className="flex min-h-screen flex-col bg-white dark:bg-slate-950">
-        <div className="flex justify-end gap-2 p-5">
+        <div className="flex justify-end gap-2 p-3 sm:p-5">
           <button
             onClick={alternarIdioma}
             className="boton-secundario"
@@ -123,29 +124,31 @@ export default function InicioSesion() {
             {oscuro ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         </div>
-        <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-7 pb-24">
-          <div className="mb-9 lg:hidden">
-            <div className="flex items-center gap-3 text-xl font-semibold">
-              <span className="grid h-10 w-10 place-items-center rounded-lg bg-marca-500 text-white">
-                <Layers3 size={22} />
-              </span>
-              Nexo
-            </div>
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-start px-5 pb-6 sm:justify-center sm:px-7 sm:pb-16 lg:pb-24">
+          <div className="mb-2 lg:hidden">
+            <Image
+              src="/brand/vektra-logo.webp"
+              alt="Vektra · Precision in Motion"
+              width={260}
+              height={120}
+              priority
+              className="h-16 w-auto object-contain object-left dark:brightness-0 dark:invert sm:h-20"
+            />
           </div>
-          <div className="mb-8">
-            <div className="mb-4 grid h-11 w-11 place-items-center rounded-lg bg-marca-50 text-marca-600 dark:bg-marca-900/40">
+          <div className="mb-4 sm:mb-6">
+            <div className="mb-2 grid h-9 w-9 place-items-center rounded-lg bg-marca-50 text-marca-600 dark:bg-marca-900/40 sm:mb-3 sm:h-11 sm:w-11">
               <LockKeyhole size={22} />
             </div>
-            <h2 className="text-3xl font-semibold tracking-tight">
+            <h2 className="text-2xl font-semibold sm:text-3xl">
               {es ? "Bienvenido de nuevo" : "Welcome back"}
             </h2>
-            <p className="mt-2 text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 sm:mt-2 sm:text-base">
               {es
                 ? "Ingresa para consultar la operación de hoy."
                 : "Sign in to review today’s operation."}
             </p>
           </div>
-          <form onSubmit={enviar} className="space-y-5">
+          <form onSubmit={enviar} className="space-y-3 sm:space-y-5">
             <label className="block">
               <span className="etiqueta">
                 {es ? "Correo electrónico" : "Email address"}
@@ -170,7 +173,9 @@ export default function InicioSesion() {
                   autoComplete="one-time-code"
                   value={codigoMfa}
                   onChange={(e) =>
-                    establecerCodigoMfa(e.target.value.replace(/\D/g, "").slice(0, 6))
+                    establecerCodigoMfa(
+                      e.target.value.replace(/\D/g, "").slice(0, 6),
+                    )
                   }
                   pattern="[0-9]{6}"
                   maxLength={6}
@@ -179,18 +184,20 @@ export default function InicioSesion() {
                 />
               </label>
             )}
-            <label className="block">
-              <span className="etiqueta">{es ? "Contraseña" : "Password"}</span>
-              <input
+            <div className="block">
+              <label htmlFor="contrasena-login" className="etiqueta">
+                {es ? "Contraseña" : "Password"}
+              </label>
+              <CampoContrasena
+                id="contrasena-login"
                 className="campo"
-                type="password"
                 autoComplete="current-password"
                 value={contrasena}
                 onChange={(e) => establecerContrasena(e.target.value)}
                 required
-                minLength={8}
+                minLength={6}
               />
-            </label>
+            </div>
             {error && (
               <div
                 role="alert"
@@ -210,7 +217,15 @@ export default function InicioSesion() {
               <ArrowRight size={18} />
             </button>
           </form>
-          <p className="mt-7 text-center text-xs leading-5 text-slate-400">
+          <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs leading-5 text-slate-600 dark:text-slate-300 sm:mt-6 sm:pt-5">
+            <Smartphone className="mt-0.5 shrink-0" size={16} />
+            <p>
+              {es
+                ? "Almacenistas y cobradores ingresan únicamente desde la aplicación móvil Vektra."
+                : "Warehouse and collection staff sign in only through the Vektra mobile app."}
+            </p>
+          </div>
+          <p className="mt-4 text-center text-xs leading-5 text-slate-600 dark:text-slate-300 sm:mt-7">
             {es
               ? "La sesión está protegida con cifrado de transporte y controles por rol."
               : "Your session is protected with transport encryption and role-based access."}

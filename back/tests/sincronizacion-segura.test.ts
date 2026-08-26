@@ -29,25 +29,15 @@ describe("sincronización segura", () => {
   };
 
   it("acepta un reintento idéntico del mismo usuario y equipo", () => {
-    expect(
-      reciboCoincide(
-        recibo,
-        operacion,
-        "usuario-a",
-        "equipo-a",
-      ),
-    ).toBe(true);
+    expect(reciboCoincide(recibo, operacion, "usuario-a", "equipo-a")).toBe(
+      true,
+    );
   });
 
   it("rechaza apropiación del id y cambio de contenido", () => {
-    expect(
-      reciboCoincide(
-        recibo,
-        operacion,
-        "usuario-b",
-        "equipo-a",
-      ),
-    ).toBe(false);
+    expect(reciboCoincide(recibo, operacion, "usuario-b", "equipo-a")).toBe(
+      false,
+    );
     expect(
       reciboCoincide(
         recibo,

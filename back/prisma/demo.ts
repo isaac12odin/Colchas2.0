@@ -70,11 +70,24 @@ async function principal() {
   });
   const usuarios = await Promise.all(
     perfiles.map((perfil) =>
-      prisma.usuario.create({
-        data: {
+      prisma.usuario.upsert({
+        where: { correo: perfil.correo },
+        create: {
           ...perfil,
           hashContrasena,
           debeCambiarContrasena: false,
+        },
+        update: {
+          ...perfil,
+          hashContrasena,
+          activo: true,
+          debeCambiarContrasena: false,
+          intentosFallidos: 0,
+          bloqueadoHasta: null,
+          tokenVersion: { increment: 1 },
+          mfaHabilitado: false,
+          mfaSecretoCifrado: null,
+          mfaUltimoContador: null,
         },
       }),
     ),
@@ -82,6 +95,11 @@ async function principal() {
   const admin = usuarios[0]!;
   const vendedor = usuarios[2]!;
   const cobrador = usuarios[4]!;
+  const categoriaHogar = await prisma.categoriaProducto.upsert({
+    where: { nombre: "Hogar" },
+    create: { nombre: "Hogar", orden: 20 },
+    update: { activo: true },
+  });
 
   const localidades = await Promise.all(
     [
@@ -103,6 +121,7 @@ async function principal() {
         nombre,
         marca,
         categoria: "Hogar",
+        categoriaId: categoriaHogar.id,
         codigoBarras: `75090000000${indice + 1}`,
         codigoQr: `NEXO-DEMO:${sku}`,
         existencia,
@@ -244,10 +263,12 @@ async function principal() {
     },
   });
 
-  const diasVenta = [60, 35, 14, 2];
+  // Las operaciones demo pasan por las mismas reglas temporales que la API:
+  // deben quedar dentro de la ventana offline vigente de 36 horas.
+  const horasVenta = [30, 24, 12, 2];
   const ventasCredito = [];
-  for (let indice = 0; indice < diasVenta.length; indice += 1) {
-    const fechaVenta = new Date(Date.now() - diasVenta[indice]! * 86_400_000);
+  for (let indice = 0; indice < horasVenta.length; indice += 1) {
+    const fechaVenta = new Date(Date.now() - horasVenta[indice]! * 3_600_000);
     const venta = await crearVenta(vendedor, {
       clienteId: clientes[indice]!.id,
       numeroTarjeta: `DEMO-${String(indice + 1).padStart(4, "0")}`,
@@ -272,7 +293,7 @@ async function principal() {
     ventaId: ventasCredito[0]!.id,
     monto: 400,
     metodo: "EFECTIVO",
-    fechaAbono: new Date(Date.now() - 18 * 86_400_000),
+    fechaAbono: new Date(Date.now() - 6 * 3_600_000),
     referencia: "DEMO-ABONO-001",
     notas: MARCA_DEMO,
   });
@@ -281,7 +302,7 @@ async function principal() {
     ventaId: ventasCredito[1]!.id,
     monto: 300,
     metodo: "TRANSFERENCIA",
-    fechaAbono: new Date(Date.now() - 7 * 86_400_000),
+    fechaAbono: new Date(Date.now() - 3 * 3_600_000),
     referencia: "DEMO-ABONO-002",
     notas: MARCA_DEMO,
   });

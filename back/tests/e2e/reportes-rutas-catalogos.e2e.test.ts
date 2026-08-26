@@ -50,7 +50,7 @@ function recibirBinario(
 }
 
 describe.sequential("rutas y alertas empresariales", () => {
-  it("arma una ruta multilocalidad e incluye automáticamente sus clientes", () =>
+  it("arma una ruta sólo con clientas con saldo y conserva el orden elegido", () =>
     conEscenario(async (escenario) => {
       const [admin, cobrador] = await Promise.all([
         escenario.crearUsuario(RolUsuario.ADMINISTRADOR),
@@ -61,9 +61,38 @@ describe.sequential("rutas y alertas empresariales", () => {
         escenario.crearLocalidad(2),
       ]);
       const [clienteUno, clienteDos] = await Promise.all([
-        escenario.crearCliente(localidadUno.id, { indice: 1 }),
-        escenario.crearCliente(localidadDos.id, { indice: 2 }),
+        escenario.crearCliente(localidadUno.id, { indice: 1, saldo: 300 }),
+        escenario.crearCliente(localidadDos.id, { indice: 2, saldo: 500 }),
       ]);
+      const clienteSinSaldo = await escenario.crearCliente(localidadUno.id, {
+        indice: 3,
+        saldo: 0,
+      });
+      const candidatos = await request(app)
+        .get("/api/v1/rutas/clientes-con-saldo")
+        .set(cabeceras(admin.token))
+        .expect(200);
+      const idsCandidatos = candidatos.body.datos.map(
+        (item: { id: string }) => item.id,
+      );
+      expect(idsCandidatos).toEqual(
+        expect.arrayContaining([clienteUno.id, clienteDos.id]),
+      );
+      expect(idsCandidatos).not.toContain(clienteSinSaldo.id);
+
+      await request(app)
+        .post("/api/v1/rutas")
+        .set(cabeceras(admin.token))
+        .send({
+          nombre: `Ruta inválida ${escenario.marca}`,
+          diaSemana: "JUEVES",
+          cobradorId: cobrador.id,
+          localidadIds: [localidadUno.id],
+          clienteIds: [clienteSinSaldo.id],
+          incluirClientesLocalidades: false,
+        })
+        .expect(422);
+
       const respuesta = await request(app)
         .post("/api/v1/rutas")
         .set(cabeceras(admin.token))
@@ -72,17 +101,44 @@ describe.sequential("rutas y alertas empresariales", () => {
           diaSemana: "JUEVES",
           cobradorId: cobrador.id,
           localidadIds: [localidadUno.id, localidadDos.id],
-          clienteIds: [],
-          incluirClientesLocalidades: true,
+          clienteIds: [clienteDos.id, clienteUno.id],
+          incluirClientesLocalidades: false,
         })
         .expect(201);
       escenario.registrarRuta(respuesta.body.id);
       expect(respuesta.body.localidades).toHaveLength(2);
       expect(
-        respuesta.body.clientes
-          .map((item: { clienteId: string }) => item.clienteId)
-          .sort(),
-      ).toEqual([clienteUno.id, clienteDos.id].sort());
+        respuesta.body.clientes.map(
+          (item: { clienteId: string }) => item.clienteId,
+        ),
+      ).toEqual([clienteDos.id, clienteUno.id]);
+
+      await request(app)
+        .patch(`/api/v1/rutas/${respuesta.body.id}`)
+        .set(cabeceras(admin.token))
+        .send({
+          clienteIds: [clienteUno.id, clienteDos.id],
+          incluirClientesLocalidades: false,
+        })
+        .expect(200);
+      const ordenActualizado = await prisma.rutaCliente.findMany({
+        where: { rutaId: respuesta.body.id },
+        orderBy: { orden: "asc" },
+        select: { clienteId: true },
+      });
+      expect(ordenActualizado.map(({ clienteId }) => clienteId)).toEqual([
+        clienteUno.id,
+        clienteDos.id,
+      ]);
+
+      await request(app)
+        .patch(`/api/v1/rutas/${respuesta.body.id}`)
+        .set(cabeceras(admin.token))
+        .send({
+          clienteIds: [clienteSinSaldo.id],
+          incluirClientesLocalidades: false,
+        })
+        .expect(422);
     }));
 
   it("encuentra clientes fuera de ruta por nombre, tarjeta y teléfono sin filtrar PII", () =>
@@ -136,9 +192,10 @@ describe.sequential("rutas y alertas empresariales", () => {
 
   it("detecta inventario bajo, mora, pedido atrasado y ruta incompleta", () =>
     conEscenario(async (escenario) => {
-      const [admin, contable] = await Promise.all([
+      const [admin, contable, cobrador] = await Promise.all([
         escenario.crearUsuario(RolUsuario.ADMINISTRADOR),
         escenario.crearUsuario(RolUsuario.CONTABLE),
+        escenario.crearUsuario(RolUsuario.COBRADOR),
       ]);
       const localidad = await escenario.crearLocalidad();
       const cliente = await escenario.crearCliente(localidad.id, {
@@ -157,6 +214,7 @@ describe.sequential("rutas y alertas empresariales", () => {
         [localidad.id],
         [cliente.id],
         diaActual(),
+        cobrador.id,
       );
       await prisma.pedidoVenta.create({
         data: {
@@ -209,7 +267,8 @@ describe.sequential("reportes y exportaciones", () => {
         precio: 100,
       });
       const proveedor = await escenario.crearProveedor();
-      const fecha = new Date("1987-04-15T12:00:00.000Z");
+      const fecha = new Date();
+      const fechaIso = fecha.toISOString().slice(0, 10);
       await request(app)
         .post("/api/v1/ventas")
         .set(cabeceras(admin.token))
@@ -229,7 +288,7 @@ describe.sequential("reportes y exportaciones", () => {
         })
         .expect(201);
       const resumen = await request(app)
-        .get("/api/v1/reportes/resumen?periodo=MES&fecha=1987-04-15")
+        .get(`/api/v1/reportes/resumen?periodo=MES&fecha=${fechaIso}`)
         .set(cabeceras(admin.token))
         .expect(200);
       expect(resumen.body.ventas.bruto).toBe(100);
@@ -250,13 +309,13 @@ describe.sequential("reportes y exportaciones", () => {
         .set(cabeceras(admin.token))
         .send({
           tipo: "PUBLICO",
-          fechaVenta: "1988-05-10T12:00:00.000Z",
+          fechaVenta: new Date(),
           items: [{ productoId: producto.id, cantidad: 1 }],
         })
         .expect(201);
       const respuesta = await request(app)
         .get(
-          "/api/v1/reportes/ventas.xlsx?desde=1988-05-01&hasta=1988-05-31T23:59:59.999Z",
+          `/api/v1/reportes/ventas.xlsx?desde=${new Date(Date.now() - 86_400_000).toISOString()}&hasta=${new Date(Date.now() + 86_400_000).toISOString()}`,
         )
         .set(cabeceras(admin.token))
         .buffer(true)

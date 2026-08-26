@@ -4,10 +4,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const e2eSqlCipher = process.env.EXPO_PUBLIC_E2E_SQLCIPHER === "SI";
   return {
     ...config,
-    name: e2eSqlCipher
-      ? "Nexo SQLCipher E2E"
-      : (config.name ?? "Nexo Cobranza"),
-    slug: config.slug ?? "nexo-cobranza",
+    name: e2eSqlCipher ? "Vektra SQLCipher E2E" : (config.name ?? "Vektra"),
+    slug: config.slug ?? "vektra",
     ios: {
       ...config.ios,
       bundleIdentifier: e2eSqlCipher

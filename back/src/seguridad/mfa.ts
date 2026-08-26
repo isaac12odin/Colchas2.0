@@ -8,7 +8,10 @@ export function generarSecretoMfa() {
   for (const byte of bytes) bits += byte.toString(2).padStart(8, "0");
   let salida = "";
   for (let indice = 0; indice < bits.length; indice += 5)
-    salida += alfabeto[Number.parseInt(bits.slice(indice, indice + 5).padEnd(5, "0"), 2)];
+    salida +=
+      alfabeto[
+        Number.parseInt(bits.slice(indice, indice + 5).padEnd(5, "0"), 2)
+      ];
   return salida;
 }
 
@@ -28,7 +31,9 @@ function decodificarBase32(valor: string) {
 export function codigoParaContador(secreto: string, contador: bigint) {
   const mensaje = Buffer.alloc(8);
   mensaje.writeBigUInt64BE(contador);
-  const hash = createHmac("sha1", decodificarBase32(secreto)).update(mensaje).digest();
+  const hash = createHmac("sha1", decodificarBase32(secreto))
+    .update(mensaje)
+    .digest();
   const desplazamiento = hash[hash.length - 1]! & 0x0f;
   const numero =
     (((hash[desplazamiento]! & 0x7f) << 24) |
@@ -56,6 +61,6 @@ export function validarCodigoMfa(
 }
 
 export function uriConfiguracionMfa(correo: string, secreto: string) {
-  const etiqueta = encodeURIComponent(`Nexo Cobranza:${correo}`);
-  return `otpauth://totp/${etiqueta}?secret=${secreto}&issuer=${encodeURIComponent("Nexo Cobranza")}&algorithm=SHA1&digits=6&period=30`;
+  const etiqueta = encodeURIComponent(`Vektra:${correo}`);
+  return `otpauth://totp/${etiqueta}?secret=${secreto}&issuer=${encodeURIComponent("Vektra")}&algorithm=SHA1&digits=6&period=30`;
 }

@@ -12,8 +12,6 @@ export function requiereHttps(entrada: {
   ruta: string;
 }): boolean {
   return (
-    entrada.produccion &&
-    !entrada.conexionSegura &&
-    !esRutaSalud(entrada.ruta)
+    entrada.produccion && !entrada.conexionSegura && !esRutaSalud(entrada.ruta)
   );
 }
