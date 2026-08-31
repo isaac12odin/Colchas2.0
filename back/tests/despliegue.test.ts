@@ -128,7 +128,7 @@ describe("proxy Nginx de producción real", () => {
   it("publica el APK en una ruta HTTPS enlazada desde el inicio", () => {
     expect(nginx).toContain("location = /descargas/vektra.apk");
     expect(nginx).toContain(
-      "alias /var/www/nexo-downloads/Vektra-1.0.0-r2.apk;",
+      "alias /var/www/nexo-downloads/Vektra-1.0.0-r3.apk;",
     );
     expect(nginx).toContain(
       "default_type application/vnd.android.package-archive;",

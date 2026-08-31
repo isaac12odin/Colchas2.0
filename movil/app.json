@@ -16,6 +16,7 @@
     },
     "android": {
       "package": "com.nexo.cobranza",
+      "versionCode": 2,
       "allowBackup": false,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
