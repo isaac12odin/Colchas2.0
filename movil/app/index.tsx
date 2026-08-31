@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -57,92 +58,102 @@ export default function IniciarSesion() {
   return (
     <SafeAreaView style={[estilos.pagina, { backgroundColor: tema.fondo }]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={estilos.contenido}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={estilos.teclado}
       >
-        <Image
-          source={require("../assets/vektra-logo-compact.png")}
-          resizeMode="contain"
-          style={estilos.logo}
-          accessibilityLabel="Vektra · Precision in Motion"
-        />
-        <Text style={estilos.subtitulo}>
-          {es
-            ? "PRECISION IN MOTION · Cobranza e inventario, aun sin señal."
-            : "Collections and inventory, even offline."}
-        </Text>
-        <View
-          style={[
-            estilos.panel,
-            { backgroundColor: tema.panel, borderColor: tema.borde },
-          ]}
+        <ScrollView
+          contentContainerStyle={estilos.contenido}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
         >
-          <Text style={[estilos.encabezado, { color: tema.texto }]}>
-            {es ? "Iniciar sesión" : "Sign in"}
-          </Text>
-          <Text style={[estilos.etiqueta, { color: tema.texto }]}>
-            {es ? "Correo" : "Email"}
-          </Text>
-          <TextInput
-            style={[
-              estilos.campo,
-              { color: tema.texto, borderColor: tema.borde },
-            ]}
-            value={correo}
-            onChangeText={establecerCorreo}
-            autoCapitalize="none"
-            keyboardType="email-address"
+          <Image
+            source={require("../assets/vektra-logo-compact.png")}
+            resizeMode="contain"
+            style={estilos.logo}
+            accessibilityLabel="Vektra · Precision in Motion"
           />
-          <Text style={[estilos.etiqueta, { color: tema.texto }]}>
-            {es ? "Contraseña" : "Password"}
+          <Text style={estilos.subtitulo}>
+            {es
+              ? "PRECISION IN MOTION · Cobranza e inventario, aun sin señal."
+              : "Collections and inventory, even offline."}
           </Text>
-          <TextInput
+          <View
             style={[
-              estilos.campo,
-              { color: tema.texto, borderColor: tema.borde },
+              estilos.panel,
+              { backgroundColor: tema.panel, borderColor: tema.borde },
             ]}
-            value={contrasena}
-            onChangeText={establecerContrasena}
-            secureTextEntry
-          />
-          {mfaRequerido ? (
-            <>
-              <Text style={[estilos.etiqueta, { color: tema.texto }]}>
-                Código del autenticador
+          >
+            <Text style={[estilos.encabezado, { color: tema.texto }]}>
+              {es ? "Iniciar sesión" : "Sign in"}
+            </Text>
+            <Text style={[estilos.etiqueta, { color: tema.texto }]}>
+              {es ? "Correo" : "Email"}
+            </Text>
+            <TextInput
+              style={[
+                estilos.campo,
+                { color: tema.texto, borderColor: tema.borde },
+              ]}
+              value={correo}
+              onChangeText={establecerCorreo}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <Text style={[estilos.etiqueta, { color: tema.texto }]}>
+              {es ? "Contraseña" : "Password"}
+            </Text>
+            <TextInput
+              style={[
+                estilos.campo,
+                { color: tema.texto, borderColor: tema.borde },
+              ]}
+              value={contrasena}
+              onChangeText={establecerContrasena}
+              secureTextEntry
+            />
+            {mfaRequerido ? (
+              <>
+                <Text style={[estilos.etiqueta, { color: tema.texto }]}>
+                  Código del autenticador
+                </Text>
+                <TextInput
+                  style={[
+                    estilos.campo,
+                    {
+                      color: tema.texto,
+                      borderColor: tema.borde,
+                      textAlign: "center",
+                      letterSpacing: 8,
+                    },
+                  ]}
+                  value={codigoMfa}
+                  onChangeText={(valor) =>
+                    establecerCodigoMfa(valor.replace(/\D/g, "").slice(0, 6))
+                  }
+                  keyboardType="number-pad"
+                  textContentType="oneTimeCode"
+                  maxLength={6}
+                />
+              </>
+            ) : null}
+            {error ? <Text style={estilos.error}>{error}</Text> : null}
+            <Pressable
+              onPress={enviar}
+              disabled={enviando}
+              style={estilos.boton}
+            >
+              <Text style={estilos.botonTexto}>
+                {enviando ? "…" : es ? "Entrar" : "Sign in"}
               </Text>
-              <TextInput
-                style={[
-                  estilos.campo,
-                  {
-                    color: tema.texto,
-                    borderColor: tema.borde,
-                    textAlign: "center",
-                    letterSpacing: 8,
-                  },
-                ]}
-                value={codigoMfa}
-                onChangeText={(valor) =>
-                  establecerCodigoMfa(valor.replace(/\D/g, "").slice(0, 6))
-                }
-                keyboardType="number-pad"
-                textContentType="oneTimeCode"
-                maxLength={6}
-              />
-            </>
-          ) : null}
-          {error ? <Text style={estilos.error}>{error}</Text> : null}
-          <Pressable onPress={enviar} disabled={enviando} style={estilos.boton}>
-            <Text style={estilos.botonTexto}>
-              {enviando ? "…" : es ? "Entrar" : "Sign in"}
-            </Text>
-            <Ionicons name="arrow-forward" color="white" size={18} />
-          </Pressable>
-          <Pressable onPress={alternarIdioma}>
-            <Text style={estilos.idioma}>
-              {es ? "Use in English" : "Usar en español"}
-            </Text>
-          </Pressable>
-        </View>
+              <Ionicons name="arrow-forward" color="white" size={18} />
+            </Pressable>
+            <Pressable onPress={alternarIdioma}>
+              <Text style={estilos.idioma}>
+                {es ? "Use in English" : "Usar en español"}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -150,7 +161,8 @@ export default function IniciarSesion() {
 
 const estilos = StyleSheet.create({
   pagina: { flex: 1 },
-  contenido: { flex: 1, justifyContent: "center", padding: 24 },
+  teclado: { flex: 1 },
+  contenido: { flexGrow: 1, justifyContent: "center", padding: 24 },
   centro: { flex: 1, alignItems: "center", justifyContent: "center" },
   logo: { width: 235, height: 150, alignSelf: "center" },
   subtitulo: {

@@ -6,10 +6,12 @@ import {
   crearOperacionesVisita,
 } from "../src/modulos/jornada/dominioJornada";
 import {
+  crearDatosNuevoPedido,
   crearDatosEntrega,
   proyectarEntregaEnJornada,
   totalPedido,
   validarEntrega,
+  validarNuevoPedido,
 } from "../src/modulos/pedidos/dominioPedidos";
 import {
   calcularImportes,
@@ -259,6 +261,37 @@ describe("abonos y entregas offline", () => {
     expect(datos.numeroTarjeta).toBe("T-100");
     expect(datos).not.toHaveProperty("proveedores");
     expect(datos.plan).toBeDefined();
+  });
+});
+
+describe("captura móvil de pedidos reales", () => {
+  const borrador = {
+    clienteId: "cliente-1",
+    productoId: "producto-1",
+    cantidad: "2",
+    fechaCompromiso: "2026-09-05",
+    notas: "Entregar por la tarde",
+  };
+
+  it("exige cliente, producto y una cantidad entera positiva", () => {
+    expect(validarNuevoPedido({ ...borrador, clienteId: "" })).toBe("CLIENTE");
+    expect(validarNuevoPedido({ ...borrador, productoId: "" })).toBe(
+      "PRODUCTO",
+    );
+    expect(validarNuevoPedido({ ...borrador, cantidad: "" })).toBe("CANTIDAD");
+    expect(validarNuevoPedido({ ...borrador, cantidad: "1.5" })).toBe(
+      "CANTIDAD",
+    );
+  });
+
+  it("conserva la captura y construye el contrato del backend", () => {
+    expect(validarNuevoPedido(borrador)).toBeNull();
+    expect(crearDatosNuevoPedido(borrador)).toEqual({
+      clienteId: "cliente-1",
+      items: [{ productoId: "producto-1", cantidad: 2 }],
+      fechaCompromiso: new Date("2026-09-05T12:00:00").toISOString(),
+      notas: "Entregar por la tarde",
+    });
   });
 });
 

@@ -15,6 +15,8 @@ import { dinero } from "../../utilidades/formato";
 import { redondearMoneda } from "../../utilidades/dinero";
 import type { Periodicidad, TipoVenta } from "../ventas/dominioVenta";
 import {
+  type BorradorNuevoPedido,
+  crearDatosNuevoPedido,
   crearDatosEntrega,
   pedidosDelCliente,
   proyectarEntregaEnJornada,
@@ -48,6 +50,8 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
     useState<Periodicidad>("SEMANAL");
   const [fechaPlan, establecerFechaPlan] = useState(fechaInicial);
   const [guardando, establecerGuardando] = useState(false);
+  const [nuevoAbierto, establecerNuevoAbierto] = useState(false);
+  const [creandoPedido, establecerCreandoPedido] = useState(false);
   const [proveedores, establecerProveedores] = useState<ProveedorMovil[]>([]);
   const [proveedoresPorItem, establecerProveedoresPorItem] = useState<
     Record<string, string>
@@ -132,6 +136,42 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
       await cargar();
     } catch (error) {
       Alert.alert("Error", error instanceof Error ? error.message : "Error");
+    }
+  }
+
+  async function crearPedido(borrador: BorradorNuevoPedido) {
+    if (offline) {
+      Alert.alert(
+        es ? "Necesitas conexión" : "Connection required",
+        es
+          ? "El pedido debe confirmarse con el servidor para evitar solicitudes duplicadas."
+          : "The order must be confirmed by the server to prevent duplicate requests.",
+      );
+      return false;
+    }
+    establecerCreandoPedido(true);
+    try {
+      const creado = await api<PedidoMovil>("/pedidos", {
+        method: "POST",
+        body: JSON.stringify(crearDatosNuevoPedido(borrador)),
+      });
+      establecerNuevoAbierto(false);
+      await cargar();
+      Alert.alert(
+        es ? "Pedido creado" : "Order created",
+        es
+          ? `${creado.folio} quedó pendiente de asignar proveedor. No se creó deuda ni se descontó inventario.`
+          : `${creado.folio} is waiting for a supplier. No debt or stock movement was created.`,
+      );
+      return true;
+    } catch (error) {
+      Alert.alert(
+        es ? "No se pudo crear el pedido" : "Unable to create order",
+        error instanceof Error ? error.message : "Error",
+      );
+      return false;
+    } finally {
+      establecerCreandoPedido(false);
     }
   }
 
@@ -285,9 +325,16 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
     periodicidad,
     fechaPlan,
     guardando,
+    nuevoAbierto,
+    creandoPedido,
     proveedores,
     proveedoresPorItem,
     cargar,
+    abrirNuevo: () => establecerNuevoAbierto(true),
+    cerrarNuevo: () => {
+      if (!creandoPedido) establecerNuevoAbierto(false);
+    },
+    crearPedido,
     avanzar,
     abrirGestion,
     cerrarGestion: () => establecerGestion(null),

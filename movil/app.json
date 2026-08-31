@@ -17,6 +17,7 @@
     "android": {
       "package": "com.nexo.cobranza",
       "allowBackup": false,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/vektra-icon-foreground.png",
         "backgroundColor": "#f5f8fc"
@@ -55,7 +56,11 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "89d76ffa-ea5a-4bbd-b870-e84b43132a10"
       }
-    }
+    },
+    "owner": "vianko"
   }
 }

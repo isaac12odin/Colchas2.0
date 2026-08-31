@@ -3,6 +3,7 @@ import { useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -11,10 +12,12 @@ import {
 
 import { ModalEntregaPedido } from "@/src/modulos/pedidos/ModalEntregaPedido";
 import { ModalAsignarProveedor } from "@/src/modulos/pedidos/ModalAsignarProveedor";
+import { ModalNuevoPedido } from "@/src/modulos/pedidos/ModalNuevoPedido";
 import { TarjetaPedido } from "@/src/modulos/pedidos/TarjetaPedido";
 import { usarPedidosMoviles } from "@/src/modulos/pedidos/usarPedidosMoviles";
 import { usarSesion } from "@/src/sesion";
 import { colores, usarTema } from "@/src/tema";
+import { puedeCrearPedidoMovil } from "@/src/permisos";
 
 export default function PedidosMovil() {
   const parametros = useLocalSearchParams<{
@@ -30,6 +33,7 @@ export default function PedidosMovil() {
     usuario?.rol === "ADMINISTRADOR" || usuario?.rol === "ALMACENISTA";
   const puedeEntregar =
     usuario?.rol === "ADMINISTRADOR" || usuario?.rol === "COBRADOR";
+  const puedeCrear = usuario ? puedeCrearPedidoMovil(usuario.rol) : false;
   const puedeAsignarProveedor = [
     "ADMINISTRADOR",
     "CONTABLE",
@@ -85,6 +89,39 @@ export default function PedidosMovil() {
             </Text>
           )
         }
+        ListHeaderComponent={
+          puedeCrear ? (
+            <View style={estilos.encabezado}>
+              <View style={{ flex: 1 }}>
+                <Text style={[estilos.encabezadoTitulo, { color: tema.texto }]}>
+                  {parametros.clienteId
+                    ? es
+                      ? "Pedidos de la clienta"
+                      : "Customer orders"
+                    : es
+                      ? "Solicitudes y entregas"
+                      : "Requests and deliveries"}
+                </Text>
+                <Text style={estilos.encabezadoDetalle}>
+                  {es
+                    ? "Crea un pedido real y sigue su avance hasta la entrega."
+                    : "Create a real order and track it through delivery."}
+                </Text>
+              </View>
+              <Pressable
+                disabled={control.offline}
+                onPress={control.abrirNuevo}
+                style={[
+                  estilos.nuevo,
+                  control.offline && estilos.deshabilitado,
+                ]}
+              >
+                <Ionicons name="add" color="white" size={20} />
+                <Text style={estilos.nuevoTexto}>{es ? "Nuevo" : "New"}</Text>
+              </Pressable>
+            </View>
+          ) : null
+        }
         renderItem={({ item }) => (
           <TarjetaPedido
             pedido={item}
@@ -98,6 +135,16 @@ export default function PedidosMovil() {
             alEntregar={() => control.abrirEntrega(item)}
           />
         )}
+      />
+      <ModalNuevoPedido
+        visible={control.nuevoAbierto}
+        clienteInicialId={parametros.clienteId}
+        creando={control.creandoPedido}
+        sinConexion={control.offline}
+        es={es}
+        tema={tema}
+        alCerrar={control.cerrarNuevo}
+        alCrear={control.crearPedido}
       />
       <ModalAsignarProveedor control={control} es={es} tema={tema} />
       <ModalEntregaPedido control={control} es={es} tema={tema} />
@@ -118,5 +165,30 @@ const estilos = StyleSheet.create({
   avisoPendiente: { backgroundColor: "#edf5ff" },
   avisoPendienteTexto: { color: "#0043ce" },
   lista: { padding: 15, gap: 11 },
+  encabezado: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 5,
+  },
+  encabezadoTitulo: { fontSize: 18, fontWeight: "900" },
+  encabezadoDetalle: {
+    color: colores.gris,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  nuevo: {
+    minHeight: 45,
+    borderRadius: 11,
+    backgroundColor: colores.azul,
+    paddingHorizontal: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  nuevoTexto: { color: "white", fontWeight: "900" },
+  deshabilitado: { opacity: 0.43 },
   vacio: { color: colores.gris, textAlign: "center", marginTop: 50 },
 });

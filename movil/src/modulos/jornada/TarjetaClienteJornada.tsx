@@ -87,7 +87,8 @@ function Insignias({
       )}
       {esperada === 0 && cliente.estadoCuenta?.proximoVencimiento && (
         <Text style={estilos.proximo}>
-          {es ? "Próximo" : "Next"} {cliente.estadoCuenta.proximoVencimiento.slice(5)} ·{" "}
+          {es ? "Próximo" : "Next"}{" "}
+          {cliente.estadoCuenta.proximoVencimiento.slice(5)} ·{" "}
           {dinero.format(cliente.estadoCuenta.abonoPeriodico)}
         </Text>
       )}

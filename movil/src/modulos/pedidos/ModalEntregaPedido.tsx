@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,7 +32,10 @@ export function ModalEntregaPedido({
       animationType="slide"
       onRequestClose={control.cerrarEntrega}
     >
-      <View style={estilos.fondo}>
+      <KeyboardAvoidingView
+        style={estilos.fondo}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <View style={[estilos.modal, { backgroundColor: tema.panel }]}>
           <View style={estilos.encabezado}>
             <View>
@@ -50,6 +55,7 @@ export function ModalEntregaPedido({
           <ScrollView
             style={estilos.desplazable}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
           >
             <ConfiguracionVenta
               tipo={control.tipo}
@@ -123,7 +129,7 @@ export function ModalEntregaPedido({
             </Text>
           </Pressable>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

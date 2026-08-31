@@ -30,11 +30,12 @@ export default function VentaCampo() {
   return (
     <KeyboardAvoidingView
       style={[estilos.pagina, { backgroundColor: tema.fondo }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
         contentContainerStyle={estilos.contenido}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
       >
         <Text style={estilos.seguro}>
           <Ionicons name="shield-checkmark" color={colores.verde} size={18} />{" "}

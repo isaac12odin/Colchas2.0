@@ -1058,9 +1058,44 @@ paths:
         - Pedidos
       x-roles:
         - ADMINISTRADOR
+        - CONTABLE
         - VENDEDOR
         - COBRADOR
       summary: Captura pedido sólo con productos registrados
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - clienteId
+                - items
+              properties:
+                clienteId:
+                  type: string
+                  format: uuid
+                fechaCompromiso:
+                  type: string
+                  format: date-time
+                notas:
+                  type: string
+                  maxLength: 1000
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required:
+                      - productoId
+                      - cantidad
+                    properties:
+                      productoId:
+                        type: string
+                        format: uuid
+                      cantidad:
+                        type: integer
+                        minimum: 1
       responses:
         "201":
           $ref: "#/components/responses/Exito"

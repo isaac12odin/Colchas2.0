@@ -50,6 +50,12 @@ export function TarjetaPedido({ pedido, es, tema, ...permisos }: Propiedades) {
             {pedido.cliente?.nombreCompleto ??
               (es ? "Cliente de la ruta" : "Route customer")}
           </Text>
+          {pedido.fechaCompromiso && (
+            <Text style={estilos.compromiso}>
+              {es ? "Compromiso" : "Promise"}:{" "}
+              {pedido.fechaCompromiso.slice(0, 10)}
+            </Text>
+          )}
         </View>
         <Text style={estilos.estado}>
           {(es ? estadosEs : estadosEn)[pedido.estado] ?? pedido.estado}
@@ -134,6 +140,7 @@ const estilos = StyleSheet.create({
   expandir: { flex: 1 },
   folio: { color: colores.gris, fontSize: 11, fontWeight: "700" },
   nombre: { fontSize: 16, fontWeight: "800", marginTop: 4 },
+  compromiso: { color: colores.gris, fontSize: 10, marginTop: 4 },
   estado: {
     color: colores.azul,
     backgroundColor: colores.azulClaro,

@@ -69,10 +69,7 @@ export async function limpiarDatosDemo() {
     });
     await prisma.venta.deleteMany({
       where: {
-        OR: [
-          { clienteId: { in: clienteIds } },
-          { notas: MARCA_DEMO },
-        ],
+        OR: [{ clienteId: { in: clienteIds } }, { notas: MARCA_DEMO }],
       },
     });
     await prisma.visitaCobranza.deleteMany({

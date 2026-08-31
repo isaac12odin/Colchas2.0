@@ -50,7 +50,7 @@ export default function JornadaRuta() {
     });
   }
 
-  if (control.cargando) {
+  if (control.cargando && !control.jornada) {
     return (
       <View style={estilos.centro}>
         <ActivityIndicator color={colores.azul} />

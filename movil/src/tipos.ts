@@ -48,6 +48,7 @@ export interface PedidoMovil {
   id: string;
   folio: string;
   estado: string;
+  fechaCompromiso?: string | null;
   clienteId?: string;
   cliente?: {
     id?: string;
@@ -55,6 +56,15 @@ export interface PedidoMovil {
     numeroTarjeta?: string | null;
   };
   items: ItemPedidoMovil[];
+}
+
+export interface ClientePedidoMovil {
+  id: string;
+  nombreCompleto: string;
+  telefono: string;
+  direccion: string;
+  numeroTarjeta?: string | null;
+  localidad?: { nombre: string };
 }
 export interface ClienteJornada {
   id: string;

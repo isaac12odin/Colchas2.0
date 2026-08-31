@@ -162,4 +162,19 @@ describe("simuladores críticos de capacitación móvil", () => {
     expect(fuente).not.toContain("DATABASE_URL");
     expect(fuente).not.toContain('primerVencimiento="2026-');
   });
+
+  it("conserva el texto numérico mientras la persona captura", () => {
+    const fuente = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../src/modulos/capacitacion/simuladores/SimuladorCriticoMovil.tsx",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    );
+    expect(fuente).toContain("valor={montoCapturado}");
+    expect(fuente).toContain("anticipo={captura.anticipo}");
+    expect(fuente).not.toContain("valor={String(valor.monto)}");
+  });
 });

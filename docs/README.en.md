@@ -25,7 +25,7 @@ npm run dev
 
 Open `http://localhost:3000`. Start mobile development with `npm run dev:movil`. Use a development build for SQLCipher; Expo Go does not include this custom native option.
 
-The EAS `preview` and `production` profiles already target `https://nexo.deadcode.cloud/api/v1`. Build an internal Android APK with `npm run build:android:preview -w movil`, or production artifacts with `npm run build:android -w movil` and `npm run build:ios -w movil`.
+The EAS `preview` and `production` profiles target the public Nginx prefix `https://nexo.deadcode.cloud/api`; Nginx maps it to the backend's internal `/api/v1` routes. Build an internal Android APK with `npm run build:android:preview -w movil`, or production artifacts with `npm run build:android -w movil` and `npm run build:ios -w movil`.
 
 There are no built-in administrator credentials. Set explicit `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` values. The seed fails closed when either value is missing or matches a known example. Administrator-created passwords work immediately and do not require a first-login change.
 

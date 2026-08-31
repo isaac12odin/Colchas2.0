@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   puedeAccederModuloMovil,
   puedeAccederRutaMovil,
+  puedeCrearPedidoMovil,
 } from "../src/permisos";
 
 describe("autorización de la aplicación móvil", () => {
@@ -44,5 +45,16 @@ describe("autorización de la aplicación móvil", () => {
     expect(
       puedeAccederRutaMovil("ADMINISTRADOR", ["(app)", "desconocida"]),
     ).toBe(false);
+  });
+
+  it("permite crear pedidos a roles comerciales, pero no a Almacén", () => {
+    for (const rol of [
+      "ADMINISTRADOR",
+      "CONTABLE",
+      "VENDEDOR",
+      "COBRADOR",
+    ] as const)
+      expect(puedeCrearPedidoMovil(rol)).toBe(true);
+    expect(puedeCrearPedidoMovil("ALMACENISTA")).toBe(false);
   });
 });

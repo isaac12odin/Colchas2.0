@@ -27,6 +27,48 @@ export function pedidosDelCliente(pedidos: PedidoMovil[], clienteId?: string) {
   );
 }
 
+export interface BorradorNuevoPedido {
+  clienteId: string;
+  productoId: string;
+  cantidad: string;
+  fechaCompromiso: string;
+  notas: string;
+}
+
+export function validarNuevoPedido(borrador: BorradorNuevoPedido) {
+  if (!borrador.clienteId) return "CLIENTE" as const;
+  if (!borrador.productoId) return "PRODUCTO" as const;
+  const cantidad = Number(borrador.cantidad);
+  if (!Number.isInteger(cantidad) || cantidad < 1) return "CANTIDAD" as const;
+  if (
+    borrador.fechaCompromiso &&
+    !/^\d{4}-\d{2}-\d{2}$/.test(borrador.fechaCompromiso)
+  )
+    return "FECHA" as const;
+  if (borrador.notas.trim().length > 1000) return "NOTAS" as const;
+  return null;
+}
+
+export function crearDatosNuevoPedido(borrador: BorradorNuevoPedido) {
+  return {
+    clienteId: borrador.clienteId,
+    items: [
+      {
+        productoId: borrador.productoId,
+        cantidad: Number(borrador.cantidad),
+      },
+    ],
+    ...(borrador.fechaCompromiso
+      ? {
+          fechaCompromiso: new Date(
+            `${borrador.fechaCompromiso}T12:00:00`,
+          ).toISOString(),
+        }
+      : {}),
+    ...(borrador.notas.trim() ? { notas: borrador.notas.trim() } : {}),
+  };
+}
+
 export function validarEntrega(
   total: number,
   tipo: TipoVenta,

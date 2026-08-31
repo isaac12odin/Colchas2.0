@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -69,95 +70,106 @@ export default function CambiarContrasena() {
       />
       <KeyboardAvoidingView
         style={[estilos.pagina, { backgroundColor: tema.fondo }]}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View
-          style={[
-            estilos.panel,
-            { backgroundColor: tema.panel, borderColor: tema.borde },
-          ]}
+        <ScrollView
+          contentContainerStyle={estilos.contenido}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
         >
-          <View style={estilos.icono}>
-            <Ionicons name="shield-checkmark" color={colores.azul} size={30} />
-          </View>
-          <Text style={[estilos.titulo, { color: tema.texto }]}>
-            {es ? "Cambiar contraseña" : "Change password"}
-          </Text>
-          <Text style={estilos.detalle}>
-            {es
-              ? "Puedes cambiar tu contraseña cuando lo necesites."
-              : "You can change your password whenever needed."}
-          </Text>
-          <Text style={estilos.etiqueta}>
-            {es ? "Contraseña actual" : "Current password"}
-          </Text>
-          <TextInput
-            secureTextEntry
-            value={actual}
-            onChangeText={establecerActual}
+          <View
             style={[
-              estilos.campo,
-              { borderColor: tema.borde, color: tema.texto },
+              estilos.panel,
+              { backgroundColor: tema.panel, borderColor: tema.borde },
             ]}
-          />
-          <Text style={estilos.etiqueta}>
-            {es ? "Nueva contraseña" : "New password"}
-          </Text>
-          <TextInput
-            secureTextEntry
-            value={nueva}
-            onChangeText={establecerNueva}
-            style={[
-              estilos.campo,
-              { borderColor: tema.borde, color: tema.texto },
-            ]}
-          />
-          <View style={estilos.requisitos}>
-            <View style={estilos.requisito}>
-              <Ionicons
-                name={claveValida ? "checkmark-circle" : "ellipse-outline"}
-                color={claveValida ? colores.verde : colores.gris}
-                size={14}
-              />
-              <Text style={estilos.requisitoTexto}>
-                {es ? "Mínimo 6 caracteres" : "At least 6 characters"}
-              </Text>
-            </View>
-          </View>
-          <Text style={estilos.etiqueta}>
-            {es ? "Confirmar contraseña" : "Confirm password"}
-          </Text>
-          <TextInput
-            secureTextEntry
-            value={confirmacion}
-            onChangeText={establecerConfirmacion}
-            style={[
-              estilos.campo,
-              { borderColor: tema.borde, color: tema.texto },
-            ]}
-          />
-          <Pressable
-            disabled={enviando}
-            onPress={() => void guardar()}
-            style={[estilos.boton, enviando && { opacity: 0.5 }]}
           >
-            {enviando ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Ionicons name="lock-closed" color="white" size={18} />
-            )}
-            <Text style={estilos.botonTexto}>
-              {es ? "Guardar y volver a entrar" : "Save and sign in again"}
+            <View style={estilos.icono}>
+              <Ionicons
+                name="shield-checkmark"
+                color={colores.azul}
+                size={30}
+              />
+            </View>
+            <Text style={[estilos.titulo, { color: tema.texto }]}>
+              {es ? "Cambiar contraseña" : "Change password"}
             </Text>
-          </Pressable>
-        </View>
+            <Text style={estilos.detalle}>
+              {es
+                ? "Puedes cambiar tu contraseña cuando lo necesites."
+                : "You can change your password whenever needed."}
+            </Text>
+            <Text style={estilos.etiqueta}>
+              {es ? "Contraseña actual" : "Current password"}
+            </Text>
+            <TextInput
+              secureTextEntry
+              value={actual}
+              onChangeText={establecerActual}
+              style={[
+                estilos.campo,
+                { borderColor: tema.borde, color: tema.texto },
+              ]}
+            />
+            <Text style={estilos.etiqueta}>
+              {es ? "Nueva contraseña" : "New password"}
+            </Text>
+            <TextInput
+              secureTextEntry
+              value={nueva}
+              onChangeText={establecerNueva}
+              style={[
+                estilos.campo,
+                { borderColor: tema.borde, color: tema.texto },
+              ]}
+            />
+            <View style={estilos.requisitos}>
+              <View style={estilos.requisito}>
+                <Ionicons
+                  name={claveValida ? "checkmark-circle" : "ellipse-outline"}
+                  color={claveValida ? colores.verde : colores.gris}
+                  size={14}
+                />
+                <Text style={estilos.requisitoTexto}>
+                  {es ? "Mínimo 6 caracteres" : "At least 6 characters"}
+                </Text>
+              </View>
+            </View>
+            <Text style={estilos.etiqueta}>
+              {es ? "Confirmar contraseña" : "Confirm password"}
+            </Text>
+            <TextInput
+              secureTextEntry
+              value={confirmacion}
+              onChangeText={establecerConfirmacion}
+              style={[
+                estilos.campo,
+                { borderColor: tema.borde, color: tema.texto },
+              ]}
+            />
+            <Pressable
+              disabled={enviando}
+              onPress={() => void guardar()}
+              style={[estilos.boton, enviando && { opacity: 0.5 }]}
+            >
+              {enviando ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Ionicons name="lock-closed" color="white" size={18} />
+              )}
+              <Text style={estilos.botonTexto}>
+                {es ? "Guardar y volver a entrar" : "Save and sign in again"}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </>
   );
 }
 
 const estilos = StyleSheet.create({
-  pagina: { flex: 1, justifyContent: "center", padding: 18 },
+  pagina: { flex: 1 },
+  contenido: { flexGrow: 1, justifyContent: "center", padding: 18 },
   panel: { borderWidth: 1, borderRadius: 18, padding: 21 },
   icono: {
     width: 55,

@@ -2415,7 +2415,22 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": {
+          /** Format: uuid */
+          clienteId: string;
+          /** Format: date-time */
+          fechaCompromiso?: string;
+          notas?: string;
+          items: {
+            /** Format: uuid */
+            productoId: string;
+            cantidad: number;
+          }[];
+        };
+      };
+    };
     responses: {
       201: components["responses"]["Exito"];
       "4XX": components["responses"]["Error"];

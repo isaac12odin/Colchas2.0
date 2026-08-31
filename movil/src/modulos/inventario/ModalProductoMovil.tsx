@@ -128,7 +128,7 @@ export function ModalProductoMovil({
     >
       <KeyboardAvoidingView
         style={estilos.fondo}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={[estilos.modal, { backgroundColor: tema.panel }]}>
           <View style={estilos.encabezado}>
@@ -162,6 +162,7 @@ export function ModalProductoMovil({
             style={estilos.desplazable}
             contentContainerStyle={estilos.formulario}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
           >
             <CampoFotoProductoMovil
               foto={foto}

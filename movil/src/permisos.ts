@@ -39,6 +39,17 @@ export function puedeAccederModuloMovil(rol: Rol, modulo: ModuloMovil) {
   return rolesPorModuloMovil[modulo].some((permitido) => permitido === rol);
 }
 
+const rolesQueCreanPedidos: readonly Rol[] = [
+  "ADMINISTRADOR",
+  "CONTABLE",
+  "VENDEDOR",
+  "COBRADOR",
+];
+
+export function puedeCrearPedidoMovil(rol: Rol) {
+  return rolesQueCreanPedidos.includes(rol);
+}
+
 function obtenerModuloMovil(
   segmentos: readonly string[],
 ): ModuloMovil | undefined {

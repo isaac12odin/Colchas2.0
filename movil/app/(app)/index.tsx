@@ -17,7 +17,6 @@ import { obtenerConectividad } from "@/src/api";
 import { puedeAccederModuloMovil, type ModuloMovil } from "@/src/permisos";
 import { usarDatosVivosMovil } from "@/src/usarDatosVivosMovil";
 import { AgendaCobranzaMovil } from "@/src/modulos/jornada/AgendaCobranzaMovil";
-import { GuiaRapidaRolMovil } from "@/src/modulos/capacitacion/GuiaRapidaRolMovil";
 
 export default function InicioMovil() {
   const { usuario, salir, idioma, alternarIdioma } = usarSesion();
@@ -56,18 +55,9 @@ export default function InicioMovil() {
   const modulos = (
     [
       {
-        titulo: es ? "Practicar paso a paso" : "Practice step by step",
-        detalle: es
-          ? "Pantallas simuladas y pasos exactos por puesto"
-          : "Role tutorials, no data changes",
-        icono: "school" as const,
-        ruta: "/(app)/capacitacion" as const,
-        modulo: "capacitacion",
-      },
-      {
         titulo: es ? "Rutas de cobranza" : "Collection routes",
         detalle: es
-          ? "Jornada, abonos y visitas"
+          ? "Abrir jornada, cobrar, vender y registrar visitas"
           : "Schedule, payments, visits",
         icono: "navigate" as const,
         ruta: "/(app)/rutas" as const,
@@ -75,7 +65,9 @@ export default function InicioMovil() {
       },
       {
         titulo: es ? "Inventario" : "Inventory",
-        detalle: es ? "Existencias y precios" : "Stock and prices",
+        detalle: es
+          ? "Buscar, escanear y registrar mercancía"
+          : "Search, scan, and register merchandise",
         icono: "cube" as const,
         ruta: "/(app)/inventario" as const,
         modulo: "inventario",
@@ -83,7 +75,7 @@ export default function InicioMovil() {
       {
         titulo: es ? "Pedidos" : "Orders",
         detalle: es
-          ? "Surtido, recepción y entrega"
+          ? "Crear solicitudes y completar su entrega"
           : "Fulfillment, receiving, delivery",
         icono: "receipt" as const,
         ruta: "/(app)/pedidos" as const,
@@ -106,20 +98,13 @@ export default function InicioMovil() {
     ] satisfies Array<{
       titulo: string;
       detalle: string;
-      icono:
-        | "navigate"
-        | "cube"
-        | "receipt"
-        | "bar-chart"
-        | "cloud-upload"
-        | "school";
+      icono: "navigate" | "cube" | "receipt" | "bar-chart" | "cloud-upload";
       ruta:
         | "/(app)/rutas"
         | "/(app)/inventario"
         | "/(app)/pedidos"
         | "/(app)/resumen"
-        | "/(app)/pendientes"
-        | "/(app)/capacitacion";
+        | "/(app)/pendientes";
       modulo: ModuloMovil;
     }>
   ).filter((m) => usuario && puedeAccederModuloMovil(usuario.rol, m.modulo));
@@ -180,13 +165,8 @@ export default function InicioMovil() {
               <AgendaCobranzaMovil es={es} tema={tema} />
             </View>
           )}
-        {usuario && (
-          <View style={estilos.guia}>
-            <GuiaRapidaRolMovil rol={usuario.rol} tema={tema} es={es} />
-          </View>
-        )}
         <Text style={[estilos.seccion, { color: tema.texto }]}>
-          {es ? "¿Qué vas a hacer?" : "What are you working on?"}
+          {es ? "Operación de hoy" : "Today's operation"}
         </Text>
         <View style={estilos.lista}>
           {modulos.map((m) => (
@@ -230,6 +210,29 @@ export default function InicioMovil() {
               </Text>
             </Pressable>
           )}
+        {usuario && puedeAccederModuloMovil(usuario.rol, "capacitacion") && (
+          <Pressable
+            onPress={() => router.push("/(app)/capacitacion")}
+            style={[estilos.ayuda, { borderColor: tema.borde }]}
+          >
+            <Ionicons
+              name="help-circle-outline"
+              color={colores.azul}
+              size={20}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={[estilos.ayudaTitulo, { color: tema.texto }]}>
+                {es ? "Ayuda y práctica" : "Help and practice"}
+              </Text>
+              <Text style={estilos.ayudaDetalle}>
+                {es
+                  ? "Consulta ejemplos sin modificar datos reales"
+                  : "See examples without changing real data"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" color={colores.gris} size={18} />
+          </Pressable>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -263,7 +266,6 @@ const estilos = StyleSheet.create({
   },
   seccion: { fontSize: 18, fontWeight: "800", marginTop: 35, marginBottom: 14 },
   agenda: { marginTop: 24 },
-  guia: { marginTop: 12 },
   lista: { gap: 12 },
   tarjeta: {
     minHeight: 88,
@@ -293,4 +295,15 @@ const estilos = StyleSheet.create({
     backgroundColor: "#fff2e8",
   },
   avisoTexto: { color: "#8a3b12", flex: 1, fontSize: 13, lineHeight: 19 },
+  ayuda: {
+    minHeight: 64,
+    borderTopWidth: 1,
+    marginTop: 25,
+    paddingTop: 17,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  ayudaTitulo: { fontSize: 13, fontWeight: "800" },
+  ayudaDetalle: { color: colores.gris, fontSize: 11, marginTop: 2 },
 });

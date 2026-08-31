@@ -158,8 +158,13 @@ function VentaCredito({ idioma, alCompletar }: Propiedades) {
     anticipo: 0,
     tarjeta: "",
     cuota: 0,
-    periodicidad: "",
+    periodicidad: "SEMANAL",
     vencimiento: fechaSugeridaEntregaPractica(),
+  });
+  const [captura, cambiarCaptura] = useState({
+    cantidad: "1",
+    anticipo: "",
+    cuota: "",
   });
   const [retro, setRetro] = useState<ResultadoPractica | null>(null);
   const total = valor.cantidad * 1200;
@@ -197,31 +202,36 @@ function VentaCredito({ idioma, alCompletar }: Propiedades) {
         />
         <Campo
           etiqueta={es ? "Cantidad" : "Quantity"}
-          valor={String(valor.cantidad)}
+          valor={captura.cantidad}
           numerico
-          alCambiar={(cantidad) =>
-            cambiar({ ...valor, cantidad: Number(cantidad) })
-          }
+          alCambiar={(cantidad) => {
+            cambiarCaptura((actual) => ({ ...actual, cantidad }));
+            cambiar({ ...valor, cantidad: numeroCapturado(cantidad) });
+          }}
         />
       </Seccion>
       <ConfiguracionVenta
         tipo="CREDITO"
         montoTotal={total}
-        anticipo={String(valor.anticipo)}
+        anticipo={captura.anticipo}
         periodicidad={valor.periodicidad || "SEMANAL"}
-        cuota={String(valor.cuota)}
+        cuota={captura.cuota}
         primerVencimiento={valor.vencimiento}
         numeroTarjeta={valor.tarjeta}
         es={es}
         tema={tema}
         alCambiarTipo={() => undefined}
-        alCambiarAnticipo={(anticipo) =>
-          cambiar({ ...valor, anticipo: Number(anticipo) })
-        }
+        alCambiarAnticipo={(anticipo) => {
+          cambiarCaptura((actual) => ({ ...actual, anticipo }));
+          cambiar({ ...valor, anticipo: numeroCapturado(anticipo) });
+        }}
         alCambiarPeriodicidad={(periodicidad) =>
           cambiar({ ...valor, periodicidad })
         }
-        alCambiarCuota={(cuota) => cambiar({ ...valor, cuota: Number(cuota) })}
+        alCambiarCuota={(cuota) => {
+          cambiarCaptura((actual) => ({ ...actual, cuota }));
+          cambiar({ ...valor, cuota: numeroCapturado(cuota) });
+        }}
         alCambiarVencimiento={(vencimiento) =>
           cambiar({ ...valor, vencimiento })
         }
@@ -276,6 +286,7 @@ function Abono({ idioma, alCompletar }: Propiedades) {
     metodo: "EFECTIVO",
     referencia: "",
   });
+  const [montoCapturado, cambiarMontoCapturado] = useState("");
   const [retro, setRetro] = useState<ResultadoPractica | null>(null);
   return (
     <Marco
@@ -307,9 +318,12 @@ function Abono({ idioma, alCompletar }: Propiedades) {
       </View>
       <Campo
         etiqueta={es ? "Monto del abono" : "Payment amount"}
-        valor={String(valor.monto)}
+        valor={montoCapturado}
         numerico
-        alCambiar={(monto) => cambiar({ ...valor, monto: Number(monto) })}
+        alCambiar={(monto) => {
+          cambiarMontoCapturado(monto);
+          cambiar({ ...valor, monto: numeroCapturado(monto) });
+        }}
       />
       <Selector
         etiqueta={es ? "Método" : "Method"}
@@ -377,9 +391,10 @@ function Entrega({ idioma, alCompletar }: Propiedades) {
     anticipo: 0,
     tarjeta: "",
     cuota: 0,
-    periodicidad: "",
+    periodicidad: "SEMANAL",
     primerVencimiento: fechaSugeridaEntregaPractica(),
   });
+  const [captura, cambiarCaptura] = useState({ anticipo: "", cuota: "" });
   const [retro, setRetro] = useState<ResultadoPractica | null>(null);
   return (
     <Marco
@@ -400,23 +415,29 @@ function Entrega({ idioma, alCompletar }: Propiedades) {
       <ConfiguracionVenta
         tipo={valor.tipo}
         montoTotal={1000}
-        anticipo={String(valor.anticipo)}
+        anticipo={captura.anticipo}
         periodicidad={valor.periodicidad || "SEMANAL"}
-        cuota={String(valor.cuota)}
+        cuota={captura.cuota}
         primerVencimiento={valor.primerVencimiento}
         numeroTarjeta={valor.tarjeta}
         es={es}
         tema={tema}
-        alCambiarTipo={(tipo) =>
-          cambiar({ ...valor, tipo, anticipo: tipo === "CONTADO" ? 1000 : 0 })
-        }
-        alCambiarAnticipo={(anticipo) =>
-          cambiar({ ...valor, anticipo: Number(anticipo) })
-        }
+        alCambiarTipo={(tipo) => {
+          const anticipo = tipo === "CONTADO" ? "1000" : "";
+          cambiarCaptura((actual) => ({ ...actual, anticipo }));
+          cambiar({ ...valor, tipo, anticipo: numeroCapturado(anticipo) });
+        }}
+        alCambiarAnticipo={(anticipo) => {
+          cambiarCaptura((actual) => ({ ...actual, anticipo }));
+          cambiar({ ...valor, anticipo: numeroCapturado(anticipo) });
+        }}
         alCambiarPeriodicidad={(periodicidad) =>
           cambiar({ ...valor, periodicidad })
         }
-        alCambiarCuota={(cuota) => cambiar({ ...valor, cuota: Number(cuota) })}
+        alCambiarCuota={(cuota) => {
+          cambiarCaptura((actual) => ({ ...actual, cuota }));
+          cambiar({ ...valor, cuota: numeroCapturado(cuota) });
+        }}
         alCambiarVencimiento={(primerVencimiento) =>
           cambiar({ ...valor, primerVencimiento })
         }
@@ -461,6 +482,7 @@ function Devolucion({ idioma, alCompletar }: Propiedades) {
     autorizador: "",
     operadorCaja: "",
   });
+  const [cantidadCapturada, cambiarCantidadCapturada] = useState("1");
   const [retro, setRetro] = useState<ResultadoPractica | null>(null);
   const importes = importesDevolucionPractica(valor.cantidad);
   return (
@@ -477,11 +499,12 @@ function Devolucion({ idioma, alCompletar }: Propiedades) {
       </View>
       <Campo
         etiqueta={es ? "Cantidad" : "Quantity"}
-        valor={String(valor.cantidad)}
+        valor={cantidadCapturada}
         numerico
-        alCambiar={(cantidad) =>
-          cambiar({ ...valor, cantidad: Number(cantidad) })
-        }
+        alCambiar={(cantidad) => {
+          cambiarCantidadCapturada(cantidad);
+          cambiar({ ...valor, cantidad: numeroCapturado(cantidad) });
+        }}
       />
       <Campo
         etiqueta={es ? "Motivo detallado" : "Detailed reason"}
@@ -728,6 +751,12 @@ function Sincronizacion({ idioma, alCompletar }: Propiedades) {
 interface Propiedades {
   idioma: Idioma;
   alCompletar: () => void;
+}
+
+function numeroCapturado(valor: string) {
+  if (!valor.trim()) return 0;
+  const numero = Number(valor.replace(",", "."));
+  return Number.isFinite(numero) ? numero : 0;
 }
 
 function Seccion({

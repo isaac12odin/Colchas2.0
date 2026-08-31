@@ -1,5 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { colores, type usarTema } from "../../tema";
 import { dinero } from "../../utilidades/formato";
@@ -30,7 +39,10 @@ export function ModalClienteJornada({
       transparent
       onRequestClose={control.cerrarCliente}
     >
-      <View style={estilos.fondo}>
+      <KeyboardAvoidingView
+        style={estilos.fondo}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <View style={[estilos.modal, { backgroundColor: tema.panel }]}>
           <View style={estilos.encabezado}>
             <View style={estilos.expandir}>
@@ -58,39 +70,45 @@ export function ModalClienteJornada({
             </Pressable>
           </View>
 
-          {cliente && control.modo === "ACCIONES" && (
-            <AccionesCliente
-              cliente={cliente}
-              es={es}
-              tema={tema}
-              guardando={control.guardando}
-              alCobrar={control.mostrarCobro}
-              alVender={alVender}
-              alEntregar={alEntregar}
-              alNoPagar={() => control.confirmarResultado("NO_PAGO")}
-              alAusente={() => control.confirmarResultado("AUSENTE")}
-            />
-          )}
-          {cliente && control.modo === "COBRO" && (
-            <FormularioAbono
-              cliente={cliente}
-              es={es}
-              tema={tema}
-              monto={control.monto}
-              metodo={control.metodo}
-              referencia={control.referencia}
-              notas={control.notas}
-              guardando={control.guardando}
-              alCambiarMonto={control.establecerMonto}
-              alCambiarMetodo={control.establecerMetodo}
-              alCambiarReferencia={control.establecerReferencia}
-              alCambiarNotas={control.establecerNotas}
-              alVolver={control.mostrarAcciones}
-              alGuardar={(monto) => void control.guardarVisita("PAGO", monto)}
-            />
-          )}
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            contentContainerStyle={estilos.contenido}
+          >
+            {cliente && control.modo === "ACCIONES" && (
+              <AccionesCliente
+                cliente={cliente}
+                es={es}
+                tema={tema}
+                guardando={control.guardando}
+                alCobrar={control.mostrarCobro}
+                alVender={alVender}
+                alEntregar={alEntregar}
+                alNoPagar={() => control.confirmarResultado("NO_PAGO")}
+                alAusente={() => control.confirmarResultado("AUSENTE")}
+              />
+            )}
+            {cliente && control.modo === "COBRO" && (
+              <FormularioAbono
+                cliente={cliente}
+                es={es}
+                tema={tema}
+                monto={control.monto}
+                metodo={control.metodo}
+                referencia={control.referencia}
+                notas={control.notas}
+                guardando={control.guardando}
+                alCambiarMonto={control.establecerMonto}
+                alCambiarMetodo={control.establecerMetodo}
+                alCambiarReferencia={control.establecerReferencia}
+                alCambiarNotas={control.establecerNotas}
+                alVolver={control.mostrarAcciones}
+                alGuardar={(monto) => void control.guardarVisita("PAGO", monto)}
+              />
+            )}
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -108,6 +126,7 @@ const estilos = StyleSheet.create({
     paddingBottom: 34,
     maxHeight: "93%",
   },
+  contenido: { paddingBottom: 6 },
   encabezado: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   expandir: { flex: 1 },
   titulo: { fontWeight: "900", fontSize: 20 },

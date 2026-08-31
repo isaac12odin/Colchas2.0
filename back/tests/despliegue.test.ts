@@ -9,6 +9,14 @@ const dockerfileBackend = readFileSync(
   new URL("../Dockerfile", import.meta.url),
   "utf8",
 );
+const dockerfileFrontend = readFileSync(
+  new URL("../../front/Dockerfile", import.meta.url),
+  "utf8",
+);
+const inicioFrontend = readFileSync(
+  new URL("../../front/app/page.tsx", import.meta.url),
+  "utf8",
+);
 const nginx = readFileSync(
   new URL("../../deploy/nginx/nexo.deadcode.cloud.conf", import.meta.url),
   "utf8",
@@ -20,6 +28,9 @@ const encabezadosNginx = readFileSync(
 const smokeProduccion = readFileSync(
   new URL("../../scripts/verificar-dominio-produccion.mjs", import.meta.url),
   "utf8",
+);
+const easMovil = JSON.parse(
+  readFileSync(new URL("../../movil/eas.json", import.meta.url), "utf8"),
 );
 const timerRespaldo = readFileSync(
   new URL("../../deploy/systemd/nexo-respaldo.timer", import.meta.url),
@@ -91,12 +102,38 @@ describe("imagen de producción del backend", () => {
   });
 });
 
+describe("imagen de producción del frontend", () => {
+  it("incluye los recursos públicos de marca en la imagen final", () => {
+    expect(dockerfileFrontend).toContain(
+      "--from=compilacion /app/front/public ./front/public",
+    );
+  });
+});
+
 describe("proxy Nginx de producción real", () => {
   it("enruta API, salud y web a sus puertos locales sin publicarlos", () => {
     expect(nginx).toContain("rewrite ^/api/(.*)$ /api/v1/$1 break;");
     expect(nginx).toContain("proxy_pass http://127.0.0.1:4100;");
     expect(nginx).toContain("proxy_pass http://127.0.0.1:3100;");
     expect(nginx).toContain("location = /salud/listo");
+  });
+
+  it("configura la app móvil con el prefijo público sin duplicar /v1", () => {
+    for (const perfil of ["preview", "production"])
+      expect(easMovil.build[perfil].env.EXPO_PUBLIC_API_URL).toBe(
+        "https://nexo.deadcode.cloud/api",
+      );
+  });
+
+  it("publica el APK en una ruta HTTPS enlazada desde el inicio", () => {
+    expect(nginx).toContain("location = /descargas/vektra.apk");
+    expect(nginx).toContain(
+      "alias /var/www/nexo-downloads/Vektra-1.0.0-r2.apk;",
+    );
+    expect(nginx).toContain(
+      "default_type application/vnd.android.package-archive;",
+    );
+    expect(inicioFrontend).toContain('href="/descargas/vektra.apk"');
   });
 
   it("evita caché de HTML y conserva caché inmutable sólo en assets", () => {

@@ -17,6 +17,7 @@ ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 COPY --from=compilacion /app/front/.next/standalone ./
 COPY --from=compilacion /app/front/.next/static ./front/.next/static
+COPY --from=compilacion /app/front/public ./front/public
 USER node
 EXPOSE 3000
 CMD ["node", "front/server.js"]

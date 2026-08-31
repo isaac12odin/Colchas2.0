@@ -37,20 +37,20 @@ erDiagram
 
 ## Diccionario por agregado
 
-| Agregado   | Tablas                                                                             | Responsabilidad                                                                                    |
-| ---------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Identidad  | `usuarios`, `sesiones`                                                             | Rol, bloqueo, MFA, versión de token, familias de refresh y máximo de sesiones.                     |
+| Agregado   | Tablas                                                                             | Responsabilidad                                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Identidad  | `usuarios`, `sesiones`                                                             | Rol, bloqueo, MFA, versión de token, familias de refresh y máximo de sesiones.                                            |
 | Cartera    | `localidades`, `rutas`, `rutas_localidades`, `rutas_clientes`                      | Agrupación multilocalidad y orden de visita. El cobrador es opcional: sin asignación se opera sólo en web administrativa. |
-| Cliente    | `clientes`, `saldos_clientes`, `movimientos_saldo`, `evaluaciones_riesgo`          | Expediente, proyección de deuda, libro de cargos/abonos y evaluación derivada.                     |
-| Venta      | `ventas`, `detalles_venta`, `planes_pago`, `cuotas`                                | Contado/crédito, snapshots históricos, calendario y fechas cliente/servidor/operativa.             |
-| Cobranza   | `abonos`, `aplicaciones_abono`, `visitas_cobranza`                                 | Pago, aplicación FIFO a cuotas, anulación compensatoria y visita ordinaria/extraordinaria.         |
-| Inventario | `productos`, `movimientos_inventario`                                              | Catálogo/foto privada, existencia proyectada y libro de entradas/salidas.                          |
-| Compra     | `proveedores`, `compras`, `detalles_compra`                                        | Proveedor que surtió, factura/entrada y costo histórico.                                           |
-| Pedido     | `pedidos_venta`, `items_pedido_venta`                                              | Solicitud, proveedor por artículo, recepción y entrega que crea una sola venta.                    |
-| Devolución | `devoluciones`, `detalles_devolucion`                                              | Autorizador, operador de caja, evidencia, saldo, reembolso e inventario.                           |
-| Caja       | `cortes_caja`                                                                      | Importes calculados/declarados por método, diferencia, firma e integridad por operador/día.        |
-| Offline    | `dispositivos_sincronizacion`, `lotes_sincronizacion`, `operaciones_sincronizadas` | Ancla HMAC, recibos confirmados/rechazados y resolución administrativa.                            |
-| Auditoría  | `auditoria`                                                                        | Actor, acción y cambios sanitizados; no almacena secretos ni binarios.                             |
+| Cliente    | `clientes`, `saldos_clientes`, `movimientos_saldo`, `evaluaciones_riesgo`          | Expediente, proyección de deuda, libro de cargos/abonos y evaluación derivada.                                            |
+| Venta      | `ventas`, `detalles_venta`, `planes_pago`, `cuotas`                                | Contado/crédito, snapshots históricos, calendario y fechas cliente/servidor/operativa.                                    |
+| Cobranza   | `abonos`, `aplicaciones_abono`, `visitas_cobranza`                                 | Pago, aplicación FIFO a cuotas, anulación compensatoria y visita ordinaria/extraordinaria.                                |
+| Inventario | `productos`, `movimientos_inventario`                                              | Catálogo/foto privada, existencia proyectada y libro de entradas/salidas.                                                 |
+| Compra     | `proveedores`, `compras`, `detalles_compra`                                        | Proveedor que surtió, factura/entrada y costo histórico.                                                                  |
+| Pedido     | `pedidos_venta`, `items_pedido_venta`                                              | Solicitud, proveedor por artículo, recepción y entrega que crea una sola venta.                                           |
+| Devolución | `devoluciones`, `detalles_devolucion`                                              | Autorizador, operador de caja, evidencia, saldo, reembolso e inventario.                                                  |
+| Caja       | `cortes_caja`                                                                      | Importes calculados/declarados por método, diferencia, firma e integridad por operador/día.                               |
+| Offline    | `dispositivos_sincronizacion`, `lotes_sincronizacion`, `operaciones_sincronizadas` | Ancla HMAC, recibos confirmados/rechazados y resolución administrativa.                                                   |
+| Auditoría  | `auditoria`                                                                        | Actor, acción y cambios sanitizados; no almacena secretos ni binarios.                                                    |
 
 ## Campos sensibles
 

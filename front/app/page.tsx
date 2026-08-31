@@ -3,7 +3,14 @@
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, LockKeyhole, Moon, Smartphone, Sun } from "lucide-react";
+import {
+  ArrowRight,
+  Download,
+  LockKeyhole,
+  Moon,
+  Smartphone,
+  Sun,
+} from "lucide-react";
 import { api, ErrorApi } from "@/lib/api";
 import type { UsuarioSesion } from "@/lib/tipos";
 import { usarAplicacion } from "@/componentes/proveedores";
@@ -219,11 +226,23 @@ export default function InicioSesion() {
           </form>
           <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs leading-5 text-slate-600 dark:text-slate-300 sm:mt-6 sm:pt-5">
             <Smartphone className="mt-0.5 shrink-0" size={16} />
-            <p>
-              {es
-                ? "Almacenistas y cobradores ingresan únicamente desde la aplicación móvil Vektra."
-                : "Warehouse and collection staff sign in only through the Vektra mobile app."}
-            </p>
+            <div className="w-full">
+              <p>
+                {es
+                  ? "Almacenistas y cobradores ingresan únicamente desde la aplicación móvil Vektra."
+                  : "Warehouse and collection staff sign in only through the Vektra mobile app."}
+              </p>
+              <a
+                href="/descargas/vektra.apk"
+                download="Vektra-Android.apk"
+                className="boton-secundario mt-3 w-full justify-center"
+              >
+                <Download size={16} />
+                {es
+                  ? "Descargar Vektra para Android"
+                  : "Download Vektra for Android"}
+              </a>
+            </div>
           </div>
           <p className="mt-4 text-center text-xs leading-5 text-slate-600 dark:text-slate-300 sm:mt-7">
             {es
