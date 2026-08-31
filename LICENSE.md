@@ -1,7 +1,18 @@
-# Nexo Cobranza — software propietario
+Copyright © 2026 Isaac Serrano Campos.
+All Rights Reserved.
 
-Copyright (c) 2026. Todos los derechos reservados.
+This software, including its source code, architecture, documentation,
+designs and original components, is proprietary software.
 
-El código fuente, documentación, diseños y artefactos de este repositorio no se conceden bajo una licencia de software libre. No se autoriza copiar, redistribuir, sublicenciar, publicar, vender ni crear obras derivadas sin autorización escrita del titular.
+No permission is granted to copy, modify, distribute, sublicense, sell,
+commercialize, publish, or otherwise use this software, in whole or in
+part, without the prior written authorization of the copyright holder.
 
-El acceso concedido a colaboradores se limita al desarrollo, revisión, operación y soporte autorizados de Nexo. Toda persona con acceso debe proteger credenciales, datos personales, respaldos y secretos conforme a las políticas del proyecto.
+Unauthorized commercial use, redistribution, resale, reproduction or
+creation of derivative works is expressly prohibited.
+
+Third-party libraries, dependencies and components remain subject to
+their respective licenses.
+
+For licensing or authorization inquiries, explicit written permission
+from the copyright holder is required.
