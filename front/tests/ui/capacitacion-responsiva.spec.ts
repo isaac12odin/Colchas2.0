@@ -37,8 +37,12 @@ test("la capacitación es operable en móvil sin desbordamiento", async ({
   await expect(page.locator("body")).not.toHaveCSS("overflow-x", "scroll");
 
   const boton = page
-    .getByRole("button", { name: "Practicar en la pantalla real" })
-    .first();
+    .getByRole("heading", {
+      name: "Entregar pedido y generar venta",
+      exact: true,
+    })
+    .locator("xpath=ancestor::article")
+    .getByRole("button", { name: "Practicar en la pantalla real" });
   await boton.scrollIntoViewIfNeeded();
   await expect(boton).toBeInViewport();
   await boton.click();
@@ -73,4 +77,21 @@ test("la capacitación es operable en móvil sin desbordamiento", async ({
   await expect(
     entrenador.getByRole("button", { name: "Salir de la práctica" }),
   ).toBeInViewport();
+
+  await page.getByTestId("mostrar-objetivo-practica").click();
+  await page
+    .getByRole("button", { name: "Listo para entregar", exact: true })
+    .click();
+  await expect(page.getByTestId("accion-real-detectada")).toBeVisible();
+
+  const continuar = page.getByTestId("continuar-practica-real");
+  await expect(continuar).toBeEnabled();
+  await page
+    .locator("main[data-pantalla-operativa]")
+    .evaluate((modulo) => (modulo.style.minHeight = "2200px"));
+  await page.evaluate(() => window.scrollTo({ top: 1_000 }));
+  await expect(entrenador).toBeInViewport();
+  await expect(continuar).toBeInViewport();
+  await continuar.click();
+  await expect(entrenador).toContainText("PASO 2 DE 12");
 });
