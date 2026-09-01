@@ -471,7 +471,7 @@ export function Panel({ children }: { children: React.ReactNode }) {
             </div>
           )}
           <main
-            className={`mx-auto w-full max-w-[1500px] p-4 pb-24 sm:p-7 sm:pb-24 lg:pb-7 ${enPracticaReal ? "order-2 xl:order-1" : ""}`}
+            className={`mx-auto w-full max-w-[1500px] p-4 sm:p-7 ${enPracticaReal ? "order-2 pb-40 lg:pb-28 xl:order-1 xl:pb-7" : "pb-24 sm:pb-24 lg:pb-7"}`}
             data-pantalla-operativa
           >
             {practicaInvalida ? (
@@ -496,7 +496,7 @@ export function Panel({ children }: { children: React.ReactNode }) {
             )}
           </main>
           {practicaSegura && (
-            <div className="order-1 min-w-0 xl:order-2 xl:py-4">
+            <div className="order-1 min-w-0 xl:sticky xl:top-[7.75rem] xl:order-2 xl:self-start xl:py-4">
               <CargadorEntrenadorPantallaReal
                 usuarioId={usuario.id}
                 rol={usuario.rol}

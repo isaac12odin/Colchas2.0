@@ -8,9 +8,11 @@ async function json(route: Route, cuerpo: unknown) {
   });
 }
 
-test("la capacitación es operable en móvil sin desbordamiento", async ({
+test("la capacitación conserva sus acciones visibles al desplazarse", async ({
   page,
-}) => {
+}, testInfo) => {
+  const esEscritorio = testInfo.project.name === "chromium-escritorio";
+  if (esEscritorio) await page.setViewportSize({ width: 1_440, height: 560 });
   await page.route("**/api/**", async (route) => {
     const ruta = new URL(route.request().url()).pathname;
     if (ruta.endsWith("/auth/sesion"))
@@ -48,11 +50,17 @@ test("la capacitación es operable en móvil sin desbordamiento", async ({
   await boton.click();
   await expect(page).toHaveURL(/\/pedidos\?practica=/);
   await expect(page.getByTestId("banner-practica-segura")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Pedidos" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Pedidos", exact: true }),
+  ).toBeVisible();
   const entrenador = page.getByTestId("entrenador-pantalla-real");
   await expect(entrenador).toBeVisible();
   await expect(entrenador).toBeInViewport();
   await expect(entrenador).toContainText("MICROEJEMPLO · NO LO COPIES");
+  const mostrarObjetivo = page.locator(
+    '[data-testid="mostrar-objetivo-practica"]:visible, [data-testid="mostrar-objetivo-practica-flotante"]:visible',
+  );
+  await expect(mostrarObjetivo).toBeInViewport();
   expect(
     await page
       .getByTestId("layout-practica-sin-traslape")
@@ -78,19 +86,21 @@ test("la capacitación es operable en móvil sin desbordamiento", async ({
     entrenador.getByRole("button", { name: "Salir de la práctica" }),
   ).toBeInViewport();
 
-  await page.getByTestId("mostrar-objetivo-practica").click();
+  await mostrarObjetivo.click();
   await page
     .getByRole("button", { name: "Listo para entregar", exact: true })
     .click();
   await expect(page.getByTestId("accion-real-detectada")).toBeVisible();
 
-  const continuar = page.getByTestId("continuar-practica-real");
+  const continuar = page.locator(
+    '[data-testid="continuar-practica-real"]:visible, [data-testid="continuar-practica-flotante"]:visible',
+  );
   await expect(continuar).toBeEnabled();
   await page
     .locator("main[data-pantalla-operativa]")
     .evaluate((modulo) => (modulo.style.minHeight = "2200px"));
   await page.evaluate(() => window.scrollTo({ top: 1_000 }));
-  await expect(entrenador).toBeInViewport();
+  if (esEscritorio) await expect(entrenador).toBeInViewport();
   await expect(continuar).toBeInViewport();
   await continuar.click();
   await expect(entrenador).toContainText("PASO 2 DE 12");

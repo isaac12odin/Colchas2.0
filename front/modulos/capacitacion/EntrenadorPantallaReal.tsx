@@ -3,11 +3,8 @@
 import {
   BookOpenCheck,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   DatabaseZap,
   Eye,
-  LocateFixed,
   LockKeyhole,
   MapPin,
   MousePointerClick,
@@ -17,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { pasosAtomicosDe } from "./guionesAtomicos";
+import { ControlesEntrenador } from "./ControlesEntrenador";
 import {
   guardarBorradorPractica,
   guardarProgresoCapacitacion,
@@ -39,6 +37,7 @@ import {
   SELECTOR_CONTROL,
   valorValido,
 } from "./dominioEntrenador";
+
 export function EntrenadorPantallaReal({
   usuarioId,
   leccion,
@@ -447,12 +446,12 @@ export function EntrenadorPantallaReal({
         }
       `}</style>
       <aside
-        className="self-start border-b bg-white dark:border-slate-800 dark:bg-slate-950 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:rounded-2xl xl:border xl:shadow-sm"
+        className="self-start border-b bg-white dark:border-slate-800 dark:bg-slate-950 xl:flex xl:max-h-[calc(100vh-8.75rem)] xl:flex-col xl:overflow-hidden xl:rounded-2xl xl:border xl:shadow-sm xl:supports-[height:100dvh]:max-h-[calc(100dvh-8.75rem)]"
         data-capacitacion-entrenador
         data-testid="entrenador-pantalla-real"
         aria-live="polite"
       >
-        <header className="flex items-start gap-3 border-b bg-slate-950 p-4 text-white dark:border-slate-800">
+        <header className="flex shrink-0 items-start gap-3 border-b bg-slate-950 p-4 text-white dark:border-slate-800">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-600">
             <BookOpenCheck size={20} />
           </span>
@@ -478,7 +477,11 @@ export function EntrenadorPantallaReal({
           </button>
         </header>
 
-        <div className="p-4">
+        <div
+          className="min-h-0 overscroll-contain p-4 xl:flex-1 xl:overflow-y-auto"
+          data-testid="contenido-guia-practica"
+          style={{ scrollbarGutter: "stable" }}
+        >
           <div className="flex items-center justify-between gap-3 text-[11px] font-black">
             <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-800 dark:bg-blue-950 dark:text-blue-200">
               {es ? "PASO" : "STEP"} {pasoActual + 1} {es ? "DE" : "OF"}{" "}
@@ -531,22 +534,6 @@ export function EntrenadorPantallaReal({
                 {localizar(paso.microEjemplo, idioma)}
               </div>
             </div>
-          )}
-
-          {fase === "EJEMPLO" && (
-            <button
-              type="button"
-              className="boton-primario mt-4 w-full justify-center"
-              onClick={() => {
-                establecerFase("ACTUAR");
-                establecerEjemploAbierto(false);
-                establecerMensaje("");
-              }}
-              data-testid="mostrar-objetivo-practica"
-            >
-              <LocateFixed size={18} />
-              {es ? "Entendido, mostrarme dónde" : "Got it, show me where"}
-            </button>
           )}
 
           {fase !== "EJEMPLO" && (
@@ -626,38 +613,45 @@ export function EntrenadorPantallaReal({
               {mensaje}
             </p>
           )}
-
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              className="boton-secundario px-3"
-              onClick={() =>
-                pasoActual > 0 && establecerPasoActual((actual) => actual - 1)
-              }
-              disabled={pasoActual === 0}
-              aria-label={es ? "Paso anterior" : "Previous step"}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
-              className="boton-primario flex-1 justify-center"
-              disabled={fase !== "COMPLETADO"}
-              onClick={continuar}
-              data-testid="continuar-practica-real"
-            >
-              {esUltimo
-                ? es
-                  ? "Terminar práctica"
-                  : "Finish practice"
-                : es
-                  ? "Siguiente micropaso"
-                  : "Next micro step"}
-              <ChevronRight size={18} />
-            </button>
-          </div>
+        </div>
+        <div className="hidden shrink-0 xl:block">
+          <ControlesEntrenador
+            es={es}
+            fase={fase}
+            esUltimo={esUltimo}
+            pasoActual={pasoActual}
+            totalPasos={pasos.length}
+            alMostrarObjetivo={() => {
+              establecerFase("ACTUAR");
+              establecerEjemploAbierto(false);
+              establecerMensaje("");
+            }}
+            alAnterior={() =>
+              pasoActual > 0 && establecerPasoActual((actual) => actual - 1)
+            }
+            alContinuar={continuar}
+          />
         </div>
       </aside>
+      <div className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-30 lg:bottom-0 lg:left-[248px] xl:hidden">
+        <ControlesEntrenador
+          es={es}
+          fase={fase}
+          esUltimo={esUltimo}
+          pasoActual={pasoActual}
+          totalPasos={pasos.length}
+          flotante
+          alMostrarObjetivo={() => {
+            establecerFase("ACTUAR");
+            establecerEjemploAbierto(false);
+            establecerMensaje("");
+          }}
+          alAnterior={() =>
+            pasoActual > 0 && establecerPasoActual((actual) => actual - 1)
+          }
+          alContinuar={continuar}
+        />
+      </div>
     </>
   );
 }
