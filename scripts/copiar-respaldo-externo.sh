@@ -2,8 +2,23 @@
 
 set -eu
 
+directorio_scripts=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 directorio="${BACKUP_DIR:-/respaldos}"
 destino="${BACKUP_REMOTE:-}"
+
+archivo=$(find "$directorio" -maxdepth 1 -type f -name 'nexo-*.dump.enc' -print | sort | tail -n 1)
+if [ -z "$archivo" ] || [ ! -f "$archivo.sha256" ] || [ ! -f "$archivo.pg-major" ]; then
+  echo "No existe un respaldo completo con SHA y versión PostgreSQL." >&2
+  exit 1
+fi
+archivo_imagenes="${archivo%.dump.enc}.imagenes.tar.enc"
+if [ ! -f "$archivo_imagenes" ] || [ ! -f "$archivo_imagenes.sha256" ]; then
+  echo "Falta la copia cifrada de imágenes asociada al respaldo PostgreSQL." >&2
+  exit 1
+fi
+
+"$directorio_scripts/verificar-respaldo.sh" "$archivo"
+
 if [ -z "$destino" ]; then
   if [ "${ALLOW_LOCAL_BACKUP_ONLY:-NO}" = "SI" ]; then
     echo "ADVERTENCIA: respaldo local verificado; falta BACKUP_REMOTE para la copia externa." >&2
@@ -17,19 +32,6 @@ if ! command -v rclone >/dev/null 2>&1; then
   exit 1
 fi
 
-archivo=$(find "$directorio" -maxdepth 1 -type f -name 'nexo-*.dump.enc' -print | sort | tail -n 1)
-if [ -z "$archivo" ] || [ ! -f "$archivo.sha256" ] || [ ! -f "$archivo.pg-major" ]; then
-  echo "No existe un respaldo completo con SHA y versión PostgreSQL." >&2
-  exit 1
-fi
-archivo_imagenes="${archivo%.dump.enc}.imagenes.tar.enc"
-if [ ! -f "$archivo_imagenes" ] || [ ! -f "$archivo_imagenes.sha256" ]; then
-  echo "Falta la copia cifrada de imágenes asociada al respaldo PostgreSQL." >&2
-  exit 1
-fi
-
-(cd "$directorio" && sha256sum -c "$(basename "$archivo").sha256")
-(cd "$directorio" && sha256sum -c "$(basename "$archivo_imagenes").sha256")
 for origen in \
   "$archivo" \
   "$archivo.sha256" \

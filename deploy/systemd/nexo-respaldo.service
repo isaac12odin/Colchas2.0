@@ -8,11 +8,14 @@ Type=oneshot
 WorkingDirectory=/var/www/Colchas2.0
 EnvironmentFile=/etc/nexo/nexo.env
 Environment=ALLOW_LOCAL_BACKUP_ONLY=SI
-ExecStart=/usr/bin/docker compose -f /etc/nexo/compose.yml run --rm migracion npm run backup
+Environment=BACKUP_DIR=/respaldos
+Environment=IMAGE_STORAGE_DIR=/var/lib/docker/volumes/nexo_uploads/_data
+ExecStart=/bin/sh /var/www/Colchas2.0/scripts/respaldo-postgres.sh
 ExecStartPost=/var/www/Colchas2.0/scripts/copiar-respaldo-externo.sh
 User=root
 Nice=10
 PrivateTmp=true
 ProtectSystem=strict
 ReadWritePaths=/respaldos
+ReadOnlyPaths=/var/lib/docker/volumes/nexo_uploads/_data
 NoNewPrivileges=true

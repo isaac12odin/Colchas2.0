@@ -79,11 +79,17 @@ systemctl enable --now nexo-respaldo.timer nexo-reconciliacion.timer
 systemctl list-timers 'nexo-*'
 ```
 
-El servicio `migracion` de `/etc/nexo/compose.yml` debe montar también
-`/respaldos:/respaldos`; de lo contrario, el contenedor efímero eliminará el
-archivo al terminar. Antes de habilitar el temporizador ejecute manualmente un
-respaldo y su verificación, y confirme en el host la pareja PostgreSQL +
-imágenes con sus huellas y versión mayor.
+La unidad de respaldo usa las herramientas PostgreSQL de la misma versión
+mayor instaladas en el host y lee el volumen persistente de imágenes en modo
+solo lectura. Antes de habilitar el temporizador, ejecute manualmente la unidad,
+revise su journal y confirme en `/respaldos` la pareja PostgreSQL + imágenes
+con sus huellas y versión mayor:
+
+```bash
+systemctl start nexo-respaldo.service
+systemctl status nexo-respaldo.service --no-pager
+journalctl -u nexo-respaldo.service -n 100 --no-pager
+```
 
 `BACKUP_REMOTE` y rclone deben apuntar a una cuenta externa al VPS. El timer
 mantiene la copia local aun cuando falte ese destino y deja una advertencia
