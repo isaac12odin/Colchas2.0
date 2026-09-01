@@ -7,6 +7,11 @@ import {
   puntosCapacitacionMovil,
   rutaCapacitacionMovilParaRol,
 } from "../src/modulos/capacitacion/catalogo";
+import {
+  distribucionCapacitacionMovil,
+  porcentajeEtapaCapacitacion,
+  siguienteLeccionPendiente,
+} from "../src/modulos/capacitacion/presentacion";
 import type { Rol } from "../src/tipos";
 
 describe("capacitación móvil segura por rol", () => {
@@ -53,6 +58,7 @@ describe("capacitación móvil segura por rol", () => {
     expect(autorizacion?.roles).toEqual(["ADMINISTRADOR", "CONTABLE"]);
     expect(autorizacion?.tipoSimulador).toBe("DEVOLUCION");
     expect(revision?.roles).toEqual(["ALMACENISTA"]);
+    expect(revision?.pantalla).toBe("inventario");
     expect(JSON.stringify(revision)).not.toMatch(
       /Confirmar reembolso|seleccionar operador de caja/i,
     );
@@ -103,5 +109,56 @@ describe("capacitación móvil segura por rol", () => {
     expect(serializado).not.toContain("/api/");
     expect(serializado).not.toContain("fetch(");
     expect(serializado).not.toContain("DATABASE_URL");
+  });
+
+  it("no inventa una pantalla móvil para recorridos guiados", () => {
+    const pantallasReales = new Set([
+      "inicio",
+      "perfil",
+      "inventario",
+      "pedidos",
+      "rutas",
+      "jornada",
+      "venta",
+      "sincronizacion",
+    ]);
+    const guiadas = leccionesCapacitacionMovil.filter(
+      (leccion) => !leccion.tipoSimulador,
+    );
+    expect(
+      guiadas.filter((leccion) => !pantallasReales.has(leccion.pantalla)),
+    ).toEqual([]);
+  });
+
+  it("adapta la capacitación a Android compacto, normal y tablet", () => {
+    expect(distribucionCapacitacionMovil(280).anchoMaximo).toBe(280);
+    expect(distribucionCapacitacionMovil(320)).toMatchObject({
+      compacta: true,
+      tablet: false,
+      margenHorizontal: 10,
+      columnasResumen: 1,
+      altoMinimoControl: 50,
+    });
+    expect(distribucionCapacitacionMovil(412)).toMatchObject({
+      compacta: false,
+      tablet: false,
+      margenHorizontal: 16,
+      columnasResumen: 2,
+      altoMinimoControl: 52,
+    });
+    expect(distribucionCapacitacionMovil(800)).toMatchObject({
+      tablet: true,
+      margenHorizontal: 24,
+      anchoMaximo: 760,
+      columnasResumen: 3,
+    });
+  });
+
+  it("retoma la siguiente práctica y calcula avance sin duplicados", () => {
+    const orden = ["seguridad", "ruta", "abono"];
+    expect(siguienteLeccionPendiente(["seguridad"], orden)).toBe("ruta");
+    expect(siguienteLeccionPendiente(orden, orden)).toBeNull();
+    expect(porcentajeEtapaCapacitacion(["ruta", "ruta"], orden)).toBe(33);
+    expect(porcentajeEtapaCapacitacion([], [])).toBe(0);
   });
 });

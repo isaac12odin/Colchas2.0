@@ -25,9 +25,9 @@ npm run dev
 
 Open `http://localhost:3000`. Start mobile development with `npm run dev:movil`. Use a development build for SQLCipher; Expo Go does not include this custom native option.
 
-The EAS `preview` and `production` profiles target the public Nginx prefix `https://nexo.deadcode.cloud/api`; Nginx maps it to the backend's internal `/api/v1` routes. Build an internal Android APK with `npm run build:android:preview -w movil`, or production artifacts with `npm run build:android -w movil` and `npm run build:ios -w movil`.
+The EAS profiles target the public Nginx prefix `https://nexo.deadcode.cloud/api`; Nginx maps it to the backend's internal `/api/v1` routes. Build a universal QA APK with `npm run build:android:preview -w movil`, the optimized arm64 direct-download APK with `npm run build:android:apk -w movil`, or the Play Store AAB with `npm run build:android -w movil`. The versioned Expo config plugin enables R8/resource shrinking and native-library compression, limits native locales to Spanish and English, and removes `SYSTEM_ALERT_WINDOW` from release builds only.
 
-There are no built-in administrator credentials. Set explicit `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` values. The seed fails closed when either value is missing or matches a known example. Administrator-created passwords work immediately and do not require a first-login change.
+There are no built-in administrator credentials. Set explicit `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` values. The seed fails closed when either value is missing or matches a known example. A newly seeded account and every administrator-created or reset password are temporary: only the real password-change screen is available until the account owner replaces the credential. Re-running the seed preserves an existing account's password and confirmation state.
 
 ## Domain behavior
 
@@ -45,7 +45,7 @@ There are no built-in administrator credentials. Set explicit `SEED_ADMIN_EMAIL`
 - Catalog prices are resolved by the server. Only administrators may authorize overrides or discounts, and no sale may go below recorded cost.
 - Refunds record the accounting/administrative authorizer separately from the administrator or collector whose cash drawer pays the money. That operator's daily ledger is locked and charged, so an approved refund cannot bypass a signed close.
 - Destructive restore tests query PostgreSQL `current_database()` and proceed only when the connected database name ends exactly in `_restore_test`; text elsewhere in the URL is never accepted as proof.
-- Passwords use a six-character minimum. Administration can reset any account, including its own, and the new password works immediately.
+- Passwords use a six-character minimum. Administration can reset any account, including its own; the temporary password revokes prior sessions and must be replaced before business modules become available.
 
 ## Role-aware access
 

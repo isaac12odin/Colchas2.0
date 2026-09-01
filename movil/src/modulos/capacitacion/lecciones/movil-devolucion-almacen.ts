@@ -3,7 +3,7 @@ import { p, t } from "./definirLeccion";
 
 export const movilDevolucionAlmacen: LeccionCapacitacionMovil = {
   id: "movil-devolucion-almacen",
-  pantalla: "devoluciones",
+  pantalla: "inventario",
   roles: ["ALMACENISTA"],
   titulo: t("Revisar mercancía devuelta", "Inspect returned goods"),
   resultado: t(
@@ -13,27 +13,27 @@ export const movilDevolucionAlmacen: LeccionCapacitacionMovil = {
   pasos: [
     p(
       "Llegó una pieza devuelta.",
-      "Buscar la devolución por folio, venta o cliente",
-      "Almacén consulta una devolución ya autorizada.",
+      "Confirmar que el folio de devolución ya fue autorizado",
+      "La autorización y el reembolso pertenecen a Administración o Contabilidad; Almacén recibe el folio.",
       "A returned item arrived.",
-      "Find the return by receipt, sale, or customer",
-      "Warehouse reviews an already authorized return.",
+      "Confirm that the return receipt was already approved",
+      "Approval and refund belong to Administration or Accounting; Warehouse receives the receipt.",
     ),
     p(
       "Tienes la mercancía enfrente.",
-      "Comparar venta, cantidades, motivo y fotografía",
-      "La revisión física debe coincidir con la evidencia.",
+      "Abrir Inventario y buscar el producto por nombre, SKU o código",
+      "Usas la pantalla real de Inventario y no una autorización que tu rol no posee.",
       "You have the goods in front of you.",
-      "Compare sale, quantities, reason, and photo",
-      "Physical inspection must match the evidence.",
+      "Open Inventory and find the item by name, SKU, or code",
+      "You use the real Inventory screen, not an approval action your role does not have.",
     ),
     p(
       "La pieza coincide.",
-      "Verificar la entrada compensatoria en inventario",
-      "Almacén comprueba el movimiento; no concede autorizaciones ni elige caja.",
+      "Verificar que la existencia incluya la pieza reintegrada",
+      "Si la cifra no coincide, reporta el folio; no ajustes stock ni caja para ocultar la diferencia.",
       "The item matches.",
-      "Verify the compensating inventory receipt",
-      "Warehouse verifies the movement; it does not approve or select a cash desk.",
+      "Verify that stock includes the restored unit",
+      "If it does not match, report the receipt; never alter stock or cash to hide the discrepancy.",
     ),
   ],
 };

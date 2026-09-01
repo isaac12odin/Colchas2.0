@@ -52,7 +52,7 @@ rutasUsuarios.post("/", async (req, res) => {
       correo: datos.correo,
       hashContrasena: await crearHashContrasena(datos.contrasenaTemporal),
       rol: datos.rol,
-      debeCambiarContrasena: false,
+      debeCambiarContrasena: true,
     },
     select: camposPublicos,
   });
@@ -168,7 +168,7 @@ rutasUsuarios.post("/:id/restablecer-contrasena", async (req, res) => {
       where: { id: objetivo.id },
       data: {
         hashContrasena,
-        debeCambiarContrasena: false,
+        debeCambiarContrasena: true,
         intentosFallidos: 0,
         bloqueadoHasta: null,
         tokenVersion: { increment: 1 },
@@ -186,7 +186,7 @@ rutasUsuarios.post("/:id/restablecer-contrasena", async (req, res) => {
         entidadId: objetivo.id,
         datosAntes: { debeCambiarContrasena: objetivo.debeCambiarContrasena },
         datosDespues: {
-          debeCambiarContrasena: false,
+          debeCambiarContrasena: true,
           sesionesRevocadas: true,
         },
         ip: req.ip,

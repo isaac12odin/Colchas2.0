@@ -1,4 +1,4 @@
-import type { Rol } from "./tipos";
+import type { Rol, UsuarioSesion } from "./tipos";
 
 export type ModuloWeb =
   | "inicio"
@@ -65,4 +65,13 @@ export function puedeAccederRutaWeb(rol: Rol, ruta: string) {
 export function obtenerRutaInicialWeb(rol: Rol) {
   void rol;
   return "/inicio";
+}
+
+/** La credencial temporal nunca abre primero un módulo operativo. */
+export function obtenerRutaTrasAutenticacionWeb(
+  usuario: Pick<UsuarioSesion, "rol" | "debeCambiarContrasena">,
+) {
+  return usuario.debeCambiarContrasena
+    ? "/perfil"
+    : obtenerRutaInicialWeb(usuario.rol);
 }

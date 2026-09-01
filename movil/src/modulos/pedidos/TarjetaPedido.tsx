@@ -1,26 +1,31 @@
+import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colores, type usarTema } from "../../tema";
+import {
+  BotonMovil,
+  TarjetaMovil,
+  usarDisenoResponsivo,
+} from "../../componentes/ui";
+import { radios, type usarTema } from "../../tema";
 import type { PedidoMovil } from "../../tipos";
 import { dinero } from "../../utilidades/formato";
 import { siguienteEstado, totalPedido } from "./dominioPedidos";
 
 const estadosEs: Record<string, string> = {
-  PENDIENTE_PEDIR: "Pendiente de proveedor",
+  PENDIENTE_PEDIR: "Falta proveedor",
   PEDIDO_PROVEEDOR: "Pedido al proveedor",
-  RECIBIDO_ALMACEN: "Recibido en almacén",
-  LISTO_ENTREGA: "Listo para entrega",
+  RECIBIDO_ALMACEN: "En almacén",
+  LISTO_ENTREGA: "Listo para entregar",
 };
 const estadosEn: Record<string, string> = {
-  PENDIENTE_PEDIR: "Pending supplier",
-  PEDIDO_PROVEEDOR: "Supplier ordered",
-  RECIBIDO_ALMACEN: "Received in warehouse",
+  PENDIENTE_PEDIR: "Supplier needed",
+  PEDIDO_PROVEEDOR: "Ordered from supplier",
+  RECIBIDO_ALMACEN: "In warehouse",
   LISTO_ENTREGA: "Ready to deliver",
 };
 const accionesEs: Record<string, string> = {
-  RECIBIDO_ALMACEN: "Confirmar recepción",
-  LISTO_ENTREGA: "Marcar listo para entrega",
+  RECIBIDO_ALMACEN: "Confirmar que llegó",
+  LISTO_ENTREGA: "Marcar listo para entregar",
 };
 
 interface Propiedades {
@@ -36,159 +41,185 @@ interface Propiedades {
 }
 
 export function TarjetaPedido({ pedido, es, tema, ...permisos }: Propiedades) {
+  const diseno = usarDisenoResponsivo();
+  const apilar = diseno.compacto || diseno.fontScale > 1.2;
+  const pendienteProveedor = pedido.estado === "PENDIENTE_PEDIR";
+  const listoParaOperacion = ["RECIBIDO_ALMACEN", "LISTO_ENTREGA"].includes(
+    pedido.estado,
+  );
+
   return (
-    <View
-      style={[
-        estilos.tarjeta,
-        { backgroundColor: tema.panel, borderColor: tema.borde },
-      ]}
-    >
-      <View style={estilos.fila}>
+    <TarjetaMovil estilo={estilos.tarjeta} elevada>
+      <View style={[estilos.encabezado, apilar && estilos.encabezadoApilado]}>
         <View style={estilos.expandir}>
-          <Text style={estilos.folio}>{pedido.folio}</Text>
+          <Text style={[estilos.folio, { color: tema.textoSecundario }]}>
+            {pedido.folio}
+          </Text>
           <Text style={[estilos.nombre, { color: tema.texto }]}>
             {pedido.cliente?.nombreCompleto ??
               (es ? "Cliente de la ruta" : "Route customer")}
           </Text>
-          {pedido.fechaCompromiso && (
-            <Text style={estilos.compromiso}>
-              {es ? "Compromiso" : "Promise"}:{" "}
-              {pedido.fechaCompromiso.slice(0, 10)}
-            </Text>
-          )}
+          {pedido.fechaCompromiso ? (
+            <View style={estilos.compromisoFila}>
+              <Ionicons
+                name="calendar-outline"
+                size={15}
+                color={tema.textoTenue}
+              />
+              <Text
+                style={[estilos.compromiso, { color: tema.textoSecundario }]}
+              >
+                {es ? "Compromiso" : "Due"}:{" "}
+                {pedido.fechaCompromiso.slice(0, 10)}
+              </Text>
+            </View>
+          ) : null}
         </View>
-        <Text style={estilos.estado}>
-          {(es ? estadosEs : estadosEn)[pedido.estado] ?? pedido.estado}
-        </Text>
+        <View style={[estilos.estado, { backgroundColor: tema.primarioSuave }]}>
+          <Text style={[estilos.estadoTexto, { color: tema.primario }]}>
+            {(es ? estadosEs : estadosEn)[pedido.estado] ?? pedido.estado}
+          </Text>
+        </View>
       </View>
+
       <View style={[estilos.items, { borderColor: tema.borde }]}>
         {pedido.items.map((item, indice) => (
-          <View key={`${item.descripcion}-${indice}`} style={estilos.fila}>
-            <Text style={[estilos.item, { color: tema.texto }]}>
-              {item.cantidad} × {item.descripcion}
-              {item.proveedor?.nombre ? ` · ${item.proveedor.nombre}` : ""}
-            </Text>
-            <Text style={[estilos.item, { color: tema.texto }]}>
+          <View
+            key={`${item.id ?? item.descripcion}-${indice}`}
+            style={[estilos.itemFila, apilar && estilos.itemFilaApilada]}
+          >
+            <View style={estilos.expandir}>
+              <Text style={[estilos.itemNombre, { color: tema.texto }]}>
+                {item.cantidad} × {item.descripcion}
+              </Text>
+              <Text
+                style={[
+                  estilos.proveedor,
+                  {
+                    color: item.proveedor?.nombre
+                      ? tema.textoSecundario
+                      : tema.advertencia,
+                  },
+                ]}
+              >
+                {item.proveedor?.nombre ??
+                  (es ? "Proveedor sin asignar" : "Supplier not assigned")}
+              </Text>
+            </View>
+            <Text style={[estilos.itemImporte, { color: tema.texto }]}>
               {dinero.format(Number(item.precioEstimado) * item.cantidad)}
             </Text>
           </View>
         ))}
-        <View style={estilos.fila}>
-          <Text style={[estilos.totalEtiqueta, { color: tema.texto }]}>
-            Total
+        <View style={[estilos.totalFila, { borderColor: tema.borde }]}>
+          <Text
+            style={[estilos.totalEtiqueta, { color: tema.textoSecundario }]}
+          >
+            {es ? "Total estimado" : "Estimated total"}
           </Text>
-          <Text style={estilos.total}>
+          <Text style={[estilos.total, { color: tema.primario }]}>
             {dinero.format(totalPedido(pedido))}
           </Text>
         </View>
       </View>
-      {permisos.puedeAsignarProveedor &&
-        pedido.estado === "PENDIENTE_PEDIR" && (
-          <Pressable
-            style={estilos.boton}
-            onPress={permisos.alAsignarProveedor}
-          >
-            <Ionicons name="business-outline" color="white" size={18} />
-            <Text style={estilos.botonTexto}>
-              {es ? "Asignar proveedor" : "Assign supplier"}
-            </Text>
-          </Pressable>
-        )}
-      {permisos.puedeAlmacen &&
-        pedido.estado !== "PENDIENTE_PEDIR" &&
-        siguienteEstado[pedido.estado] && (
-          <Pressable style={estilos.secundario} onPress={permisos.alAvanzar}>
-            <Ionicons name="cube-outline" color={colores.azul} size={18} />
-            <Text style={estilos.secundarioTexto}>
-              {es
-                ? (accionesEs[siguienteEstado[pedido.estado]] ?? "Avanzar")
+
+      <View style={estilos.acciones}>
+        {permisos.puedeAsignarProveedor && pendienteProveedor ? (
+          <BotonMovil
+            texto={es ? "Asignar proveedor" : "Assign supplier"}
+            icono="business-outline"
+            alPulsar={permisos.alAsignarProveedor}
+          />
+        ) : null}
+
+        {permisos.puedeAlmacen &&
+        !pendienteProveedor &&
+        siguienteEstado[pedido.estado] ? (
+          <BotonMovil
+            texto={
+              es
+                ? (accionesEs[siguienteEstado[pedido.estado]] ??
+                  "Avanzar pedido")
                 : siguienteEstado[pedido.estado] === "RECIBIDO_ALMACEN"
-                  ? "Confirm receipt"
-                  : "Mark ready to deliver"}
+                  ? "Confirm arrival"
+                  : "Mark ready to deliver"
+            }
+            icono="cube-outline"
+            variante="secundario"
+            alPulsar={permisos.alAvanzar}
+          />
+        ) : null}
+
+        {!permisos.puedeAsignarProveedor && pendienteProveedor ? (
+          <View
+            style={[estilos.espera, { backgroundColor: tema.advertenciaSuave }]}
+          >
+            <Ionicons name="time-outline" color={tema.advertencia} size={20} />
+            <Text style={[estilos.esperaTexto, { color: tema.advertencia }]}>
+              {es
+                ? "Esperando a que Administración, Contabilidad o Almacén asignen proveedor."
+                : "Waiting for Administration, Accounting, or Warehouse to assign a supplier."}
             </Text>
-          </Pressable>
-        )}
-      {!permisos.puedeAsignarProveedor &&
-        pedido.estado === "PENDIENTE_PEDIR" && (
-          <Text style={estilos.espera}>
-            {es
-              ? "Espera: Administración, Contabilidad o Almacén asignarán al proveedor."
-              : "Waiting: Administration, Accounting, or Warehouse will assign the supplier."}
-          </Text>
-        )}
-      {permisos.puedeEntregar &&
-        ["RECIBIDO_ALMACEN", "LISTO_ENTREGA"].includes(pedido.estado) && (
-          <Pressable style={estilos.boton} onPress={permisos.alEntregar}>
-            <Ionicons name="shield-checkmark" color="white" size={18} />
-            <Text style={estilos.botonTexto}>
-              {es ? "Confirmar entrega" : "Confirm delivery"}
-            </Text>
-          </Pressable>
-        )}
-    </View>
+          </View>
+        ) : null}
+
+        {permisos.puedeEntregar && listoParaOperacion ? (
+          <BotonMovil
+            texto={es ? "Entregar y crear venta" : "Deliver and create sale"}
+            icono="shield-checkmark"
+            alPulsar={permisos.alEntregar}
+          />
+        ) : null}
+      </View>
+    </TarjetaMovil>
   );
 }
 
 const estilos = StyleSheet.create({
-  tarjeta: { borderWidth: 1, borderRadius: 15, padding: 15 },
-  fila: {
+  tarjeta: { gap: 14 },
+  encabezado: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  encabezadoApilado: { flexDirection: "column" },
+  expandir: { flex: 1, minWidth: 0 },
+  folio: { fontSize: 12, lineHeight: 17, fontWeight: "800" },
+  nombre: { fontSize: 17, lineHeight: 23, fontWeight: "900", marginTop: 2 },
+  compromisoFila: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 5,
+    marginTop: 5,
+  },
+  compromiso: { fontSize: 12, lineHeight: 17 },
+  estado: {
+    alignSelf: "flex-start",
+    borderRadius: radios.pastilla,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    maxWidth: 180,
+  },
+  estadoTexto: { fontSize: 12, lineHeight: 16, fontWeight: "900" },
+  items: { borderTopWidth: 1, gap: 11, paddingTop: 13 },
+  itemFila: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  itemFilaApilada: { flexDirection: "column", gap: 4 },
+  itemNombre: { fontSize: 14, lineHeight: 20, fontWeight: "800" },
+  proveedor: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  itemImporte: { fontSize: 14, lineHeight: 20, fontWeight: "800" },
+  totalFila: {
+    borderTopWidth: 1,
+    paddingTop: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
   },
-  expandir: { flex: 1 },
-  folio: { color: colores.gris, fontSize: 11, fontWeight: "700" },
-  nombre: { fontSize: 16, fontWeight: "800", marginTop: 4 },
-  compromiso: { color: colores.gris, fontSize: 10, marginTop: 4 },
-  estado: {
-    color: colores.azul,
-    backgroundColor: colores.azulClaro,
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 5,
-    fontSize: 8,
-    fontWeight: "800",
-    maxWidth: 110,
-  },
-  items: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    paddingVertical: 10,
-    marginVertical: 13,
-    gap: 8,
-  },
-  item: { fontSize: 12, flexShrink: 1 },
-  totalEtiqueta: { fontWeight: "800", fontSize: 13 },
-  total: { color: colores.azul, fontWeight: "900" },
-  boton: {
-    backgroundColor: colores.azul,
-    minHeight: 46,
-    borderRadius: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    marginTop: 8,
-  },
-  botonTexto: { color: "white", fontWeight: "800" },
-  secundario: {
-    borderWidth: 1,
-    borderColor: colores.azul,
-    minHeight: 46,
-    borderRadius: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  },
-  secundarioTexto: { color: colores.azul, fontWeight: "800" },
+  totalEtiqueta: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: "700" },
+  total: { fontSize: 18, lineHeight: 24, fontWeight: "900" },
+  acciones: { gap: 9 },
   espera: {
-    color: "#8a3b12",
-    backgroundColor: "#fff2e8",
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 11,
-    lineHeight: 16,
+    borderRadius: radios.campo,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
   },
+  esperaTexto: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: "700" },
 });

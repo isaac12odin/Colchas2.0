@@ -3,6 +3,7 @@ node_modules/
 .expo/
 movil/ios/
 movil/android/
+movil/.credenciales-release/
 dist/
 coverage/
 .env

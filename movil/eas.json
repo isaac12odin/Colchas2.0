@@ -11,7 +11,19 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://nexo.deadcode.cloud/api"
+        "EXPO_PUBLIC_API_URL": "https://nexo.deadcode.cloud/api",
+        "VEKTRA_ANDROID_ARQUITECTURAS": "armeabi-v7a,arm64-v8a,x86,x86_64"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "apk-arm64": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://nexo.deadcode.cloud/api",
+        "VEKTRA_ANDROID_ARQUITECTURAS": "arm64-v8a",
+        "VEKTRA_ANDROID_BUILD_OPTIMIZADO": "SI"
       },
       "android": {
         "buildType": "apk"
@@ -33,7 +45,9 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://nexo.deadcode.cloud/api"
+        "EXPO_PUBLIC_API_URL": "https://nexo.deadcode.cloud/api",
+        "VEKTRA_ANDROID_ARQUITECTURAS": "armeabi-v7a,arm64-v8a,x86,x86_64",
+        "VEKTRA_ANDROID_BUILD_OPTIMIZADO": "SI"
       },
       "android": {
         "buildType": "app-bundle"

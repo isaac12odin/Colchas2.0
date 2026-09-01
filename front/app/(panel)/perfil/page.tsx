@@ -97,6 +97,16 @@ export default function PaginaPerfil() {
           {mensaje}
         </div>
       )}
+      {usuario?.debeCambiarContrasena && (
+        <div
+          role="status"
+          className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm font-medium leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
+          {es
+            ? "La contraseña que recibiste es temporal. Crea una propia para desbloquear los módulos de trabajo; al guardarla volverás a iniciar sesión."
+            : "The password you received is temporary. Create your own to unlock work modules; after saving it you will sign in again."}
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <section className="panel h-fit p-6">
           <div className="grid h-12 w-12 place-items-center rounded-xl bg-marca-50 text-marca-600 dark:bg-marca-900/30">
@@ -200,7 +210,7 @@ export default function PaginaPerfil() {
             </button>
           </form>
         </section>
-        {usuario?.rol === "ADMINISTRADOR" && (
+        {usuario?.rol === "ADMINISTRADOR" && !usuario.debeCambiarContrasena && (
           <section className="panel p-6 sm:p-8 lg:col-start-2">
             <div className="mb-5 flex items-center gap-3">
               <ShieldCheck className="text-marca-500" />

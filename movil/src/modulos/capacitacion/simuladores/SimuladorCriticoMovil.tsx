@@ -1,10 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
+import { BotonMovil, CampoMovil, TarjetaMovil } from "../../../componentes/ui";
+import { FormularioAbono } from "../../jornada/FormularioAbono";
+import type { MetodoAbono } from "../../jornada/dominioJornada";
+import type { ClienteJornada } from "../../../tipos";
 import { ConfiguracionVenta } from "../../ventas/ConfiguracionVenta";
+import type { MetodoPago } from "../../ventas/dominioVenta";
 import { colores, usarTema } from "../../../tema";
 import type { TipoSimuladorCapacitacionMovil } from "../catalogo";
+import { distribucionCapacitacionMovil } from "../presentacion";
 import {
   type AbonoPractica,
   type DecisionConflicto,
@@ -22,6 +34,31 @@ import {
 } from "./dominio";
 
 type Idioma = "es" | "en";
+
+const clienteAbonoPractica: ClienteJornada = {
+  id: "cliente-abono-practica",
+  nombreCompleto: "Ana López",
+  numeroTarjeta: "0042",
+  telefono: "555 010 2244",
+  direccion: "Av. Reforma 118",
+  localidad: { nombre: "Centro" },
+  orden: 2,
+  saldo: { saldoActual: "800" },
+  visita: null,
+  pedidos: [],
+  ventas: [],
+  abonos: [],
+  evaluacionesRiesgo: [{ nivel: "MEDIO" }],
+  estadoCuenta: {
+    saldoTotal: 800,
+    abonoPeriodico: 200,
+    vencido: 200,
+    venceHoy: 0,
+    cobrarHoy: 200,
+    proximoVencimiento: null,
+    cuotasVencidas: 1,
+  },
+};
 
 export function SimuladorCriticoMovil({
   tipo,
@@ -52,39 +89,108 @@ function Marco({
   titulo,
   icono,
   idioma,
+  pasos,
+  pasoActual,
   children,
 }: {
   pantalla: string;
   titulo: string;
   icono: keyof typeof Ionicons.glyphMap;
   idioma: Idioma;
+  pasos: readonly string[];
+  pasoActual: number;
   children: React.ReactNode;
 }) {
   const tema = usarTema();
+  const { width, fontScale } = useWindowDimensions();
+  const distribucion = distribucionCapacitacionMovil(width);
+  const apilarPasos = distribucion.compacta || fontScale >= 1.25;
   const es = idioma === "es";
   return (
     <View
       style={[
         estilos.marco,
-        { backgroundColor: tema.panel, borderColor: tema.borde },
+        {
+          backgroundColor: tema.panel,
+          borderColor: tema.borde,
+          padding: distribucion.compacta ? 12 : 16,
+        },
       ]}
     >
       <View style={estilos.cabecera}>
-        <View style={estilos.icono}>
-          <Ionicons name={icono} size={21} color="white" />
+        <View style={[estilos.icono, { backgroundColor: tema.primario }]}>
+          <Ionicons name={icono} size={21} color={tema.sobrePrimario} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={estilos.pantalla}>
+          <Text style={[estilos.pantalla, { color: tema.primario }]}>
             VEKTRA · {pantalla.toUpperCase()}
           </Text>
           <Text style={[estilos.titulo, { color: tema.texto }]}>{titulo}</Text>
         </View>
       </View>
-      <View style={estilos.seguro}>
-        <Ionicons name="shield-checkmark" size={15} color={colores.verde} />
-        <Text style={estilos.seguroTexto}>
+      <View style={[estilos.seguro, { backgroundColor: tema.exitoSuave }]}>
+        <Ionicons name="shield-checkmark" size={15} color={tema.exito} />
+        <Text style={[estilos.seguroTexto, { color: tema.exito }]}>
           {es ? "DATOS DE PRÁCTICA · SIN API" : "PRACTICE DATA · NO API"}
         </Text>
+      </View>
+      <View
+        accessibilityLabel={`${es ? "Paso" : "Step"} ${pasoActual + 1} ${
+          es ? "de" : "of"
+        } ${pasos.length}`}
+        style={[estilos.pasos, apilarPasos && estilos.pasosApilados]}
+      >
+        {pasos.map((paso, indice) => {
+          const activo = indice === pasoActual;
+          const listo = indice < pasoActual;
+          return (
+            <View
+              key={paso}
+              style={[
+                estilos.paso,
+                {
+                  backgroundColor: tema.campoDeshabilitado,
+                  borderColor: tema.borde,
+                  minWidth: apilarPasos ? "100%" : 100,
+                },
+                apilarPasos && estilos.pasoApilado,
+                activo && { borderColor: tema.primario },
+              ]}
+            >
+              <View
+                style={[
+                  estilos.pasoNumero,
+                  { backgroundColor: tema.campoDeshabilitado },
+                  (activo || listo) && {
+                    backgroundColor: tema.primario,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    estilos.pasoNumeroTexto,
+                    {
+                      color:
+                        activo || listo
+                          ? tema.sobrePrimario
+                          : tema.textoSecundario,
+                    },
+                  ]}
+                >
+                  {listo ? "✓" : indice + 1}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  estilos.pasoTexto,
+                  { color: activo ? tema.primario : tema.texto },
+                ]}
+              >
+                {paso}
+              </Text>
+            </View>
+          );
+        })}
       </View>
       {children}
     </View>
@@ -102,17 +208,33 @@ function Retro({
   consecuencias?: { etiqueta: string; valor: string }[];
   alCompletar: () => void;
 }) {
+  const tema = usarTema();
   if (!valor) return null;
   const es = idioma === "es";
   return (
-    <View style={[estilos.retro, valor.correcta ? estilos.bien : estilos.mal]}>
+    <View
+      style={[
+        estilos.retro,
+        {
+          backgroundColor: valor.correcta ? tema.exitoSuave : tema.peligroSuave,
+          borderColor: valor.correcta ? tema.exito : tema.peligro,
+        },
+      ]}
+    >
       <Ionicons
         name={valor.correcta ? "checkmark-circle" : "alert-circle"}
         size={21}
-        color={valor.correcta ? colores.verde : colores.rojo}
+        color={valor.correcta ? tema.exito : tema.peligro}
       />
       <View style={{ flex: 1 }}>
-        <Text style={valor.correcta ? estilos.bienTitulo : estilos.malTitulo}>
+        <Text
+          style={[
+            valor.correcta ? estilos.bienTitulo : estilos.malTitulo,
+            {
+              color: valor.correcta ? tema.exito : tema.peligro,
+            },
+          ]}
+        >
           {valor.correcta
             ? es
               ? "Decisión correcta"
@@ -121,27 +243,41 @@ function Retro({
               ? "Corrige esta decisión"
               : "Correct this decision"}
         </Text>
-        <Text style={estilos.retroTexto}>{valor.mensaje[idioma]}</Text>
+        <Text style={[estilos.retroTexto, { color: tema.texto }]}>
+          {valor.mensaje[idioma]}
+        </Text>
         {valor.correcta && consecuencias && (
           <View style={estilos.metricas}>
             {consecuencias.map((item) => (
-              <View key={item.etiqueta} style={estilos.metrica}>
-                <Text style={estilos.metricaEtiqueta}>{item.etiqueta}</Text>
-                <Text style={estilos.metricaValor}>{item.valor}</Text>
+              <View
+                key={item.etiqueta}
+                style={[
+                  estilos.metrica,
+                  { backgroundColor: tema.panelElevado },
+                ]}
+              >
+                <Text
+                  style={[
+                    estilos.metricaEtiqueta,
+                    { color: tema.textoSecundario },
+                  ]}
+                >
+                  {item.etiqueta}
+                </Text>
+                <Text style={[estilos.metricaValor, { color: tema.primario }]}>
+                  {item.valor}
+                </Text>
               </View>
             ))}
           </View>
         )}
         {valor.correcta && (
-          <Pressable
-            style={[estilos.boton, { marginTop: 13 }]}
-            onPress={alCompletar}
-          >
-            <Ionicons name="checkmark" size={18} color="white" />
-            <Text style={estilos.botonTexto}>
-              {es ? "Completar práctica" : "Complete practice"}
-            </Text>
-          </Pressable>
+          <BotonMovil
+            texto={es ? "Completar práctica" : "Complete practice"}
+            alPulsar={alCompletar}
+            icono="checkmark"
+            estilo={[estilos.boton, { marginTop: 13 }]}
+          />
         )}
       </View>
     </View>
@@ -149,7 +285,6 @@ function Retro({
 }
 
 function VentaCredito({ idioma, alCompletar }: Propiedades) {
-  const tema = usarTema();
   const es = idioma === "es";
   const [valor, cambiar] = useState<VentaCreditoPractica>({
     cliente: "",
@@ -166,14 +301,23 @@ function VentaCredito({ idioma, alCompletar }: Propiedades) {
     anticipo: "",
     cuota: "",
   });
+  const [metodoAnticipo, cambiarMetodoAnticipo] =
+    useState<MetodoPago>("EFECTIVO");
   const [retro, setRetro] = useState<ResultadoPractica | null>(null);
   const total = valor.cantidad * 1200;
+  const pasoActual = !valor.cliente ? 0 : !valor.producto ? 1 : 2;
   return (
     <Marco
       pantalla="venta"
       titulo={es ? "Nueva venta a crédito" : "New credit sale"}
       icono="cart"
       idioma={idioma}
+      pasos={
+        es
+          ? ["Clienta", "Producto", "Crédito"]
+          : ["Customer", "Product", "Credit"]
+      }
+      pasoActual={pasoActual}
     >
       <Seccion titulo={es ? "1. Confirma clienta" : "1. Confirm customer"}>
         <Selector
@@ -214,17 +358,18 @@ function VentaCredito({ idioma, alCompletar }: Propiedades) {
         tipo="CREDITO"
         montoTotal={total}
         anticipo={captura.anticipo}
+        metodoAnticipo={metodoAnticipo}
         periodicidad={valor.periodicidad || "SEMANAL"}
         cuota={captura.cuota}
         primerVencimiento={valor.vencimiento}
         numeroTarjeta={valor.tarjeta}
         es={es}
-        tema={tema}
         alCambiarTipo={() => undefined}
         alCambiarAnticipo={(anticipo) => {
           cambiarCaptura((actual) => ({ ...actual, anticipo }));
           cambiar({ ...valor, anticipo: numeroCapturado(anticipo) });
         }}
+        alCambiarMetodoAnticipo={cambiarMetodoAnticipo}
         alCambiarPeriodicidad={(periodicidad) =>
           cambiar({ ...valor, periodicidad })
         }
@@ -279,6 +424,7 @@ function VentaCredito({ idioma, alCompletar }: Propiedades) {
 }
 
 function Abono({ idioma, alCompletar }: Propiedades) {
+  const tema = usarTema();
   const es = idioma === "es";
   const [valor, cambiar] = useState<AbonoPractica>({
     cliente: "",
@@ -287,13 +433,22 @@ function Abono({ idioma, alCompletar }: Propiedades) {
     referencia: "",
   });
   const [montoCapturado, cambiarMontoCapturado] = useState("");
+  const [notas, cambiarNotas] = useState("");
   const [retro, setRetro] = useState<ResultadoPractica | null>(null);
+  const metodoReal: MetodoAbono =
+    valor.metodo === "TRANSFERENCIA" ? "TRANSFERENCIA" : "EFECTIVO";
   return (
     <Marco
       pantalla="jornada"
       titulo={es ? "Registrar abono" : "Record payment"}
       icono="cash"
       idioma={idioma}
+      pasos={
+        es
+          ? ["Clienta", "Importe y método", "Confirmación"]
+          : ["Customer", "Amount and method", "Confirmation"]
+      }
+      pasoActual={!valor.cliente ? 0 : valor.monto <= 0 ? 1 : 2}
     >
       <Selector
         etiqueta={
@@ -305,45 +460,62 @@ function Abono({ idioma, alCompletar }: Propiedades) {
         valor={valor.cliente}
         alCambiar={(cliente) => cambiar({ ...valor, cliente })}
       />
-      <View style={estilos.saldo}>
-        <Text style={estilos.saldoEtiqueta}>
+      <View style={[estilos.saldo, { backgroundColor: tema.primarioSuave }]}>
+        <Text style={[estilos.saldoEtiqueta, { color: tema.primario }]}>
           {es ? "SALDO ACTUAL" : "CURRENT BALANCE"}
         </Text>
-        <Text style={estilos.saldoValor}>$800.00</Text>
-        <Text style={estilos.nota}>
+        <Text style={[estilos.saldoValor, { color: tema.primario }]}>
+          $800.00
+        </Text>
+        <Text style={[estilos.nota, { color: tema.textoSecundario }]}>
           {es
             ? "Pedido pendiente: todavía no forma parte del saldo"
             : "Pending order: not part of balance yet"}
         </Text>
       </View>
-      <Campo
-        etiqueta={es ? "Monto del abono" : "Payment amount"}
-        valor={montoCapturado}
-        numerico
-        alCambiar={(monto) => {
-          cambiarMontoCapturado(monto);
-          cambiar({ ...valor, monto: numeroCapturado(monto) });
-        }}
-      />
-      <Selector
-        etiqueta={es ? "Método" : "Method"}
-        opciones={[
-          { valor: "EFECTIVO", texto: es ? "Efectivo" : "Cash" },
-          { valor: "TRANSFERENCIA", texto: es ? "Transferencia" : "Transfer" },
-          { valor: "TARJETA", texto: es ? "Tarjeta" : "Card" },
+      <View
+        style={[
+          estilos.formularioReal,
+          { borderColor: tema.borde, backgroundColor: tema.panel },
         ]}
-        valor={valor.metodo}
-        alCambiar={(metodo) =>
-          cambiar({ ...valor, metodo: metodo as AbonoPractica["metodo"] })
-        }
-      />
-      {valor.metodo !== "EFECTIVO" && (
-        <Campo
-          etiqueta={es ? "Referencia" : "Reference"}
-          valor={valor.referencia}
-          alCambiar={(referencia) => cambiar({ ...valor, referencia })}
+      >
+        <Text style={[estilos.componenteReal, { color: tema.primario }]}>
+          {es
+            ? "MISMO FORMULARIO DE LA JORNADA REAL"
+            : "SAME FORM AS THE REAL WORKDAY"}
+        </Text>
+        <FormularioAbono
+          cliente={clienteAbonoPractica}
+          es={es}
+          tema={tema}
+          monto={montoCapturado}
+          metodo={metodoReal}
+          referencia={valor.referencia}
+          notas={notas}
+          guardando={false}
+          alCambiarMonto={(monto) => {
+            cambiarMontoCapturado(monto);
+            cambiar({ ...valor, monto: numeroCapturado(monto) });
+            setRetro(null);
+          }}
+          alCambiarMetodo={(metodo) => {
+            if (metodo === "OTRO") return;
+            cambiar({ ...valor, metodo });
+            setRetro(null);
+          }}
+          alCambiarReferencia={(referencia) => {
+            cambiar({ ...valor, referencia });
+            setRetro(null);
+          }}
+          alCambiarNotas={cambiarNotas}
+          alVolver={() => cambiar({ ...valor, cliente: "" })}
+          alGuardar={(monto) => {
+            const siguienteValor = { ...valor, monto };
+            cambiar(siguienteValor);
+            setRetro(validarAbonoPractica(siguienteValor));
+          }}
         />
-      )}
+      </View>
       <Resumen
         filas={[
           [
@@ -355,10 +527,6 @@ function Abono({ idioma, alCompletar }: Propiedades) {
             `$${valor.monto.toFixed(0)} · ${valor.metodo}`,
           ],
         ]}
-      />
-      <Boton
-        texto={es ? "Guardar abono de práctica" : "Save practice payment"}
-        alPulsar={() => setRetro(validarAbonoPractica(valor))}
       />
       <Retro
         valor={retro}
@@ -395,6 +563,8 @@ function Entrega({ idioma, alCompletar }: Propiedades) {
     primerVencimiento: fechaSugeridaEntregaPractica(),
   });
   const [captura, cambiarCaptura] = useState({ anticipo: "", cuota: "" });
+  const [metodoAnticipo, cambiarMetodoAnticipo] =
+    useState<MetodoPago>("EFECTIVO");
   const [retro, setRetro] = useState<ResultadoPractica | null>(null);
   return (
     <Marco
@@ -402,8 +572,22 @@ function Entrega({ idioma, alCompletar }: Propiedades) {
       titulo={es ? "Entregar PED-1042" : "Deliver PED-1042"}
       icono="cube"
       idioma={idioma}
+      pasos={
+        es
+          ? ["Pedido", "Forma de venta", "Entrega"]
+          : ["Order", "Sale type", "Delivery"]
+      }
+      pasoActual={
+        valor.anticipo <= 0
+          ? 0
+          : valor.tipo === "CREDITO" && !valor.tarjeta
+            ? 1
+            : 2
+      }
     >
-      <View style={estilos.ficha}>
+      <View
+        style={[estilos.ficha, { backgroundColor: tema.campoDeshabilitado }]}
+      >
         <Dato etiqueta={es ? "Cliente" : "Customer"} valor="Ana López" />
         <Dato etiqueta={es ? "Producto" : "Product"} valor="Colcha Nórdica" />
         <Dato
@@ -416,12 +600,12 @@ function Entrega({ idioma, alCompletar }: Propiedades) {
         tipo={valor.tipo}
         montoTotal={1000}
         anticipo={captura.anticipo}
+        metodoAnticipo={metodoAnticipo}
         periodicidad={valor.periodicidad || "SEMANAL"}
         cuota={captura.cuota}
         primerVencimiento={valor.primerVencimiento}
         numeroTarjeta={valor.tarjeta}
         es={es}
-        tema={tema}
         alCambiarTipo={(tipo) => {
           const anticipo = tipo === "CONTADO" ? "1000" : "";
           cambiarCaptura((actual) => ({ ...actual, anticipo }));
@@ -431,6 +615,7 @@ function Entrega({ idioma, alCompletar }: Propiedades) {
           cambiarCaptura((actual) => ({ ...actual, anticipo }));
           cambiar({ ...valor, anticipo: numeroCapturado(anticipo) });
         }}
+        alCambiarMetodoAnticipo={cambiarMetodoAnticipo}
         alCambiarPeriodicidad={(periodicidad) =>
           cambiar({ ...valor, periodicidad })
         }
@@ -474,6 +659,7 @@ function Entrega({ idioma, alCompletar }: Propiedades) {
 }
 
 function Devolucion({ idioma, alCompletar }: Propiedades) {
+  const tema = usarTema();
   const es = idioma === "es";
   const [valor, cambiar] = useState<DevolucionPractica>({
     cantidad: 1,
@@ -491,8 +677,16 @@ function Devolucion({ idioma, alCompletar }: Propiedades) {
       titulo={es ? "Devolución VTA-2048" : "Return VTA-2048"}
       icono="return-down-back"
       idioma={idioma}
+      pasos={
+        es
+          ? ["Mercancía", "Evidencia", "Autorización"]
+          : ["Goods", "Evidence", "Authorization"]
+      }
+      pasoActual={!valor.motivo ? 0 : !valor.evidencia ? 1 : 2}
     >
-      <View style={estilos.ficha}>
+      <View
+        style={[estilos.ficha, { backgroundColor: tema.campoDeshabilitado }]}
+      >
         <Dato etiqueta={es ? "Cliente" : "Customer"} valor="Ana López" />
         <Dato etiqueta={es ? "Venta" : "Sale"} valor="2 Cobertores Roma" />
         <Dato etiqueta={es ? "Saldo" : "Balance"} valor="$600" />
@@ -512,16 +706,26 @@ function Devolucion({ idioma, alCompletar }: Propiedades) {
         alCambiar={(motivo) => cambiar({ ...valor, motivo })}
       />
       <Pressable
-        style={[estilos.foto, valor.evidencia && estilos.fotoLista]}
+        style={[
+          estilos.foto,
+          { borderColor: tema.borde },
+          valor.evidencia && {
+            borderColor: tema.exito,
+            backgroundColor: tema.exitoSuave,
+          },
+        ]}
         onPress={() => cambiar({ ...valor, evidencia: true })}
       >
         <Ionicons
           name="camera"
           size={25}
-          color={valor.evidencia ? colores.verde : colores.gris}
+          color={valor.evidencia ? tema.exito : tema.textoTenue}
         />
         <Text
-          style={valor.evidencia ? estilos.fotoTextoLista : estilos.fotoTexto}
+          style={[
+            valor.evidencia ? estilos.fotoTextoLista : estilos.fotoTexto,
+            { color: valor.evidencia ? tema.exito : tema.textoSecundario },
+          ]}
         >
           {valor.evidencia
             ? es
@@ -620,6 +824,7 @@ function Devolucion({ idioma, alCompletar }: Propiedades) {
 }
 
 function Sincronizacion({ idioma, alCompletar }: Propiedades) {
+  const tema = usarTema();
   const es = idioma === "es";
   const [enviado, setEnviado] = useState(false);
   const [decision, setDecision] = useState<DecisionConflicto>("");
@@ -630,6 +835,12 @@ function Sincronizacion({ idioma, alCompletar }: Propiedades) {
       titulo={es ? "3 movimientos pendientes" : "3 pending operations"}
       icono="cloud-upload"
       idioma={idioma}
+      pasos={
+        es
+          ? ["Pendientes", "Conflicto", "Resultado"]
+          : ["Pending", "Conflict", "Result"]
+      }
+      pasoActual={!enviado ? 0 : retro?.correcta ? 2 : 1}
     >
       <Operacion
         titulo={es ? "Abono LOC-801" : "Payment LOC-801"}
@@ -693,9 +904,11 @@ function Sincronizacion({ idioma, alCompletar }: Propiedades) {
         />
       ) : (
         <>
-          <View style={estilos.conflicto}>
-            <Ionicons name="warning" size={20} color={colores.rojo} />
-            <Text style={estilos.conflictoTexto}>
+          <View
+            style={[estilos.conflicto, { backgroundColor: tema.peligroSuave }]}
+          >
+            <Ionicons name="warning" size={20} color={tema.peligro} />
+            <Text style={[estilos.conflictoTexto, { color: tema.peligro }]}>
               {es
                 ? "Servidor: stock 0. El teléfono intentó vender 1. Los otros dos movimientos sí fueron aceptados."
                 : "Server: stock 0. The phone attempted to sell 1. The other two operations were accepted."}
@@ -766,14 +979,18 @@ function Seccion({
   titulo: string;
   children: React.ReactNode;
 }) {
+  return (
+    <TarjetaMovil estilo={estilos.seccion}>
+      <TituloSeccion texto={titulo} />
+      {children}
+    </TarjetaMovil>
+  );
+}
+
+function TituloSeccion({ texto }: { texto: string }) {
   const tema = usarTema();
   return (
-    <View style={[estilos.seccion, { borderColor: tema.borde }]}>
-      <Text style={[estilos.seccionTitulo, { color: tema.texto }]}>
-        {titulo}
-      </Text>
-      {children}
-    </View>
+    <Text style={[estilos.seccionTitulo, { color: tema.texto }]}>{texto}</Text>
   );
 }
 
@@ -788,19 +1005,14 @@ function Campo({
   alCambiar: (valor: string) => void;
   numerico?: boolean;
 }) {
-  const tema = usarTema();
   return (
-    <View style={estilos.campoGrupo}>
-      <Text style={estilos.etiqueta}>{etiqueta}</Text>
-      <TextInput
-        accessibilityLabel={etiqueta}
-        style={[estilos.campo, { borderColor: tema.borde, color: tema.texto }]}
-        value={valor}
-        onChangeText={alCambiar}
-        keyboardType={numerico ? "decimal-pad" : "default"}
-        placeholderTextColor={colores.gris}
-      />
-    </View>
+    <CampoMovil
+      etiqueta={etiqueta}
+      valor={valor}
+      alCambiar={alCambiar}
+      teclado={numerico ? "decimal-pad" : "default"}
+      estilo={estilos.campoGrupo}
+    />
   );
 }
 
@@ -818,7 +1030,9 @@ function Selector({
   const tema = usarTema();
   return (
     <View style={estilos.campoGrupo}>
-      <Text style={estilos.etiqueta}>{etiqueta}</Text>
+      <Text style={[estilos.etiqueta, { color: tema.textoSecundario }]}>
+        {etiqueta}
+      </Text>
       <View style={estilos.opciones}>
         {opciones.map((opcion) => (
           <Pressable
@@ -828,15 +1042,21 @@ function Selector({
             onPress={() => alCambiar(opcion.valor)}
             style={[
               estilos.opcion,
-              { borderColor: tema.borde },
-              valor === opcion.valor && estilos.opcionActiva,
+              {
+                borderColor: tema.borde,
+                backgroundColor: tema.campo,
+              },
+              valor === opcion.valor && {
+                backgroundColor: tema.primario,
+                borderColor: tema.primario,
+              },
             ]}
           >
             <Text
               style={
                 valor === opcion.valor
-                  ? estilos.opcionTextoActivo
-                  : { color: tema.texto, fontSize: 12, fontWeight: "700" }
+                  ? [estilos.opcionTextoActivo, { color: tema.sobrePrimario }]
+                  : { color: tema.texto, fontSize: 13, fontWeight: "700" }
               }
             >
               {opcion.texto}
@@ -850,20 +1070,31 @@ function Selector({
 
 function Boton({ texto, alPulsar }: { texto: string; alPulsar: () => void }) {
   return (
-    <Pressable style={estilos.boton} onPress={alPulsar}>
-      <Text style={estilos.botonTexto}>{texto}</Text>
-      <Ionicons name="arrow-forward" size={18} color="white" />
-    </Pressable>
+    <BotonMovil
+      texto={texto}
+      alPulsar={alPulsar}
+      icono="arrow-forward"
+      estilo={estilos.boton}
+    />
   );
 }
 
 function Resumen({ filas }: { filas: [string, string][] }) {
+  const tema = usarTema();
   return (
-    <View style={estilos.resumen}>
+    <View
+      style={[estilos.resumen, { backgroundColor: tema.campoDeshabilitado }]}
+    >
       {filas.map(([etiqueta, valor]) => (
         <View key={etiqueta} style={estilos.resumenFila}>
-          <Text style={estilos.resumenEtiqueta}>{etiqueta}</Text>
-          <Text style={estilos.resumenValor}>{valor}</Text>
+          <Text
+            style={[estilos.resumenEtiqueta, { color: tema.textoSecundario }]}
+          >
+            {etiqueta}
+          </Text>
+          <Text style={[estilos.resumenValor, { color: tema.texto }]}>
+            {valor}
+          </Text>
         </View>
       ))}
     </View>
@@ -871,10 +1102,13 @@ function Resumen({ filas }: { filas: [string, string][] }) {
 }
 
 function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  const tema = usarTema();
   return (
     <View style={{ flexGrow: 1, minWidth: 120 }}>
-      <Text style={estilos.datoEtiqueta}>{etiqueta}</Text>
-      <Text style={estilos.datoValor}>{valor}</Text>
+      <Text style={[estilos.datoEtiqueta, { color: tema.textoSecundario }]}>
+        {etiqueta}
+      </Text>
+      <Text style={[estilos.datoValor, { color: tema.texto }]}>{valor}</Text>
     </View>
   );
 }
@@ -890,13 +1124,34 @@ function Operacion({
   estado: string;
   error: boolean;
 }) {
+  const tema = usarTema();
   return (
-    <View style={estilos.operacion}>
-      <View style={{ flex: 1 }}>
-        <Text style={estilos.operacionTitulo}>{titulo}</Text>
-        <Text style={estilos.nota}>{detalle}</Text>
+    <View
+      style={[
+        estilos.operacion,
+        {
+          backgroundColor: tema.campo,
+          borderColor: tema.borde,
+        },
+      ]}
+    >
+      <View style={estilos.operacionContenido}>
+        <Text style={[estilos.operacionTitulo, { color: tema.texto }]}>
+          {titulo}
+        </Text>
+        <Text style={[estilos.nota, { color: tema.textoSecundario }]}>
+          {detalle}
+        </Text>
       </View>
-      <Text style={[estilos.estado, error && estilos.estadoError]}>
+      <Text
+        style={[
+          estilos.estado,
+          {
+            color: error ? tema.peligro : tema.advertencia,
+            backgroundColor: error ? tema.peligroSuave : tema.advertenciaSuave,
+          },
+        ]}
+      >
         {estado}
       </Text>
     </View>
@@ -916,7 +1171,7 @@ const estilos = StyleSheet.create({
   },
   pantalla: {
     color: colores.azul,
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: "900",
     letterSpacing: 1,
   },
@@ -927,71 +1182,102 @@ const estilos = StyleSheet.create({
     alignSelf: "flex-start",
     gap: 5,
     borderRadius: 999,
-    backgroundColor: "#defbe6",
     paddingHorizontal: 9,
     paddingVertical: 5,
     marginTop: 13,
   },
-  seguroTexto: { color: "#0e6027", fontSize: 8, fontWeight: "900" },
+  seguroTexto: { fontSize: 12, fontWeight: "900" },
+  pasos: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    marginTop: 13,
+  },
+  pasosApilados: { flexDirection: "column" },
+  paso: {
+    flex: 1,
+    minHeight: 52,
+    borderWidth: 1,
+    borderRadius: 11,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  pasoApilado: { flex: 0, width: "100%", minHeight: 56 },
+  pasoNumero: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pasoNumeroTexto: { color: colores.gris, fontSize: 12, fontWeight: "900" },
+  pasoTexto: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: "800" },
   seccion: { borderWidth: 1, borderRadius: 14, padding: 13, marginTop: 14 },
   seccionTitulo: { fontSize: 14, fontWeight: "900" },
   campoGrupo: { marginTop: 13 },
   etiqueta: {
     color: colores.gris,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "800",
     marginBottom: 6,
   },
-  campo: {
+  opciones: { gap: 7 },
+  opcion: {
+    minHeight: 48,
     borderWidth: 1,
     borderRadius: 10,
-    minHeight: 45,
-    paddingHorizontal: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    justifyContent: "center",
   },
-  opciones: { gap: 7 },
-  opcion: { borderWidth: 1, borderRadius: 10, padding: 11 },
   opcionActiva: { backgroundColor: colores.azul, borderColor: colores.azul },
-  opcionTextoActivo: { color: "white", fontSize: 12, fontWeight: "800" },
+  opcionTextoActivo: { color: "white", fontSize: 13, fontWeight: "800" },
   saldo: {
     borderRadius: 13,
     backgroundColor: colores.azulClaro,
     padding: 15,
     marginTop: 14,
   },
-  saldoEtiqueta: { color: colores.azul, fontSize: 9, fontWeight: "900" },
+  saldoEtiqueta: { color: colores.azul, fontSize: 12, fontWeight: "900" },
   saldoValor: {
     color: colores.azul,
     fontSize: 27,
     fontWeight: "900",
     marginTop: 3,
   },
-  nota: { color: colores.gris, fontSize: 10, lineHeight: 15, marginTop: 3 },
+  formularioReal: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 13,
+    marginTop: 14,
+  },
+  componenteReal: {
+    color: colores.azul,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+  },
+  nota: { color: colores.gris, fontSize: 12, lineHeight: 17, marginTop: 3 },
   resumen: {
     borderRadius: 13,
-    backgroundColor: "#f4f4f4",
     padding: 14,
     marginTop: 15,
     gap: 8,
   },
   resumenFila: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     gap: 10,
   },
-  resumenEtiqueta: { color: colores.gris, fontSize: 11 },
-  resumenValor: { color: colores.azulOscuro, fontSize: 12, fontWeight: "900" },
+  resumenEtiqueta: { color: colores.gris, fontSize: 13, flexShrink: 1 },
+  resumenValor: { color: colores.azulOscuro, fontSize: 14, fontWeight: "900" },
   boton: {
-    minHeight: 47,
-    borderRadius: 11,
-    backgroundColor: colores.azul,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    paddingHorizontal: 14,
     marginTop: 15,
   },
-  botonTexto: { color: "white", fontSize: 12, fontWeight: "900" },
   retro: {
     borderWidth: 1,
     borderRadius: 14,
@@ -1001,23 +1287,20 @@ const estilos = StyleSheet.create({
     alignItems: "flex-start",
     gap: 9,
   },
-  bien: { borderColor: "#42be65", backgroundColor: "#defbe6" },
-  mal: { borderColor: "#fa4d56", backgroundColor: "#fff1f1" },
-  bienTitulo: { color: "#0e6027", fontSize: 12, fontWeight: "900" },
-  malTitulo: { color: "#a2191f", fontSize: 12, fontWeight: "900" },
-  retroTexto: { color: "#262626", fontSize: 11, lineHeight: 17, marginTop: 3 },
+  bienTitulo: { fontSize: 14, fontWeight: "900" },
+  malTitulo: { fontSize: 14, fontWeight: "900" },
+  retroTexto: { fontSize: 13, lineHeight: 19, marginTop: 3 },
   metricas: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
   metrica: {
     minWidth: 95,
     flexGrow: 1,
     borderRadius: 9,
-    backgroundColor: "white",
     padding: 8,
   },
-  metricaEtiqueta: { color: colores.gris, fontSize: 8, fontWeight: "900" },
+  metricaEtiqueta: { color: colores.gris, fontSize: 12, fontWeight: "900" },
   metricaValor: {
     color: colores.azul,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "900",
     marginTop: 2,
   },
@@ -1026,14 +1309,13 @@ const estilos = StyleSheet.create({
     flexWrap: "wrap",
     gap: 11,
     borderRadius: 13,
-    backgroundColor: "#f4f4f4",
     padding: 14,
     marginTop: 14,
   },
-  datoEtiqueta: { color: colores.gris, fontSize: 8, fontWeight: "900" },
+  datoEtiqueta: { color: colores.gris, fontSize: 12, fontWeight: "900" },
   datoValor: {
     color: colores.azulOscuro,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "800",
     marginTop: 3,
   },
@@ -1047,21 +1329,20 @@ const estilos = StyleSheet.create({
     justifyContent: "center",
     marginTop: 14,
   },
-  fotoLista: { borderColor: colores.verde, backgroundColor: "#defbe6" },
   fotoTexto: {
     color: colores.gris,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "800",
     marginTop: 5,
   },
   fotoTextoLista: {
-    color: "#0e6027",
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "800",
     marginTop: 5,
   },
   operacion: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: 9,
     borderWidth: 1,
@@ -1070,29 +1351,26 @@ const estilos = StyleSheet.create({
     padding: 12,
     marginTop: 9,
   },
+  operacionContenido: { flexGrow: 1, flexShrink: 1, minWidth: 180 },
   operacionTitulo: {
     color: colores.azulOscuro,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "900",
   },
   estado: {
-    color: "#8a5a00",
-    backgroundColor: "#fff4ce",
     borderRadius: 999,
     paddingHorizontal: 7,
     paddingVertical: 4,
-    fontSize: 7,
+    fontSize: 12,
     fontWeight: "900",
   },
-  estadoError: { color: "#a2191f", backgroundColor: "#fff1f1" },
   conflicto: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 8,
     borderRadius: 12,
-    backgroundColor: "#fff1f1",
     padding: 13,
     marginTop: 13,
   },
-  conflictoTexto: { flex: 1, color: "#750e13", fontSize: 11, lineHeight: 17 },
+  conflictoTexto: { flex: 1, fontSize: 13, lineHeight: 19 },
 });

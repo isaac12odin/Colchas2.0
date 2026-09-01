@@ -35,7 +35,7 @@ describe.sequential("seguridad de sesión", () => {
     expect(manipulado.body.error.codigo).toBe("SESION_EXPIRADA");
   });
 
-  it("permite operar sin obligar a cambiar la contraseña del primer acceso", async () => {
+  it("bloquea la operación hasta sustituir la contraseña temporal", async () => {
     const escenario = new EscenarioPrueba();
     const contrasenaTemporal = "TemporalE2E!2026";
     const contrasenaNueva = "DefinitivaE2E!2026";
@@ -61,7 +61,12 @@ describe.sequential("seguridad de sesión", () => {
       expect(cookies.join(";")).toContain("csrf_token=");
       expect(acceso.body.usuario.debeCambiarContrasena).toBe(true);
 
-      await agente.get("/api/v1/clientes").expect(200);
+      const operacionBloqueada = await agente
+        .get("/api/v1/clientes")
+        .expect(428);
+      expect(operacionBloqueada.body.error.codigo).toBe(
+        "CAMBIO_CONTRASENA_REQUERIDO",
+      );
       await agente.get("/api/v1/auth/sesion").expect(200);
 
       await agente
@@ -98,6 +103,29 @@ describe.sequential("seguridad de sesión", () => {
         })
         .expect(200);
       expect(definitivo.body.usuario.debeCambiarContrasena).toBe(false);
+    } finally {
+      await escenario.limpiar();
+    }
+  });
+
+  it("crea cuentas con contraseña temporal y cambio obligatorio", async () => {
+    const escenario = new EscenarioPrueba();
+    try {
+      const administrador = await escenario.crearUsuario(
+        RolUsuario.ADMINISTRADOR,
+      );
+      const alta = await request(app)
+        .post("/api/v1/usuarios")
+        .set(cabeceras(administrador.token))
+        .send({
+          nombre: `Cuenta Temporal ${escenario.marca}`,
+          correo: `temporal-${escenario.marca}@e2e.nexo.local`,
+          contrasenaTemporal: "TemporalAlta!2026",
+          rol: RolUsuario.VENDEDOR,
+        })
+        .expect(201);
+      escenario.usuarioIds.add(alta.body.id);
+      expect(alta.body.debeCambiarContrasena).toBe(true);
     } finally {
       await escenario.limpiar();
     }

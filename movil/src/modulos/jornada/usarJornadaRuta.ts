@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Alert } from "react-native";
 
-import { api, crearIdLocal, obtenerConectividad } from "../../api";
+import { api, crearIdLocal, esFalloRealRed } from "../../api";
 import {
   contarOperaciones,
   encolarOperaciones,
@@ -10,6 +10,8 @@ import {
 } from "../../almacenLocal";
 import type { ClienteJornada, Jornada } from "../../tipos";
 import { usarDatosVivosMovil } from "../../usarDatosVivosMovil";
+import { fechaCalendarioLocal } from "../../utilidades/fechaLocal";
+import { resolverProyeccionPendiente } from "../../utilidades/cacheOperativa";
 import {
   aplicarVisitaLocal,
   agregarClienteExtraordinario,
@@ -28,11 +30,12 @@ const dinero = new Intl.NumberFormat("es-MX", {
 export type ModoCliente = "ACCIONES" | "COBRO";
 
 export function usarJornadaRuta(rutaId: string, es: boolean) {
-  const fecha = new Date().toISOString().slice(0, 10);
+  const fecha = fechaCalendarioLocal();
   const [jornada, establecerJornada] = useState<Jornada | null>(null);
   const [cargando, establecerCargando] = useState(true);
   const [offline, establecerOffline] = useState(false);
   const [pendientes, establecerPendientes] = useState(0);
+  const [errorCarga, establecerErrorCarga] = useState("");
   const [cliente, establecerCliente] = useState<ClienteJornada | null>(null);
   const [modo, establecerModo] = useState<ModoCliente>("ACCIONES");
   const [monto, establecerMonto] = useState("");
@@ -46,14 +49,17 @@ export function usarJornadaRuta(rutaId: string, es: boolean) {
     try {
       const totalPendientes = await contarOperaciones();
       if (totalPendientes > 0) {
-        const [local, red] = await Promise.all([
-          leerJornada(rutaId, fecha),
-          obtenerConectividad().catch(() => ({ conectada: false })),
-        ]);
-        if (local) {
-          establecerJornada(local);
+        const local = await leerJornada(rutaId, fecha);
+        const proyeccion = await resolverProyeccionPendiente({
+          pendientes: totalPendientes,
+          cachePrincipal: local,
+          revalidarSesion: () => api("/auth/sesion"),
+        });
+        if (proyeccion.usar) {
+          establecerJornada(proyeccion.datos);
           establecerPendientes(totalPendientes);
-          establecerOffline(!red.conectada);
+          establecerOffline(proyeccion.offline);
+          establecerErrorCarga("");
           return;
         }
       }
@@ -63,14 +69,28 @@ export function usarJornadaRuta(rutaId: string, es: boolean) {
       establecerJornada(remota);
       await guardarJornada(rutaId, fecha, remota);
       establecerOffline(false);
-    } catch {
-      establecerJornada(await leerJornada(rutaId, fecha));
-      establecerOffline(true);
+      establecerErrorCarga("");
+    } catch (error) {
+      if (esFalloRealRed(error)) {
+        establecerJornada(await leerJornada(rutaId, fecha));
+        establecerOffline(true);
+        establecerErrorCarga("");
+      } else {
+        establecerJornada(null);
+        establecerOffline(false);
+        establecerErrorCarga(
+          error instanceof Error
+            ? error.message
+            : es
+              ? "El servidor rechazó la jornada."
+              : "The server rejected the route schedule.",
+        );
+      }
     } finally {
       establecerCargando(false);
       establecerPendientes(await contarOperaciones());
     }
-  }, [rutaId, fecha]);
+  }, [rutaId, fecha, es]);
 
   usarDatosVivosMovil(cargar);
 
@@ -181,6 +201,7 @@ export function usarJornadaRuta(rutaId: string, es: boolean) {
     cargando,
     offline,
     pendientes,
+    errorCarga,
     resumen,
     cliente,
     modo,

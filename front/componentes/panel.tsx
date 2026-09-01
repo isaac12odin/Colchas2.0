@@ -126,7 +126,7 @@ export function Panel({ children }: { children: React.ReactNode }) {
   );
   const enPracticaReal = Boolean(leccionPractica?.rutaReal);
   const actualizarAlertas = useCallback(() => {
-    if (!usuario) return;
+    if (!usuario || usuario.debeCambiarContrasena) return;
     return api<{ totales: { total: number } }>("/alertas")
       .then((respuesta) => establecerTotalAlertas(respuesta.totales.total))
       .catch(() => undefined);
@@ -135,6 +135,8 @@ export function Panel({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!cargandoSesion && !usuario) router.replace("/");
+    else if (usuario?.debeCambiarContrasena && ruta !== "/perfil")
+      router.replace("/perfil");
     else if (usuario && esRolExclusivoMovil(usuario.rol)) void cerrarSesion();
     else if (usuario && !puedeAccederRutaWeb(usuario.rol, ruta))
       router.replace(obtenerRutaInicialWeb(usuario.rol));
@@ -154,6 +156,12 @@ export function Panel({ children }: { children: React.ReactNode }) {
     return (
       <div className="grid min-h-screen place-items-center text-sm text-slate-600">
         Este puesto utiliza la aplicación móvil de Vektra…
+      </div>
+    );
+  if (usuario.debeCambiarContrasena && ruta !== "/perfil")
+    return (
+      <div className="grid min-h-screen place-items-center text-sm text-slate-600">
+        Protegiendo tu cuenta antes de continuar…
       </div>
     );
   if (!puedeAccederRutaWeb(usuario.rol, ruta))

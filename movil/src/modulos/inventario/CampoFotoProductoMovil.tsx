@@ -11,7 +11,8 @@ import {
   View,
 } from "react-native";
 
-import { colores, type usarTema } from "../../tema";
+import { usarDisenoResponsivo } from "../../componentes/ui";
+import { radios, tactilMinimo, type usarTema } from "../../tema";
 import { obtenerFotoProducto } from "./fotoProducto";
 import type { FotoProductoMovil } from "./tipos";
 
@@ -32,8 +33,10 @@ export function CampoFotoProductoMovil({
   alCambiar: (foto: FotoProductoMovil) => void;
   alEliminar: () => void;
 }) {
+  const diseno = usarDisenoResponsivo();
   const [procesando, establecerProcesando] = useState(false);
   const fuente = foto ? { uri: foto.uri } : fuenteActual;
+  const apilar = diseno.compacto || diseno.fontScale > 1.25;
 
   async function seleccionar(origen: "camara" | "galeria") {
     establecerProcesando(true);
@@ -62,8 +65,8 @@ export function CampoFotoProductoMovil({
           <Image source={fuente} style={estilos.imagen} resizeMode="cover" />
         ) : (
           <View style={estilos.sinFoto}>
-            <Ionicons name="image-outline" size={32} color={colores.gris} />
-            <Text style={estilos.ayuda}>
+            <Ionicons name="image-outline" size={34} color={tema.textoTenue} />
+            <Text style={[estilos.ayuda, { color: tema.textoSecundario }]}>
               {es ? "Foto del producto" : "Product photo"}
             </Text>
           </View>
@@ -77,7 +80,7 @@ export function CampoFotoProductoMovil({
           </View>
         )}
       </View>
-      <View style={estilos.acciones}>
+      <View style={[estilos.acciones, apilar && estilos.accionesApiladas]}>
         <BotonFoto
           icono="camera-outline"
           texto={es ? "Tomar foto" : "Camera"}
@@ -98,13 +101,22 @@ export function CampoFotoProductoMovil({
             accessibilityLabel={es ? "Quitar fotografía" : "Remove photo"}
             disabled={procesando}
             onPress={alEliminar}
-            style={estilos.quitar}
+            style={[
+              estilos.quitar,
+              apilar && estilos.quitarApilado,
+              { backgroundColor: tema.peligroSuave },
+            ]}
           >
-            <Ionicons name="trash-outline" size={18} color={colores.rojo} />
+            <Ionicons name="trash-outline" size={20} color={tema.peligro} />
+            {apilar ? (
+              <Text style={[estilos.quitarTexto, { color: tema.peligro }]}>
+                {es ? "Quitar foto" : "Remove photo"}
+              </Text>
+            ) : null}
           </Pressable>
         )}
       </View>
-      <Text style={estilos.nota}>
+      <Text style={[estilos.nota, { color: tema.textoSecundario }]}>
         {es
           ? "JPEG seguro · Vektra reduce la imagen automáticamente."
           : "Secure JPEG · Vektra automatically reduces the image."}
@@ -131,9 +143,12 @@ function BotonFoto({
       accessibilityRole="button"
       disabled={deshabilitado}
       onPress={alPresionar}
-      style={[estilos.botonFoto, { borderColor: tema.borde }]}
+      style={({ pressed }) => [
+        estilos.botonFoto,
+        { borderColor: tema.bordeFuerte, opacity: pressed ? 0.72 : 1 },
+      ]}
     >
-      <Ionicons name={icono} size={18} color={colores.azul} />
+      <Ionicons name={icono} size={20} color={tema.primario} />
       <Text style={[estilos.botonFotoTexto, { color: tema.texto }]}>
         {texto}
       </Text>
@@ -151,7 +166,7 @@ const estilos = StyleSheet.create({
   },
   imagen: { width: "100%", height: "100%" },
   sinFoto: { flex: 1, alignItems: "center", justifyContent: "center", gap: 5 },
-  ayuda: { color: colores.gris, fontSize: 12, fontWeight: "700" },
+  ayuda: { fontSize: 13, lineHeight: 18, fontWeight: "700" },
   procesando: {
     position: "absolute",
     inset: 0,
@@ -162,24 +177,26 @@ const estilos = StyleSheet.create({
   },
   procesandoTexto: { color: "white", fontWeight: "800", fontSize: 12 },
   acciones: { flexDirection: "row", gap: 8 },
+  accionesApiladas: { flexDirection: "column" },
   botonFoto: {
-    minHeight: 44,
+    minHeight: tactilMinimo,
     flex: 1,
     borderWidth: 1,
-    borderRadius: 11,
+    borderRadius: radios.boton,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
   },
-  botonFotoTexto: { fontSize: 12, fontWeight: "800" },
+  botonFotoTexto: { fontSize: 13, lineHeight: 18, fontWeight: "800" },
   quitar: {
-    width: 46,
-    minHeight: 44,
+    width: tactilMinimo,
+    minHeight: tactilMinimo,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 11,
-    backgroundColor: "#fff1f1",
+    borderRadius: radios.boton,
   },
-  nota: { color: colores.gris, fontSize: 10 },
+  quitarApilado: { width: "100%", flexDirection: "row", gap: 7 },
+  quitarTexto: { fontSize: 13, lineHeight: 18, fontWeight: "800" },
+  nota: { fontSize: 12, lineHeight: 17 },
 });

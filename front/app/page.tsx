@@ -14,7 +14,7 @@ import {
 import { api, ErrorApi } from "@/lib/api";
 import type { UsuarioSesion } from "@/lib/tipos";
 import { usarAplicacion } from "@/componentes/proveedores";
-import { obtenerRutaInicialWeb } from "@/lib/permisos";
+import { obtenerRutaTrasAutenticacionWeb } from "@/lib/permisos";
 import { CampoContrasena } from "@/componentes/CampoContrasena";
 
 export default function InicioSesion() {
@@ -37,7 +37,7 @@ export default function InicioSesion() {
   const es = idioma === "es";
 
   useEffect(() => {
-    if (usuario) router.replace(obtenerRutaInicialWeb(usuario.rol));
+    if (usuario) router.replace(obtenerRutaTrasAutenticacionWeb(usuario));
   }, [usuario, router]);
 
   async function enviar(evento: FormEvent) {
@@ -63,7 +63,7 @@ export default function InicioSesion() {
       }
       if (!respuesta.usuario) throw new Error("Respuesta de sesión incompleta");
       establecerUsuario(respuesta.usuario);
-      router.replace(obtenerRutaInicialWeb(respuesta.usuario.rol));
+      router.replace(obtenerRutaTrasAutenticacionWeb(respuesta.usuario));
     } catch (err) {
       establecerError(
         err instanceof ErrorApi

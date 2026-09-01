@@ -173,8 +173,76 @@ describe("simuladores críticos de capacitación móvil", () => {
       ),
       "utf8",
     );
-    expect(fuente).toContain("valor={montoCapturado}");
+    expect(fuente).toContain("monto={montoCapturado}");
     expect(fuente).toContain("anticipo={captura.anticipo}");
     expect(fuente).not.toContain("valor={String(valor.monto)}");
+  });
+
+  it("reutiliza los formularios que la persona encontrará en operación", () => {
+    const simulador = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../src/modulos/capacitacion/simuladores/SimuladorCriticoMovil.tsx",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    );
+    const replica = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../src/modulos/capacitacion/ReplicaPantallaOperativa.tsx",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    );
+
+    expect(simulador).toContain("<FormularioAbono");
+    expect(simulador).toContain("<ConfiguracionVenta");
+    expect(replica).toContain("<TarjetaClienteJornada");
+    expect(replica).toContain("<TarjetaPedido");
+    expect(replica).toContain("<TarjetaProductoMovil");
+    expect(replica).toContain("<BotonMovil");
+    expect(replica).not.toContain('pantalla === "devoluciones"');
+    expect(replica).not.toContain("/api/");
+    expect(replica).not.toContain("fetch(");
+  });
+
+  it("elimina la maqueta de rectángulos y protege formularios del teclado", () => {
+    const pantalla = readFileSync(
+      fileURLToPath(new URL("../app/(app)/capacitacion.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(pantalla).toContain("<ReplicaPantallaOperativa");
+    expect(pantalla).not.toContain("esqueletoCampo");
+    expect(pantalla).toContain("<KeyboardAvoidingView");
+    expect(pantalla).toContain('keyboardShouldPersistTaps="handled"');
+    expect(pantalla).toContain("automaticallyAdjustKeyboardInsets");
+    expect(pantalla).toContain("useWindowDimensions");
+  });
+
+  it("aplica superficies específicas para claro y oscuro en las prácticas", () => {
+    const simulador = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../src/modulos/capacitacion/simuladores/SimuladorCriticoMovil.tsx",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    );
+    const pantalla = readFileSync(
+      fileURLToPath(new URL("../app/(app)/capacitacion.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(simulador).toContain("tema.primario");
+    expect(simulador).toContain("tema.exitoSuave");
+    expect(simulador).toContain("tema.peligroSuave");
+    expect(simulador).toContain("<CampoMovil");
+    expect(simulador).toContain("<BotonMovil");
+    expect(pantalla).toContain("tema.advertenciaSuave");
+    expect(pantalla).toContain("tema.exitoSuave");
+    expect(pantalla).toContain("tema.textoSecundario");
   });
 });

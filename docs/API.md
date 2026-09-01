@@ -71,7 +71,7 @@ La respuesta de una venta a crédito incluye `resumenSaldo` con `saldoAnterior`,
 
 `PATCH /clientes/:id/saldo` sólo admite Administración y Contabilidad. Exige `saldoActualEsperado`, `nuevoSaldo`, un `motivo` descriptivo y la contraseña vigente del operador. El servidor bloquea al cliente, rechaza una pantalla desactualizada, crea `AJUSTE_CARGO` o `AJUSTE_ABONO` y guarda auditoría en la misma transacción; nunca edita ni elimina una venta o un abono histórico.
 
-`POST /usuarios/:id/restablecer-contrasena` sólo admite Administración, exige la contraseña vigente de quien autoriza y una clave temporal fuerte. No permite usarlo sobre la cuenta propia: esa operación se realiza en Perfil. Al confirmar, revoca todas las sesiones de la cuenta objetivo, fuerza el cambio al siguiente acceso y audita la acción sin registrar ninguna contraseña.
+`POST /usuarios/:id/restablecer-contrasena` sólo admite Administración, exige la contraseña vigente de quien autoriza y una clave temporal fuerte. Puede actuar sobre cualquier cuenta, incluida la propia; para un cambio voluntario se usa Perfil. Al confirmar, revoca todas las sesiones de la cuenta objetivo, fuerza el cambio al siguiente acceso y audita la acción sin registrar ninguna contraseña. Mientras `debeCambiarContrasena` sea verdadero, la API sólo permite `GET /auth/sesion` y `POST /auth/cambiar-contrasena`; cualquier operación de negocio responde `428 CAMBIO_CONTRASENA_REQUERIDO`.
 
 ## Fotografías de producto
 

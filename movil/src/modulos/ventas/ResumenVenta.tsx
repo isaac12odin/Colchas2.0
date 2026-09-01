@@ -1,8 +1,9 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { colores, type usarTema } from "../../tema";
+import { BotonMovil, EstadoMovil, TarjetaMovil } from "../../componentes/ui";
+import type { usarTema } from "../../tema";
 import { dinero } from "../../utilidades/formato";
+import { parsearDineroCapturado } from "../../utilidades/dinero";
 import type { ControlVenta } from "./usarVentaCampo";
 
 export function ResumenVenta({
@@ -14,23 +15,35 @@ export function ResumenVenta({
   es: boolean;
   tema: ReturnType<typeof usarTema>;
 }) {
+  const unidades = control.carrito.reduce(
+    (total, linea) => total + linea.cantidad,
+    0,
+  );
+  const creditoFinanciado =
+    control.tipo === "CREDITO" && control.financiado > 0;
   return (
     <>
-      <View
-        style={[
-          estilos.resumen,
-          { backgroundColor: tema.panel, borderColor: tema.borde },
-        ]}
-      >
-        <Text style={[estilos.subtitulo, { color: tema.texto }]}>
-          {es ? "Confirma antes de guardar" : "Confirm before saving"}
+      <View>
+        <Text style={[estilos.titulo, { color: tema.texto }]}>
+          {es ? "Confirma la venta" : "Confirm the sale"}
+        </Text>
+        <Text style={[estilos.detalle, { color: tema.textoSecundario }]}>
+          {es
+            ? "Revisa qué cambiará antes de guardar."
+            : "Review what will change before saving."}
+        </Text>
+      </View>
+
+      <TarjetaMovil estilo={estilos.resumen}>
+        <Text style={[estilos.seccion, { color: tema.textoSecundario }]}>
+          {es ? "PRODUCTOS" : "PRODUCTS"}
         </Text>
         {control.carrito.map((linea) => (
           <View key={linea.id} style={estilos.fila}>
             <Text style={[estilos.producto, { color: tema.texto }]}>
               {linea.cantidad} × {linea.nombre}
             </Text>
-            <Text style={{ color: tema.texto }}>
+            <Text style={[estilos.importe, { color: tema.texto }]}>
               {dinero.format(linea.cantidad * Number(linea.precioVenta))}
             </Text>
           </View>
@@ -39,128 +52,191 @@ export function ResumenVenta({
           <Text style={[estilos.totalEtiqueta, { color: tema.texto }]}>
             Total
           </Text>
-          <Text style={estilos.total}>{dinero.format(control.total)}</Text>
+          <Text style={[estilos.total, { color: tema.primario }]}>
+            {dinero.format(control.total)}
+          </Text>
         </View>
-        {control.tipo === "CREDITO" && (
-          <DetalleCredito control={control} es={es} />
+      </TarjetaMovil>
+
+      <TarjetaMovil estilo={estilos.consecuencias}>
+        <Text style={[estilos.seccion, { color: tema.textoSecundario }]}>
+          {es ? "RESULTADO" : "RESULT"}
+        </Text>
+        <Resultado
+          etiqueta={es ? "Tipo" : "Type"}
+          valor={
+            creditoFinanciado
+              ? es
+                ? "Venta a crédito"
+                : "Credit sale"
+              : es
+                ? "Venta de contado"
+                : "Paid-in-full sale"
+          }
+          tema={tema}
+        />
+        <Resultado
+          etiqueta={es ? "Inventario" : "Inventory"}
+          valor={`−${unidades} ${es ? "unidades" : "units"}`}
+          tema={tema}
+        />
+        {creditoFinanciado ? (
+          <>
+            <Resultado
+              etiqueta={es ? "Anticipo" : "Deposit"}
+              valor={
+                control.anticipoNumero > 0
+                  ? `${dinero.format(control.anticipoNumero)} · ${control.metodoAnticipo}`
+                  : es
+                    ? "Sin anticipo recibido"
+                    : "No deposit received"
+              }
+              tema={tema}
+            />
+            <Resultado
+              etiqueta={es ? "Saldo de la clienta" : "Customer balance"}
+              valor={`+${dinero.format(control.financiado)}`}
+              tema={tema}
+              destacado
+            />
+            {control.financiado > 0 ? (
+              <Text
+                style={[
+                  estilos.plan,
+                  {
+                    color: tema.textoSecundario,
+                    backgroundColor: tema.primarioSuave,
+                  },
+                ]}
+              >
+                {dinero.format(parsearDineroCapturado(control.cuota) ?? 0)} ·{" "}
+                {control.periodicidad} · {es ? "inicia" : "starts"}{" "}
+                {control.primerVencimiento}
+              </Text>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Resultado
+              etiqueta={es ? "Pago recibido" : "Payment received"}
+              valor={`${dinero.format(control.total)} · ${control.metodoAnticipo}`}
+              tema={tema}
+              destacado
+            />
+            <Resultado
+              etiqueta={es ? "Saldo de la clienta" : "Customer balance"}
+              valor={es ? "Sin cambio" : "No change"}
+              tema={tema}
+            />
+          </>
         )}
+      </TarjetaMovil>
+
+      <EstadoMovil
+        tipo="informacion"
+        texto={
+          es
+            ? "El teléfono proyecta saldo e inventario al instante. El servidor valida el movimiento al sincronizar."
+            : "The phone projects balance and inventory immediately. The server validates it during sync."
+        }
+      />
+      <View style={estilos.acciones}>
+        <BotonMovil
+          texto={es ? "Confirmar y guardar" : "Confirm and save"}
+          icono="checkmark-circle"
+          cargando={control.guardando}
+          alPulsar={() => void control.confirmar()}
+        />
+        <BotonMovil
+          texto={es ? "Editar forma de pago" : "Edit payment"}
+          variante="texto"
+          icono="arrow-back"
+          deshabilitado={control.guardando}
+          alPulsar={control.editar}
+        />
       </View>
-      <View style={estilos.aviso}>
-        <Ionicons name="information-circle" color={colores.azul} size={20} />
-        <Text style={estilos.avisoTexto}>
-          {es
-            ? "Al confirmar, inventario y saldo se proyectan en este equipo. El servidor los valida al sincronizar."
-            : "After confirmation, stock and balance are projected on this device. The server validates them during sync."}
-        </Text>
-      </View>
-      <Pressable
-        disabled={control.guardando}
-        onPress={() => void control.confirmar()}
-        style={[estilos.boton, control.guardando && estilos.deshabilitado]}
-      >
-        <Ionicons name="checkmark-circle" color="white" size={20} />
-        <Text style={estilos.botonTexto}>
-          {control.guardando
-            ? es
-              ? "Protegiendo…"
-              : "Securing…"
-            : es
-              ? "Confirmar y guardar"
-              : "Confirm and save"}
-        </Text>
-      </Pressable>
-      <Pressable
-        disabled={control.guardando}
-        onPress={control.editar}
-        style={estilos.volver}
-      >
-        <Text style={estilos.volverTexto}>
-          {es ? "Regresar y editar" : "Go back and edit"}
-        </Text>
-      </Pressable>
     </>
   );
 }
 
-function DetalleCredito({
-  control,
-  es,
+function Resultado({
+  etiqueta,
+  valor,
+  tema,
+  destacado = false,
 }: {
-  control: ControlVenta;
-  es: boolean;
+  etiqueta: string;
+  valor: string;
+  tema: ReturnType<typeof usarTema>;
+  destacado?: boolean;
 }) {
   return (
-    <>
-      <View style={estilos.fila}>
-        <Text style={estilos.muted}>{es ? "Anticipo" : "Deposit"}</Text>
-        <Text style={estilos.muted}>
-          {dinero.format(control.anticipoNumero)}
-        </Text>
-      </View>
-      <View style={estilos.fila}>
-        <Text style={estilos.muted}>{es ? "Nuevo saldo" : "New balance"}</Text>
-        <Text style={estilos.muted}>{dinero.format(control.financiado)}</Text>
-      </View>
-      {control.financiado > 0 ? (
-        <Text style={estilos.plan}>
-          {dinero.format(Number(control.cuota))} · {control.periodicidad} ·{" "}
-          {es ? "inicia" : "starts"} {control.primerVencimiento}
-        </Text>
-      ) : (
-        <Text style={estilos.plan}>
-          {es
-            ? "Liquidada con el anticipo · sin tarjeta"
-            : "Paid by deposit · no card"}
-        </Text>
-      )}
-    </>
+    <View style={estilos.resultadoFila}>
+      <Text
+        style={[estilos.resultadoEtiqueta, { color: tema.textoSecundario }]}
+      >
+        {etiqueta}
+      </Text>
+      <Text
+        style={[
+          estilos.resultadoValor,
+          { color: destacado ? tema.primario : tema.texto },
+        ]}
+      >
+        {valor}
+      </Text>
+    </View>
   );
 }
 
 const estilos = StyleSheet.create({
-  resumen: { borderWidth: 1, borderRadius: 15, padding: 16 },
-  subtitulo: { fontSize: 16, fontWeight: "800" },
+  titulo: { fontSize: 20, lineHeight: 26, fontWeight: "900" },
+  detalle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
+  resumen: { marginTop: 17 },
+  consecuencias: { marginTop: 12, gap: 11 },
+  seccion: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
   fila: {
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
-    marginTop: 13,
+    marginTop: 12,
   },
-  producto: { flex: 1, fontSize: 13 },
+  producto: { flex: 1, fontSize: 13, lineHeight: 19 },
+  importe: { fontSize: 13, lineHeight: 19, fontWeight: "700" },
   totalFila: {
     borderTopWidth: 1,
     marginTop: 15,
-    paddingTop: 15,
+    paddingTop: 14,
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
   },
-  totalEtiqueta: { fontWeight: "800", fontSize: 17 },
-  total: { color: colores.azul, fontWeight: "900", fontSize: 18 },
-  muted: { color: colores.gris, fontSize: 12 },
+  totalEtiqueta: { fontWeight: "900", fontSize: 17 },
+  total: { fontWeight: "900", fontSize: 20 },
+  resultadoFila: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  resultadoEtiqueta: { flex: 1, fontSize: 13, lineHeight: 18 },
+  resultadoValor: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "900",
+    textAlign: "right",
+  },
   plan: {
-    color: "#6929c4",
-    backgroundColor: "#f6f2ff",
-    borderRadius: 9,
-    padding: 10,
-    marginTop: 13,
-    fontSize: 11,
+    borderRadius: 10,
+    padding: 11,
+    fontSize: 12,
+    lineHeight: 18,
     fontWeight: "700",
   },
-  aviso: { flexDirection: "row", gap: 8, marginTop: 15, paddingHorizontal: 4 },
-  avisoTexto: { color: colores.gris, fontSize: 11, lineHeight: 17, flex: 1 },
-  boton: {
-    backgroundColor: colores.azul,
-    minHeight: 53,
-    borderRadius: 12,
-    marginTop: 18,
-    paddingHorizontal: 15,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  botonTexto: { color: "white", fontWeight: "800", fontSize: 15 },
-  deshabilitado: { opacity: 0.42 },
-  volver: { alignItems: "center", padding: 16 },
-  volverTexto: { color: colores.azul, fontWeight: "700" },
+  acciones: { gap: 4, marginTop: 18 },
 });

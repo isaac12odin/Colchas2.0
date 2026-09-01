@@ -1,15 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colores, type usarTema } from "../../tema";
+import { usarDisenoResponsivo } from "../../componentes/ui";
+import { espaciado, radios, tactilMinimo, type usarTema } from "../../tema";
 import type { ClienteJornada } from "../../tipos";
 import { dinero } from "../../utilidades/formato";
 import { cuotaEsperada } from "./dominioJornada";
 
+type Tema = ReturnType<typeof usarTema>;
+
 interface Propiedades {
   cliente: ClienteJornada;
   es: boolean;
-  tema: ReturnType<typeof usarTema>;
+  tema: Tema;
   guardando: boolean;
   alCobrar: () => void;
   alVender: () => void;
@@ -22,21 +25,58 @@ export function AccionesCliente({
   cliente,
   es,
   tema,
-  ...acciones
+  guardando,
+  alCobrar,
+  alVender,
+  alEntregar,
+  alNoPagar,
+  alAusente,
 }: Propiedades) {
   const cuota = cuotaEsperada(cliente);
+  const diseno = usarDisenoResponsivo();
+  const pedidos = cliente.pedidos.length;
+
   return (
     <View style={estilos.contenedor}>
       {Number(cliente.saldo?.saldoActual ?? 0) > 0 && (
-        <Pressable style={estilos.principal} onPress={acciones.alCobrar}>
-          <View style={estilos.iconoPrincipal}>
-            <Ionicons name="cash" color="white" size={24} />
+        <Pressable
+          disabled={guardando}
+          style={({ pressed }) => [
+            estilos.principal,
+            { backgroundColor: tema.primario },
+            (pressed || guardando) && estilos.pulsado,
+          ]}
+          onPress={alCobrar}
+          accessibilityRole="button"
+          accessibilityLabel={es ? "Registrar abono" : "Record payment"}
+          accessibilityHint={
+            cuota
+              ? `${es ? "Cuota sugerida" : "Suggested amount"}: ${dinero.format(cuota)}`
+              : undefined
+          }
+          accessibilityState={{ disabled: guardando }}
+        >
+          <View
+            style={[
+              estilos.iconoPrincipal,
+              {
+                backgroundColor: tema.oscuro
+                  ? "rgba(0,0,0,.18)"
+                  : "rgba(255,255,255,.2)",
+              },
+            ]}
+          >
+            <Ionicons name="cash" color={tema.sobrePrimario} size={25} />
           </View>
           <View style={estilos.expandir}>
-            <Text style={estilos.tituloPrincipal}>
+            <Text
+              style={[estilos.tituloPrincipal, { color: tema.sobrePrimario }]}
+            >
               {es ? "Registrar abono" : "Record payment"}
             </Text>
-            <Text style={estilos.detallePrincipal}>
+            <Text
+              style={[estilos.detallePrincipal, { color: tema.sobrePrimario }]}
+            >
               {cuota
                 ? `${es ? "Cuota sugerida" : "Suggested"} ${dinero.format(cuota)}`
                 : es
@@ -44,48 +84,61 @@ export function AccionesCliente({
                   : "Enter amount and method"}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" color="white" size={20} />
+          <Ionicons
+            name="chevron-forward"
+            color={tema.sobrePrimario}
+            size={22}
+          />
         </Pressable>
       )}
 
-      <View style={estilos.dosColumnas}>
+      <View
+        style={[estilos.dosColumnas, diseno.compacto && estilos.unaColumna]}
+      >
         <Accion
           icono="cart"
-          color={colores.azul}
+          color={tema.primario}
+          fondoIcono={tema.primarioSuave}
           titulo={es ? "Nueva venta" : "New sale"}
           tema={tema}
-          alPulsar={acciones.alVender}
+          deshabilitada={guardando}
+          alPulsar={alVender}
         />
         <Accion
           icono="cube"
-          color="#6929c4"
-          titulo={es ? "Entregar" : "Deliver"}
-          contador={cliente.pedidos.length}
-          deshabilitada={!cliente.pedidos.length}
+          color={tema.advertencia}
+          fondoIcono={tema.advertenciaSuave}
+          titulo={es ? "Entregar pedido" : "Deliver order"}
+          contador={pedidos}
+          deshabilitada={!pedidos || guardando}
           tema={tema}
-          alPulsar={acciones.alEntregar}
+          alPulsar={alEntregar}
         />
       </View>
 
-      <Text style={estilos.etiqueta}>
-        {es ? "Si no hubo cobro" : "If no payment was made"}
+      <Text style={[estilos.etiqueta, { color: tema.textoSecundario }]}>
+        {es ? "Si hoy no hubo cobro" : "If no payment was made today"}
       </Text>
-      <View style={estilos.dosColumnas}>
+      <View
+        style={[estilos.dosColumnas, diseno.compacto && estilos.unaColumna]}
+      >
         <Resultado
           icono="close-circle-outline"
-          color={colores.rojo}
+          color={tema.peligro}
+          fondoIcono={tema.peligroSuave}
           texto={es ? "No pagó" : "No payment"}
           tema={tema}
-          deshabilitado={acciones.guardando}
-          alPulsar={acciones.alNoPagar}
+          deshabilitado={guardando}
+          alPulsar={alNoPagar}
         />
         <Resultado
           icono="home-outline"
-          color={colores.gris}
-          texto={es ? "Ausente" : "Absent"}
+          color={tema.textoSecundario}
+          fondoIcono={tema.campoDeshabilitado}
+          texto={es ? "No se encontró" : "Absent"}
           tema={tema}
-          deshabilitado={acciones.guardando}
-          alPulsar={acciones.alAusente}
+          deshabilitado={guardando}
+          alPulsar={alAusente}
         />
       </View>
     </View>
@@ -95,6 +148,7 @@ export function AccionesCliente({
 function Accion({
   icono,
   color,
+  fondoIcono,
   titulo,
   contador,
   deshabilitada,
@@ -103,28 +157,39 @@ function Accion({
 }: {
   icono: "cart" | "cube";
   color: string;
+  fondoIcono: string;
   titulo: string;
   contador?: number;
   deshabilitada?: boolean;
-  tema: ReturnType<typeof usarTema>;
+  tema: Tema;
   alPulsar: () => void;
 }) {
   return (
     <Pressable
       disabled={deshabilitada}
       onPress={alPulsar}
-      style={[
+      style={({ pressed }) => [
         estilos.accion,
-        { borderColor: tema.borde },
+        { borderColor: tema.borde, backgroundColor: tema.panelElevado },
+        pressed && { backgroundColor: tema.primarioSuave },
         deshabilitada && estilos.deshabilitada,
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={titulo}
+      accessibilityState={{ disabled: Boolean(deshabilitada) }}
     >
-      <Ionicons name={icono} color={color} size={23} />
+      <View style={[estilos.iconoAccion, { backgroundColor: fondoIcono }]}>
+        <Ionicons name={icono} color={color} size={23} />
+      </View>
       <Text style={[estilos.tituloAccion, { color: tema.texto }]}>
         {titulo}
       </Text>
       {contador !== undefined && (
-        <Text style={estilos.contador}>{contador}</Text>
+        <Text
+          style={[estilos.contador, { color, backgroundColor: fondoIcono }]}
+        >
+          {contador}
+        </Text>
       )}
     </Pressable>
   );
@@ -133,6 +198,7 @@ function Accion({
 function Resultado({
   icono,
   color,
+  fondoIcono,
   texto,
   tema,
   deshabilitado,
@@ -140,18 +206,29 @@ function Resultado({
 }: {
   icono: "close-circle-outline" | "home-outline";
   color: string;
+  fondoIcono: string;
   texto: string;
-  tema: ReturnType<typeof usarTema>;
+  tema: Tema;
   deshabilitado: boolean;
   alPulsar: () => void;
 }) {
   return (
     <Pressable
       disabled={deshabilitado}
-      style={[estilos.resultado, { borderColor: tema.borde }]}
+      style={({ pressed }) => [
+        estilos.resultado,
+        { borderColor: tema.borde, backgroundColor: tema.panelElevado },
+        pressed && { backgroundColor: fondoIcono },
+        deshabilitado && estilos.deshabilitada,
+      ]}
       onPress={alPulsar}
+      accessibilityRole="button"
+      accessibilityLabel={texto}
+      accessibilityState={{ disabled: deshabilitado }}
     >
-      <Ionicons name={icono} color={color} size={20} />
+      <View style={[estilos.iconoResultado, { backgroundColor: fondoIcono }]}>
+        <Ionicons name={icono} color={color} size={21} />
+      </View>
       <Text style={[estilos.resultadoTexto, { color: tema.texto }]}>
         {texto}
       </Text>
@@ -160,65 +237,91 @@ function Resultado({
 }
 
 const estilos = StyleSheet.create({
-  contenedor: { marginTop: 20 },
+  contenedor: { marginTop: espaciado.lg },
   expandir: { flex: 1 },
   principal: {
-    backgroundColor: colores.azul,
-    minHeight: 72,
-    borderRadius: 14,
+    minHeight: 76,
+    borderRadius: radios.tarjeta,
     padding: 13,
     flexDirection: "row",
     alignItems: "center",
     gap: 11,
   },
+  pulsado: { opacity: 0.72 },
   iconoPrincipal: {
-    width: 45,
-    height: 45,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,.18)",
+    width: 48,
+    height: 48,
+    borderRadius: radios.campo,
     alignItems: "center",
     justifyContent: "center",
   },
-  tituloPrincipal: { color: "white", fontWeight: "900", fontSize: 16 },
-  detallePrincipal: { color: "#d0e2ff", fontSize: 11, marginTop: 3 },
-  dosColumnas: { flexDirection: "row", gap: 9, marginTop: 10 },
+  tituloPrincipal: { fontWeight: "900", fontSize: 17, lineHeight: 22 },
+  detallePrincipal: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+    opacity: 0.9,
+  },
+  dosColumnas: { flexDirection: "row", gap: 10, marginTop: 10 },
+  unaColumna: { flexDirection: "column" },
   accion: {
     flex: 1,
-    minHeight: 78,
+    minHeight: 86,
     borderWidth: 1,
-    borderRadius: 13,
+    borderRadius: radios.tarjeta,
     padding: 12,
     justifyContent: "center",
   },
+  iconoAccion: {
+    width: 42,
+    height: 42,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   deshabilitada: { opacity: 0.42 },
-  tituloAccion: { fontWeight: "800", fontSize: 13, marginTop: 8 },
+  tituloAccion: {
+    fontWeight: "800",
+    fontSize: 14,
+    lineHeight: 19,
+    marginTop: 8,
+  },
   contador: {
     position: "absolute",
     right: 10,
     top: 10,
-    color: "#6929c4",
-    backgroundColor: "#f6f2ff",
-    borderRadius: 9,
-    minWidth: 18,
+    borderRadius: radios.pastilla,
+    minWidth: 24,
+    minHeight: 24,
+    paddingHorizontal: 6,
+    paddingTop: 3,
     textAlign: "center",
-    fontSize: 10,
-    fontWeight: "800",
+    fontSize: 12,
+    fontWeight: "900",
   },
   etiqueta: {
-    color: colores.gris,
-    fontSize: 11,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "700",
-    marginTop: 17,
+    marginTop: 18,
   },
   resultado: {
     flex: 1,
-    minHeight: 48,
+    minHeight: tactilMinimo + 6,
     borderWidth: 1,
-    borderRadius: 11,
+    borderRadius: radios.campo,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
+    gap: 8,
   },
-  resultadoTexto: { fontWeight: "700", fontSize: 12 },
+  iconoResultado: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  resultadoTexto: { fontWeight: "800", fontSize: 14, lineHeight: 19 },
 });

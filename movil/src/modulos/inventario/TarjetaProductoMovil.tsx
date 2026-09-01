@@ -10,7 +10,8 @@ import {
 } from "react-native";
 
 import { crearFuenteImagenApi } from "../../api";
-import { colores, type usarTema } from "../../tema";
+import { usarDisenoResponsivo } from "../../componentes/ui";
+import { type usarTema } from "../../tema";
 import type { ProductoInventarioMovil } from "./tipos";
 
 const dinero = new Intl.NumberFormat("es-MX", {
@@ -29,8 +30,10 @@ export function TarjetaProductoMovil({
   es: boolean;
   alEditar: () => void;
 }) {
+  const diseno = usarDisenoResponsivo();
   const [fuente, establecerFuente] = useState<ImageSourcePropType>();
   const bajo = producto.existencia <= producto.existenciaMinima;
+  const apilar = diseno.compacto || diseno.fontScale > 1.25;
 
   useEffect(() => {
     let activa = true;
@@ -58,36 +61,56 @@ export function TarjetaProductoMovil({
       onPress={alEditar}
       style={[
         estilos.tarjeta,
+        apilar && estilos.tarjetaApilada,
         { backgroundColor: tema.panel, borderColor: tema.borde },
       ]}
     >
-      <View style={[estilos.foto, { backgroundColor: tema.fondo }]}>
+      <View
+        style={[
+          estilos.foto,
+          apilar && estilos.fotoApilada,
+          { backgroundColor: tema.campoDeshabilitado },
+        ]}
+      >
         {fuente ? (
           <Image source={fuente} style={estilos.imagen} resizeMode="cover" />
         ) : (
-          <Ionicons name="cube-outline" size={25} color={colores.gris} />
+          <Ionicons name="cube-outline" size={28} color={tema.textoTenue} />
         )}
       </View>
       <View style={estilos.informacion}>
         <Text style={[estilos.nombre, { color: tema.texto }]} numberOfLines={1}>
           {producto.nombre}
         </Text>
-        <Text style={estilos.detalle} numberOfLines={1}>
+        <Text
+          style={[estilos.detalle, { color: tema.textoSecundario }]}
+          numberOfLines={apilar ? 2 : 1}
+        >
           {producto.sku} · {producto.marca}
         </Text>
         <Text style={[estilos.precio, { color: tema.texto }]}>
           {dinero.format(Number(producto.precioVenta))}
         </Text>
       </View>
-      <View style={estilos.estado}>
+      <View style={[estilos.estado, apilar && estilos.estadoApilado]}>
         <View
-          style={[estilos.stock, bajo ? estilos.stockBajo : estilos.stockBien]}
+          style={[
+            estilos.stock,
+            {
+              backgroundColor: bajo ? tema.peligroSuave : tema.exitoSuave,
+            },
+          ]}
         >
-          <Text style={[estilos.stockTexto, bajo && estilos.stockTextoBajo]}>
+          <Text
+            style={[
+              estilos.stockTexto,
+              { color: bajo ? tema.peligro : tema.exito },
+            ]}
+          >
             {producto.existencia} {es ? "pzas." : "pcs."}
           </Text>
         </View>
-        <Ionicons name="pencil-outline" size={18} color={colores.azul} />
+        <Ionicons name="pencil-outline" size={20} color={tema.primario} />
       </View>
     </Pressable>
   );
@@ -95,7 +118,7 @@ export function TarjetaProductoMovil({
 
 const estilos = StyleSheet.create({
   tarjeta: {
-    minHeight: 91,
+    minHeight: 96,
     borderWidth: 1,
     borderRadius: 15,
     padding: 10,
@@ -103,6 +126,7 @@ const estilos = StyleSheet.create({
     alignItems: "center",
     gap: 11,
   },
+  tarjetaApilada: { flexDirection: "column", alignItems: "stretch" },
   foto: {
     width: 70,
     height: 70,
@@ -111,19 +135,18 @@ const estilos = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  fotoApilada: { width: "100%", height: 150 },
   imagen: { width: "100%", height: "100%" },
   informacion: { flex: 1, minWidth: 0 },
-  nombre: { fontSize: 14, fontWeight: "900" },
-  detalle: { color: colores.gris, fontSize: 11, marginTop: 3 },
-  precio: { fontSize: 12, fontWeight: "800", marginTop: 7 },
+  nombre: { fontSize: 15, lineHeight: 20, fontWeight: "900" },
+  detalle: { fontSize: 12, lineHeight: 17, marginTop: 3 },
+  precio: { fontSize: 14, lineHeight: 19, fontWeight: "800", marginTop: 7 },
   estado: {
     minHeight: 68,
     alignItems: "flex-end",
     justifyContent: "space-between",
   },
+  estadoApilado: { minHeight: 0, flexDirection: "row", alignItems: "center" },
   stock: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
-  stockBien: { backgroundColor: "#defbe6" },
-  stockBajo: { backgroundColor: "#fff1f1" },
-  stockTexto: { color: "#0e6027", fontSize: 10, fontWeight: "900" },
-  stockTextoBajo: { color: colores.rojo },
+  stockTexto: { fontSize: 12, lineHeight: 16, fontWeight: "900" },
 });

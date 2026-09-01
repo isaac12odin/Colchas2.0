@@ -2,20 +2,23 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import { api } from "../../api";
-import { colores, type usarTema } from "../../tema";
+import {
+  BotonMovil,
+  CampoMovil,
+  EstadoMovil,
+  HojaFormulario,
+  ProgresoPasos,
+  TarjetaMovil,
+  usarDisenoResponsivo,
+} from "../../componentes/ui";
+import { radios, tactilMinimo, type usarTema } from "../../tema";
 import type { ClientePedidoMovil, ProductoMovil } from "../../tipos";
 import { dinero } from "../../utilidades/formato";
 import { type BorradorNuevoPedido, validarNuevoPedido } from "./dominioPedidos";
@@ -51,7 +54,9 @@ export function ModalNuevoPedido({
   alCerrar: () => void;
   alCrear: (borrador: BorradorNuevoPedido) => Promise<boolean>;
 }) {
+  const diseno = usarDisenoResponsivo();
   const visibleAnterior = useRef(false);
+  const [paso, establecerPaso] = useState(1);
   const [borrador, establecerBorrador] = useState(borradorInicial);
   const [cliente, establecerCliente] = useState<ClientePedidoMovil | null>(
     null,
@@ -59,13 +64,14 @@ export function ModalNuevoPedido({
   const [producto, establecerProducto] = useState<ProductoMovil | null>(null);
   const [buscarCliente, establecerBuscarCliente] = useState("");
   const [buscarProducto, establecerBuscarProducto] = useState("");
+  const [error, establecerError] = useState("");
   const clientes = usarBusqueda<ClientePedidoMovil>(
-    visible && !cliente,
+    visible && paso === 1 && !cliente,
     "/clientes",
     buscarCliente,
   );
   const productos = usarBusqueda<ProductoMovil>(
-    visible && !producto,
+    visible && paso === 2 && !producto,
     "/inventario/productos",
     buscarProducto,
   );
@@ -74,21 +80,20 @@ export function ModalNuevoPedido({
     const esApertura = visible && !visibleAnterior.current;
     visibleAnterior.current = visible;
     if (!esApertura) return;
+    establecerPaso(1);
     establecerBorrador(borradorInicial());
     establecerCliente(null);
     establecerProducto(null);
     establecerBuscarCliente("");
     establecerBuscarProducto("");
+    establecerError("");
     if (!clienteInicialId) return;
     let vigente = true;
     void api<ClientePedidoMovil>(`/clientes/${clienteInicialId}`)
       .then((inicial) => {
         if (!vigente) return;
         establecerCliente(inicial);
-        establecerBorrador((actual) => ({
-          ...actual,
-          clienteId: inicial.id,
-        }));
+        establecerBorrador((actual) => ({ ...actual, clienteId: inicial.id }));
       })
       .catch(() => undefined);
     return () => {
@@ -97,12 +102,13 @@ export function ModalNuevoPedido({
   }, [clienteInicialId, visible]);
 
   function cambiar(campo: keyof BorradorNuevoPedido, valor: string) {
+    establecerError("");
     establecerBorrador((actual) => ({ ...actual, [campo]: valor }));
   }
 
   async function crear() {
-    const error = validarNuevoPedido(borrador);
-    if (error) {
+    const codigo = validarNuevoPedido(borrador);
+    if (codigo) {
       const mensajes = {
         CLIENTE: es ? "Selecciona a la clienta." : "Select the customer.",
         PRODUCTO: es ? "Selecciona el producto." : "Select the product.",
@@ -110,13 +116,13 @@ export function ModalNuevoPedido({
           ? "La cantidad debe ser un entero mayor a cero."
           : "Quantity must be a positive whole number.",
         FECHA: es
-          ? "Usa la fecha con formato AAAA-MM-DD."
-          : "Use the YYYY-MM-DD date format.",
+          ? "La fecha debe usar AAAA-MM-DD y no puede estar en el pasado."
+          : "Date must use YYYY-MM-DD and cannot be in the past.",
         NOTAS: es
           ? "Las notas no pueden exceder 1,000 caracteres."
           : "Notes cannot exceed 1,000 characters.",
       };
-      Alert.alert(es ? "Revisa el pedido" : "Check the order", mensajes[error]);
+      establecerError(mensajes[codigo]);
       return;
     }
     await alCrear(borrador);
@@ -124,225 +130,280 @@ export function ModalNuevoPedido({
 
   const total =
     Number(producto?.precioVenta ?? 0) * Number(borrador.cantidad || 0);
+  const pie =
+    paso === 1 ? (
+      <BotonMovil
+        texto={es ? "Continuar a producto" : "Continue to product"}
+        icono="arrow-forward"
+        deshabilitado={!cliente || sinConexion}
+        alPulsar={() => establecerPaso(2)}
+      />
+    ) : paso === 2 ? (
+      <View style={estilos.accionesPie}>
+        <BotonMovil
+          texto={es ? "Continuar a detalles" : "Continue to details"}
+          icono="arrow-forward"
+          deshabilitado={!producto || sinConexion}
+          alPulsar={() => establecerPaso(3)}
+        />
+        <BotonMovil
+          texto={es ? "Volver" : "Back"}
+          variante="texto"
+          alPulsar={() => establecerPaso(1)}
+        />
+      </View>
+    ) : (
+      <View style={estilos.accionesPie}>
+        <BotonMovil
+          texto={es ? "Crear pedido pendiente" : "Create pending order"}
+          icono="receipt-outline"
+          cargando={creando}
+          deshabilitado={sinConexion}
+          alPulsar={() => void crear()}
+        />
+        <BotonMovil
+          texto={es ? "Volver" : "Back"}
+          variante="texto"
+          deshabilitado={creando}
+          alPulsar={() => establecerPaso(2)}
+        />
+      </View>
+    );
 
   return (
-    <Modal
+    <HojaFormulario
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={alCerrar}
+      bloqueada={creando}
+      alCerrar={alCerrar}
+      titulo={es ? "Nuevo pedido" : "New order"}
+      subtitulo={
+        es
+          ? "No crea deuda ni descuenta inventario hasta la entrega."
+          : "No debt or stock change is created until delivery."
+      }
+      estiloContenido={estilos.contenido}
+      pie={pie}
     >
-      <KeyboardAvoidingView
-        style={estilos.fondo}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <View style={[estilos.modal, { backgroundColor: tema.panel }]}>
-          <View style={estilos.encabezado}>
-            <View style={estilos.expandir}>
-              <Text style={[estilos.titulo, { color: tema.texto }]}>
-                {es ? "Nuevo pedido" : "New order"}
-              </Text>
-              <Text style={estilos.subtitulo}>
-                {es
-                  ? "Registra lo solicitado; todavía no crea venta ni deuda."
-                  : "Record the request; it does not create a sale or debt yet."}
-              </Text>
-            </View>
-            <Pressable
-              accessibilityLabel={es ? "Cerrar" : "Close"}
-              disabled={creando}
-              onPress={alCerrar}
-              style={estilos.cerrar}
-            >
-              <Ionicons name="close" size={24} color={tema.texto} />
-            </Pressable>
-          </View>
+      <ProgresoPasos
+        actual={paso}
+        pasos={
+          es
+            ? ["Clienta", "Producto", "Detalles"]
+            : ["Customer", "Product", "Details"]
+        }
+      />
+      {sinConexion ? (
+        <EstadoMovil
+          tipo="advertencia"
+          texto={
+            es
+              ? "Crear el pedido requiere conexión para evitar duplicados. Puedes consultar los existentes sin señal."
+              : "Creating an order requires connectivity to prevent duplicates. Existing orders remain available offline."
+          }
+        />
+      ) : null}
 
-          <ScrollView
-            style={estilos.desplazable}
-            contentContainerStyle={estilos.formulario}
-            keyboardShouldPersistTaps="handled"
-            automaticallyAdjustKeyboardInsets
-          >
-            {sinConexion && (
-              <View style={estilos.sinConexion}>
-                <Ionicons name="cloud-offline" size={18} color="#8a3b12" />
-                <Text style={estilos.sinConexionTexto}>
-                  {es
-                    ? "Para crear pedidos se necesita conexión; no perderás lo capturado mientras permanezcas aquí."
-                    : "Creating orders requires a connection; this draft remains while you stay here."}
-                </Text>
-              </View>
-            )}
-
-            <Seccion
-              numero="1"
-              titulo={es ? "Clienta" : "Customer"}
+      {paso === 1 ? (
+        <View style={estilos.paso}>
+          <TituloPaso
+            titulo={es ? "¿Para quién es?" : "Who is it for?"}
+            detalle={
+              es
+                ? "Busca por nombre, teléfono, dirección o tarjeta."
+                : "Search by name, phone, address, or card."
+            }
+            tema={tema}
+          />
+          {cliente ? (
+            <Seleccion
+              icono="person"
+              titulo={cliente.nombreCompleto}
+              detalle={`${cliente.telefono} · ${cliente.localidad?.nombre ?? cliente.direccion}${cliente.numeroTarjeta ? ` · ${es ? "Tarjeta" : "Card"} ${cliente.numeroTarjeta}` : ""}`}
+              es={es}
+              tema={tema}
+              alCambiar={() => {
+                establecerCliente(null);
+                cambiar("clienteId", "");
+              }}
+            />
+          ) : (
+            <Buscador
+              etiqueta={es ? "Buscar clienta" : "Search customer"}
+              placeholder={
+                es
+                  ? "Nombre, teléfono, dirección o tarjeta"
+                  : "Name, phone, address, or card"
+              }
+              valor={buscarCliente}
+              alCambiar={establecerBuscarCliente}
+              cargando={clientes.cargando}
+              sinResultados={!clientes.cargando && clientes.datos.length === 0}
+              mensajeVacio={
+                es
+                  ? "No encontramos una clienta con esos datos."
+                  : "No customer matched those details."
+              }
               tema={tema}
             >
-              {cliente ? (
-                <Seleccion
-                  titulo={cliente.nombreCompleto}
-                  detalle={`${cliente.telefono} · ${cliente.localidad?.nombre ?? cliente.direccion}`}
-                  es={es}
+              {clientes.datos.map((opcion) => (
+                <Opcion
+                  key={opcion.id}
+                  titulo={opcion.nombreCompleto}
+                  detalle={`${opcion.telefono} · ${opcion.localidad?.nombre ?? opcion.direccion}`}
                   tema={tema}
-                  alCambiar={() => {
-                    establecerCliente(null);
-                    cambiar("clienteId", "");
+                  alPulsar={() => {
+                    establecerCliente(opcion);
+                    cambiar("clienteId", opcion.id);
                   }}
                 />
-              ) : (
-                <Buscador
-                  etiqueta={
-                    es
-                      ? "Nombre, teléfono, dirección o tarjeta"
-                      : "Name, phone, address, or card"
-                  }
-                  valor={buscarCliente}
-                  alCambiar={establecerBuscarCliente}
-                  cargando={clientes.cargando}
-                  tema={tema}
-                >
-                  {clientes.datos.map((opcion) => (
-                    <Opcion
-                      key={opcion.id}
-                      titulo={opcion.nombreCompleto}
-                      detalle={`${opcion.telefono} · ${opcion.localidad?.nombre ?? opcion.direccion}`}
-                      tema={tema}
-                      alPulsar={() => {
-                        establecerCliente(opcion);
-                        cambiar("clienteId", opcion.id);
-                      }}
-                    />
-                  ))}
-                </Buscador>
-              )}
-            </Seccion>
+              ))}
+            </Buscador>
+          )}
+        </View>
+      ) : null}
 
-            <Seccion
-              numero="2"
-              titulo={es ? "Producto" : "Product"}
+      {paso === 2 ? (
+        <View style={estilos.paso}>
+          <TituloPaso
+            titulo={
+              es ? "¿Qué producto pidió?" : "Which product was requested?"
+            }
+            detalle={
+              es
+                ? "Sólo puedes elegir mercancía registrada en inventario."
+                : "Only registered inventory products can be selected."
+            }
+            tema={tema}
+          />
+          {producto ? (
+            <Seleccion
+              icono="cube"
+              titulo={producto.nombre}
+              detalle={`${producto.marca} · ${producto.sku} · ${dinero.format(Number(producto.precioVenta))}`}
+              es={es}
+              tema={tema}
+              alCambiar={() => {
+                establecerProducto(null);
+                cambiar("productoId", "");
+              }}
+            />
+          ) : (
+            <Buscador
+              etiqueta={es ? "Buscar producto" : "Search product"}
+              placeholder={
+                es ? "Nombre, marca, SKU o código" : "Name, brand, SKU, or code"
+              }
+              valor={buscarProducto}
+              alCambiar={establecerBuscarProducto}
+              cargando={productos.cargando}
+              sinResultados={
+                !productos.cargando && productos.datos.length === 0
+              }
+              mensajeVacio={
+                es
+                  ? "Ese producto no está registrado. Almacén o Administración deben crearlo primero."
+                  : "That product is not registered. Warehouse or Administration must create it first."
+              }
               tema={tema}
             >
-              {producto ? (
-                <Seleccion
-                  titulo={producto.nombre}
-                  detalle={`${producto.sku} · ${dinero.format(Number(producto.precioVenta))}`}
-                  es={es}
+              {productos.datos.map((opcion) => (
+                <Opcion
+                  key={opcion.id}
+                  titulo={opcion.nombre}
+                  detalle={`${opcion.marca} · ${opcion.sku} · ${dinero.format(Number(opcion.precioVenta))}`}
                   tema={tema}
-                  alCambiar={() => {
-                    establecerProducto(null);
-                    cambiar("productoId", "");
+                  alPulsar={() => {
+                    establecerProducto(opcion);
+                    cambiar("productoId", opcion.id);
                   }}
                 />
-              ) : (
-                <Buscador
-                  etiqueta={
-                    es
-                      ? "Producto, marca, SKU o código"
-                      : "Product, brand, SKU, or code"
-                  }
-                  valor={buscarProducto}
-                  alCambiar={establecerBuscarProducto}
-                  cargando={productos.cargando}
-                  tema={tema}
-                >
-                  {productos.datos.map((opcion) => (
-                    <Opcion
-                      key={opcion.id}
-                      titulo={opcion.nombre}
-                      detalle={`${opcion.sku} · ${dinero.format(Number(opcion.precioVenta))}`}
-                      tema={tema}
-                      alPulsar={() => {
-                        establecerProducto(opcion);
-                        cambiar("productoId", opcion.id);
-                      }}
-                    />
-                  ))}
-                </Buscador>
-              )}
-            </Seccion>
+              ))}
+            </Buscador>
+          )}
+        </View>
+      ) : null}
 
-            <Seccion
-              numero="3"
-              titulo={es ? "Cantidad y promesa" : "Quantity and promise"}
-              tema={tema}
-            >
-              <View style={estilos.filaCampos}>
-                <Campo
-                  etiqueta={es ? "Cantidad" : "Quantity"}
-                  valor={borrador.cantidad}
-                  alCambiar={(valor) => cambiar("cantidad", valor)}
-                  tema={tema}
-                  teclado="number-pad"
-                  contenedor={estilos.cantidad}
-                />
-                <Campo
-                  etiqueta={
-                    es
-                      ? "Fecha compromiso (opcional)"
-                      : "Promise date (optional)"
-                  }
-                  valor={borrador.fechaCompromiso}
-                  alCambiar={(valor) => cambiar("fechaCompromiso", valor)}
-                  tema={tema}
-                  placeholder="AAAA-MM-DD"
-                  contenedor={estilos.expandir}
-                />
-              </View>
-              <Campo
-                etiqueta={es ? "Notas (opcional)" : "Notes (optional)"}
-                valor={borrador.notas}
-                alCambiar={(valor) => cambiar("notas", valor)}
-                tema={tema}
-                multilinea
-              />
-            </Seccion>
-
-            {cliente && producto && (
-              <View style={estilos.resumen}>
-                <View style={estilos.expandir}>
-                  <Text style={estilos.resumenEtiqueta}>
-                    {es ? "SOLICITUD A CREAR" : "REQUEST TO CREATE"}
-                  </Text>
-                  <Text style={[estilos.resumenTexto, { color: tema.texto }]}>
-                    {borrador.cantidad || "0"} × {producto.nombre}
-                  </Text>
-                  <Text style={estilos.resumenCliente}>
-                    {cliente.nombreCompleto}
-                  </Text>
-                </View>
-                <Text style={estilos.total}>{dinero.format(total)}</Text>
-              </View>
-            )}
-          </ScrollView>
-
-          <Pressable
-            disabled={creando || sinConexion}
-            onPress={() => void crear()}
+      {paso === 3 ? (
+        <View style={estilos.paso}>
+          <TituloPaso
+            titulo={es ? "Revisa la solicitud" : "Review the request"}
+            detalle={
+              es
+                ? "Indica cantidad y, si existe, la fecha prometida."
+                : "Enter the quantity and, if available, the promised date."
+            }
+            tema={tema}
+          />
+          <View
             style={[
-              estilos.guardar,
-              (creando || sinConexion) && estilos.deshabilitado,
+              estilos.fila,
+              (diseno.compacto || diseno.fontScale > 1.2) && estilos.apilada,
             ]}
           >
-            {creando ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Ionicons name="receipt-outline" size={20} color="white" />
-            )}
-            <Text style={estilos.guardarTexto}>
-              {creando
-                ? es
-                  ? "Creando…"
-                  : "Creating…"
-                : es
-                  ? "Crear pedido pendiente"
-                  : "Create pending order"}
-            </Text>
-          </Pressable>
+            <CampoMovil
+              etiqueta={es ? "Cantidad" : "Quantity"}
+              valor={borrador.cantidad}
+              alCambiar={(valor) => cambiar("cantidad", valor)}
+              teclado="number-pad"
+              requerido
+              estilo={estilos.flex}
+            />
+            <CampoMovil
+              etiqueta={es ? "Fecha compromiso" : "Promise date"}
+              ayuda={
+                es
+                  ? "Opcional · AAAA-MM-DD · no pasada"
+                  : "Optional · YYYY-MM-DD · not in the past"
+              }
+              valor={borrador.fechaCompromiso}
+              alCambiar={(valor) => cambiar("fechaCompromiso", valor)}
+              placeholder="AAAA-MM-DD"
+              icono="calendar-outline"
+              estilo={estilos.flex}
+            />
+          </View>
+          <CampoMovil
+            etiqueta={es ? "Notas (opcional)" : "Notes (optional)"}
+            valor={borrador.notas}
+            alCambiar={(valor) => cambiar("notas", valor)}
+            multilinea
+            maxLength={1000}
+            placeholder={
+              es ? "Color, medida u observaciones" : "Color, size, or notes"
+            }
+          />
+          {cliente && producto ? (
+            <TarjetaMovil estilo={estilos.resumen}>
+              <View style={estilos.expandir}>
+                <Text
+                  style={[
+                    estilos.resumenEtiqueta,
+                    { color: tema.textoSecundario },
+                  ]}
+                >
+                  {es ? "PEDIDO A CREAR" : "ORDER TO CREATE"}
+                </Text>
+                <Text style={[estilos.resumenTexto, { color: tema.texto }]}>
+                  {borrador.cantidad || "0"} × {producto.nombre}
+                </Text>
+                <Text
+                  style={[
+                    estilos.resumenCliente,
+                    { color: tema.textoSecundario },
+                  ]}
+                >
+                  {cliente.nombreCompleto}
+                </Text>
+              </View>
+              <Text style={[estilos.total, { color: tema.primario }]}>
+                {dinero.format(total)}
+              </Text>
+            </TarjetaMovil>
+          ) : null}
+          {error ? <EstadoMovil tipo="error" texto={error} /> : null}
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      ) : null}
+    </HojaFormulario>
   );
 }
 
@@ -378,60 +439,68 @@ function usarBusqueda<T>(activa: boolean, ruta: string, termino: string) {
   return { datos, cargando };
 }
 
-function Seccion({
-  numero,
+function TituloPaso({
   titulo,
+  detalle,
   tema,
-  children,
 }: {
-  numero: string;
   titulo: string;
+  detalle: string;
   tema: ReturnType<typeof usarTema>;
-  children: React.ReactNode;
 }) {
   return (
-    <View style={[estilos.seccion, { borderColor: tema.borde }]}>
-      <View style={estilos.seccionTituloFila}>
-        <Text style={estilos.numero}>{numero}</Text>
-        <Text style={[estilos.seccionTitulo, { color: tema.texto }]}>
-          {titulo}
-        </Text>
-      </View>
-      {children}
+    <View>
+      <Text style={[estilos.pasoTitulo, { color: tema.texto }]}>{titulo}</Text>
+      <Text style={[estilos.pasoDetalle, { color: tema.textoSecundario }]}>
+        {detalle}
+      </Text>
     </View>
   );
 }
 
 function Buscador({
   etiqueta,
+  placeholder,
   valor,
   alCambiar,
   cargando,
+  sinResultados,
+  mensajeVacio,
   tema,
   children,
 }: {
   etiqueta: string;
+  placeholder: string;
   valor: string;
   alCambiar: (valor: string) => void;
   cargando: boolean;
+  sinResultados: boolean;
+  mensajeVacio: string;
   tema: ReturnType<typeof usarTema>;
   children: React.ReactNode;
 }) {
   return (
-    <View>
-      <View style={[estilos.buscar, { borderColor: tema.borde }]}>
-        <Ionicons name="search" size={18} color={colores.gris} />
-        <TextInput
-          value={valor}
-          onChangeText={alCambiar}
-          placeholder={etiqueta}
-          placeholderTextColor={colores.gris}
+    <View style={estilos.busquedaBloque}>
+      <View style={estilos.busquedaFila}>
+        <CampoMovil
+          etiqueta={etiqueta}
+          valor={valor}
+          alCambiar={alCambiar}
+          placeholder={placeholder}
+          icono="search-outline"
           autoCapitalize="none"
-          style={[estilos.buscarCampo, { color: tema.texto }]}
+          estilo={estilos.flex}
         />
-        {cargando && <ActivityIndicator size="small" color={colores.azul} />}
+        {cargando ? (
+          <ActivityIndicator color={tema.primario} style={estilos.cargando} />
+        ) : null}
       </View>
       <View style={estilos.opciones}>{children}</View>
+      {sinResultados ? (
+        <Text style={[estilos.vacio, { color: tema.textoSecundario }]}>
+          {mensajeVacio}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -449,29 +518,40 @@ function Opcion({
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${titulo}. ${detalle}`}
       onPress={alPulsar}
-      style={[estilos.opcion, { borderColor: tema.borde }]}
+      style={({ pressed }) => [
+        estilos.opcion,
+        { borderColor: tema.borde },
+        pressed && { opacity: 0.65 },
+      ]}
     >
       <View style={estilos.expandir}>
         <Text style={[estilos.opcionTitulo, { color: tema.texto }]}>
           {titulo}
         </Text>
-        <Text style={estilos.opcionDetalle} numberOfLines={1}>
+        <Text
+          style={[estilos.opcionDetalle, { color: tema.textoSecundario }]}
+          numberOfLines={2}
+        >
           {detalle}
         </Text>
       </View>
-      <Ionicons name="add-circle-outline" size={20} color={colores.azul} />
+      <Ionicons name="add-circle-outline" size={22} color={tema.primario} />
     </Pressable>
   );
 }
 
 function Seleccion({
+  icono,
   titulo,
   detalle,
   es,
   tema,
   alCambiar,
 }: {
+  icono: "person" | "cube";
   titulo: string;
   detalle: string;
   es: boolean;
@@ -479,189 +559,90 @@ function Seleccion({
   alCambiar: () => void;
 }) {
   return (
-    <View style={estilos.seleccion}>
-      <Ionicons name="checkmark-circle" size={22} color={colores.verde} />
+    <View style={[estilos.seleccion, { backgroundColor: tema.exitoSuave }]}>
+      <Ionicons name={icono} size={22} color={tema.exito} />
       <View style={estilos.expandir}>
         <Text style={[estilos.opcionTitulo, { color: tema.texto }]}>
           {titulo}
         </Text>
-        <Text style={estilos.opcionDetalle} numberOfLines={1}>
+        <Text
+          style={[estilos.opcionDetalle, { color: tema.textoSecundario }]}
+          numberOfLines={3}
+        >
           {detalle}
         </Text>
       </View>
-      <Pressable onPress={alCambiar} style={estilos.cambiar}>
-        <Text style={estilos.cambiarTexto}>{es ? "Cambiar" : "Change"}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={es ? `Cambiar ${titulo}` : `Change ${titulo}`}
+        onPress={alCambiar}
+        style={estilos.cambiar}
+      >
+        <Text style={[estilos.cambiarTexto, { color: tema.primario }]}>
+          {es ? "Cambiar" : "Change"}
+        </Text>
       </Pressable>
     </View>
   );
 }
 
-function Campo({
-  etiqueta,
-  valor,
-  alCambiar,
-  tema,
-  teclado,
-  placeholder,
-  multilinea,
-  contenedor,
-}: {
-  etiqueta: string;
-  valor: string;
-  alCambiar: (valor: string) => void;
-  tema: ReturnType<typeof usarTema>;
-  teclado?: "number-pad";
-  placeholder?: string;
-  multilinea?: boolean;
-  contenedor?: object;
-}) {
-  return (
-    <View style={contenedor}>
-      <Text style={estilos.etiqueta}>{etiqueta}</Text>
-      <TextInput
-        value={valor}
-        onChangeText={alCambiar}
-        keyboardType={teclado}
-        placeholder={placeholder}
-        placeholderTextColor={colores.gris}
-        multiline={multilinea}
-        maxLength={multilinea ? 1000 : undefined}
-        style={[
-          estilos.campo,
-          multilinea && estilos.notas,
-          { borderColor: tema.borde, color: tema.texto },
-        ]}
-      />
-    </View>
-  );
-}
-
 const estilos = StyleSheet.create({
-  fondo: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,.5)",
-    justifyContent: "flex-end",
-  },
-  modal: {
-    maxHeight: "94%",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 18,
-    paddingBottom: Platform.OS === "ios" ? 30 : 18,
-  },
-  encabezado: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  titulo: { fontSize: 21, fontWeight: "900" },
-  subtitulo: {
-    color: colores.gris,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 4,
-  },
-  expandir: { flex: 1 },
-  cerrar: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  desplazable: { maxHeight: 610 },
-  formulario: { gap: 13, paddingVertical: 14, paddingBottom: 24 },
-  sinConexion: {
-    flexDirection: "row",
-    gap: 8,
-    backgroundColor: "#fff2e8",
-    borderRadius: 11,
-    padding: 11,
-  },
-  sinConexionTexto: { flex: 1, color: "#8a3b12", fontSize: 11, lineHeight: 17 },
-  seccion: { borderWidth: 1, borderRadius: 14, padding: 13 },
-  seccionTituloFila: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 11,
-  },
-  numero: {
-    width: 25,
-    height: 25,
-    borderRadius: 13,
-    textAlign: "center",
-    textAlignVertical: "center",
-    backgroundColor: colores.azul,
-    color: "white",
-    fontWeight: "900",
-    fontSize: 12,
-    lineHeight: 25,
-  },
-  seccionTitulo: { fontSize: 15, fontWeight: "900" },
-  buscar: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderRadius: 11,
-    paddingHorizontal: 11,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  buscarCampo: { flex: 1, minHeight: 46 },
-  opciones: { gap: 7, marginTop: 8 },
+  contenido: { gap: 16 },
+  paso: { gap: 15 },
+  pasoTitulo: { fontSize: 19, lineHeight: 25, fontWeight: "900" },
+  pasoDetalle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
+  accionesPie: { gap: 2 },
+  busquedaBloque: { gap: 7 },
+  busquedaFila: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+  cargando: { width: tactilMinimo, height: tactilMinimo },
+  opciones: { gap: 7 },
   opcion: {
-    minHeight: 54,
+    minHeight: 64,
     borderTopWidth: 1,
-    paddingTop: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  opcionTitulo: { fontSize: 13, fontWeight: "800" },
-  opcionDetalle: { color: colores.gris, fontSize: 10, marginTop: 3 },
-  seleccion: {
-    minHeight: 56,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 9,
-    backgroundColor: "#defbe6",
-    borderRadius: 11,
-    padding: 11,
   },
-  cambiar: { minHeight: 40, justifyContent: "center", paddingHorizontal: 4 },
-  cambiarTexto: { color: colores.azul, fontSize: 11, fontWeight: "800" },
-  filaCampos: { flexDirection: "row", gap: 10 },
-  cantidad: { width: 95 },
-  etiqueta: {
-    color: colores.gris,
-    fontSize: 10,
-    fontWeight: "800",
-    marginBottom: 6,
-  },
-  campo: {
-    minHeight: 46,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 11,
-  },
-  notas: { height: 75, paddingTop: 10, textAlignVertical: "top" },
-  resumen: {
+  opcionTitulo: { fontSize: 14, lineHeight: 19, fontWeight: "800" },
+  opcionDetalle: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  seleccion: {
+    minHeight: 72,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    backgroundColor: colores.azulClaro,
-    borderRadius: 13,
-    padding: 14,
+    gap: 10,
+    borderRadius: radios.campo,
+    padding: 12,
   },
-  resumenEtiqueta: { color: colores.azul, fontSize: 9, fontWeight: "900" },
-  resumenTexto: { fontSize: 14, fontWeight: "900", marginTop: 4 },
-  resumenCliente: { color: colores.gris, fontSize: 10, marginTop: 2 },
-  total: { color: colores.azul, fontSize: 17, fontWeight: "900" },
-  guardar: {
-    minHeight: 53,
-    borderRadius: 12,
-    backgroundColor: colores.azul,
-    flexDirection: "row",
-    alignItems: "center",
+  cambiar: {
+    minHeight: tactilMinimo,
     justifyContent: "center",
-    gap: 8,
+    paddingHorizontal: 3,
   },
-  guardarTexto: { color: "white", fontWeight: "900", fontSize: 15 },
-  deshabilitado: { opacity: 0.43 },
+  cambiarTexto: { fontSize: 12, fontWeight: "900" },
+  fila: { flexDirection: "row", gap: 11 },
+  apilada: { flexDirection: "column" },
+  flex: { flex: 1 },
+  resumen: { flexDirection: "row", alignItems: "center", gap: 12 },
+  resumenEtiqueta: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+  },
+  resumenTexto: {
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "900",
+    marginTop: 3,
+  },
+  resumenCliente: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  total: { fontSize: 18, lineHeight: 24, fontWeight: "900" },
+  vacio: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    paddingVertical: 20,
+  },
+  expandir: { flex: 1, minWidth: 0 },
 });

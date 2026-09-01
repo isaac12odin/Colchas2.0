@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
 
 import type { Rol } from "../../tipos";
-import { colores, type usarTema } from "../../tema";
+import type { usarTema } from "../../tema";
 
 const pasosPorRol: Partial<Record<Rol, string[]>> = {
   COBRADOR: [
@@ -46,18 +46,24 @@ export function GuiaRapidaRolMovil({
       ]}
     >
       <View style={estilos.encabezado}>
-        <Ionicons name="list-circle" size={22} color={colores.azul} />
+        <Ionicons name="list-circle" size={24} color={tema.primario} />
         <View style={estilos.flex}>
           <Text style={[estilos.titulo, { color: tema.texto }]}>
             Cómo trabajar hoy
           </Text>
-          <Text style={estilos.detalle}>Pasos para {rol.toLowerCase()}</Text>
+          <Text style={[estilos.detalle, { color: tema.textoSecundario }]}>
+            Pasos para {rol.toLowerCase()}
+          </Text>
         </View>
       </View>
       {pasos.map((paso, indice) => (
         <View key={paso} style={estilos.paso}>
-          <View style={estilos.numero}>
-            <Text style={estilos.numeroTexto}>{indice + 1}</Text>
+          <View
+            style={[estilos.numero, { backgroundColor: tema.primarioSuave }]}
+          >
+            <Text style={[estilos.numeroTexto, { color: tema.primario }]}>
+              {indice + 1}
+            </Text>
           </View>
           <Text style={[estilos.pasoTexto, { color: tema.texto }]}>{paso}</Text>
         </View>
@@ -67,7 +73,7 @@ export function GuiaRapidaRolMovil({
 }
 
 const estilos = StyleSheet.create({
-  contenedor: { borderWidth: 1, borderRadius: 8, padding: 15, gap: 11 },
+  contenedor: { borderWidth: 1, borderRadius: 16, padding: 16, gap: 14 },
   encabezado: {
     flexDirection: "row",
     alignItems: "center",
@@ -76,16 +82,22 @@ const estilos = StyleSheet.create({
   },
   flex: { flex: 1 },
   titulo: { fontSize: 16, fontWeight: "900" },
-  detalle: { color: colores.gris, fontSize: 10, marginTop: 2 },
-  paso: { flexDirection: "row", gap: 9, alignItems: "flex-start" },
+  detalle: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  paso: {
+    flexDirection: "row",
+    gap: 11,
+    alignItems: "flex-start",
+    minHeight: 48,
+    paddingVertical: 5,
+  },
   numero: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colores.azulClaro,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
-  numeroTexto: { color: colores.azul, fontSize: 11, fontWeight: "900" },
-  pasoTexto: { flex: 1, fontSize: 11, lineHeight: 17 },
+  numeroTexto: { fontSize: 13, fontWeight: "900" },
+  pasoTexto: { flex: 1, fontSize: 13, lineHeight: 20, paddingTop: 3 },
 });

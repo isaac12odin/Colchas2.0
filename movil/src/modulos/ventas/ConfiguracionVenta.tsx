@@ -1,130 +1,243 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { colores, type usarTema } from "../../tema";
-import type { Periodicidad, TipoVenta } from "./dominioVenta";
+import {
+  CampoMovil,
+  EstadoMovil,
+  SelectorSegmentado,
+  TarjetaMovil,
+  usarDisenoResponsivo,
+} from "../../componentes/ui";
+import { usarTema } from "../../tema";
+import { dinero } from "../../utilidades/formato";
+import { parsearDineroCapturado } from "../../utilidades/dinero";
+import type { MetodoPago, Periodicidad, TipoVenta } from "./dominioVenta";
 
 interface Propiedades {
   tipo: TipoVenta;
   montoTotal: number;
   anticipo: string;
+  metodoAnticipo: MetodoPago;
   periodicidad: Periodicidad;
   cuota: string;
   primerVencimiento: string;
   numeroTarjeta: string;
   es: boolean;
-  tema: ReturnType<typeof usarTema>;
+  permiteCredito?: boolean;
   alCambiarTipo: (valor: TipoVenta) => void;
   alCambiarAnticipo: (valor: string) => void;
+  alCambiarMetodoAnticipo: (valor: MetodoPago) => void;
   alCambiarPeriodicidad: (valor: Periodicidad) => void;
   alCambiarCuota: (valor: string) => void;
   alCambiarVencimiento: (valor: string) => void;
   alCambiarNumeroTarjeta: (valor: string) => void;
 }
 
-export function ConfiguracionVenta({ es, tema, ...control }: Propiedades) {
+export function ConfiguracionVenta({ es, ...control }: Propiedades) {
+  const tema = usarTema();
+  const diseno = usarDisenoResponsivo();
+  const anticipoCapturado = parsearDineroCapturado(control.anticipo);
+  const anticipoNumero = anticipoCapturado ?? 0;
+  const anticipoInvalido =
+    control.anticipo.trim().length > 0 && anticipoCapturado === null;
+  const cuotaCapturada = parsearDineroCapturado(control.cuota);
+  const cuotaInvalida =
+    control.cuota.trim().length > 0 &&
+    (cuotaCapturada === null || cuotaCapturada <= 0);
   const saldoNuevo =
     control.tipo === "CREDITO"
-      ? Math.max(0, control.montoTotal - Number(control.anticipo || 0))
+      ? Math.max(0, control.montoTotal - anticipoNumero)
       : 0;
   const requiereFinanciamiento = saldoNuevo > 0;
+  const opcionesMetodo = [
+    { valor: "EFECTIVO" as const, texto: es ? "Efectivo" : "Cash" },
+    {
+      valor: "TRANSFERENCIA" as const,
+      texto: es ? "Transfer." : "Transfer",
+    },
+    { valor: "TARJETA" as const, texto: es ? "Tarjeta" : "Card" },
+    { valor: "OTRO" as const, texto: es ? "Otro" : "Other" },
+  ];
+
   return (
-    <View
-      style={[
-        estilos.panel,
-        { backgroundColor: tema.panel, borderColor: tema.borde },
-      ]}
-    >
-      <Text style={[estilos.subtitulo, { color: tema.texto }]}>
-        {es ? "Forma de venta" : "Sale type"}
-      </Text>
-      <View style={estilos.selector}>
-        {(["CREDITO", "CONTADO"] as const).map((opcion) => (
-          <Opcion
-            key={opcion}
-            texto={
-              opcion === "CREDITO"
-                ? es
-                  ? "Crédito"
-                  : "Credit"
-                : es
-                  ? "Contado"
-                  : "Cash"
-            }
-            activa={control.tipo === opcion}
-            tema={tema}
-            alPulsar={() => control.alCambiarTipo(opcion)}
-          />
-        ))}
+    <View style={estilos.contenido}>
+      <View>
+        <Text style={[estilos.titulo, { color: tema.texto }]}>
+          {es ? "¿Cómo pagará?" : "How will they pay?"}
+        </Text>
+        <Text style={[estilos.detalle, { color: tema.textoSecundario }]}>
+          {es
+            ? "Define contado o crédito antes de confirmar."
+            : "Choose cash or credit before confirming."}
+        </Text>
       </View>
-      {control.tipo === "CREDITO" && (
+
+      <SelectorSegmentado
+        etiqueta={es ? "Tipo de venta" : "Sale type"}
+        valor={control.tipo}
+        alCambiar={control.alCambiarTipo}
+        opciones={[
+          ...(control.permiteCredito !== false
+            ? [{ valor: "CREDITO" as const, texto: es ? "Crédito" : "Credit" }]
+            : []),
+          { valor: "CONTADO" as const, texto: es ? "Contado" : "Paid in full" },
+        ]}
+      />
+
+      <TarjetaMovil estilo={estilos.resumenImporte}>
+        <View style={estilos.filaImporte}>
+          <Text
+            style={[estilos.importeEtiqueta, { color: tema.textoSecundario }]}
+          >
+            {es ? "Total de productos" : "Product total"}
+          </Text>
+          <Text style={[estilos.total, { color: tema.texto }]}>
+            {dinero.format(control.montoTotal)}
+          </Text>
+        </View>
+        <View style={[estilos.separador, { backgroundColor: tema.borde }]} />
+        <View style={estilos.filaImporte}>
+          <Text
+            style={[estilos.importeEtiqueta, { color: tema.textoSecundario }]}
+          >
+            {es ? "Saldo que se agregará" : "Balance to add"}
+          </Text>
+          <Text style={[estilos.saldo, { color: tema.primario }]}>
+            {dinero.format(saldoNuevo)}
+          </Text>
+        </View>
+      </TarjetaMovil>
+
+      {control.tipo === "CONTADO" ? (
+        <View style={estilos.bloque}>
+          <SelectorSegmentado
+            etiqueta={
+              es ? "¿Cómo recibió el total?" : "How was the total paid?"
+            }
+            valor={control.metodoAnticipo}
+            alCambiar={control.alCambiarMetodoAnticipo}
+            opciones={opcionesMetodo}
+          />
+          <EstadoMovil
+            tipo="exito"
+            texto={
+              es
+                ? "La venta queda liquidada, entra al corte con este método y no aumenta el saldo."
+                : "This sale is paid in full, enters the cash close under this method, and adds no balance."
+            }
+          />
+        </View>
+      ) : (
         <>
-          {requiereFinanciamiento && (
-            <>
-              <Etiqueta>
-                {es
-                  ? "Número de tarjeta asignado por ti"
-                  : "Card number assigned by you"}
-              </Etiqueta>
-              <Campo
+          <View style={estilos.bloque}>
+            <CampoMovil
+              etiqueta={es ? "Anticipo recibido" : "Deposit received"}
+              ayuda={
+                es
+                  ? "Escribe 0 si no recibes anticipo."
+                  : "Enter 0 when no deposit is received."
+              }
+              valor={control.anticipo}
+              alCambiar={control.alCambiarAnticipo}
+              teclado="decimal-pad"
+              placeholder="0.00"
+              icono="cash-outline"
+              error={
+                anticipoInvalido
+                  ? es
+                    ? "Escribe un importe válido con máximo dos decimales."
+                    : "Enter a valid amount with up to two decimals."
+                  : undefined
+              }
+              requerido
+            />
+            {anticipoNumero > 0 ? (
+              <SelectorSegmentado
+                etiqueta={es ? "Método del anticipo" : "Deposit method"}
+                valor={control.metodoAnticipo}
+                alCambiar={control.alCambiarMetodoAnticipo}
+                opciones={opcionesMetodo}
+              />
+            ) : null}
+          </View>
+
+          {requiereFinanciamiento ? (
+            <View style={estilos.bloque}>
+              <Text style={[estilos.bloqueTitulo, { color: tema.texto }]}>
+                {es ? "Datos del crédito" : "Credit details"}
+              </Text>
+              <CampoMovil
+                etiqueta={
+                  es ? "Número de tarjeta asignado" : "Assigned card number"
+                }
+                ayuda={
+                  es
+                    ? "Este número lo captura el operador; no se genera solo."
+                    : "The operator enters this number; it is not generated automatically."
+                }
                 valor={control.numeroTarjeta}
                 alCambiar={control.alCambiarNumeroTarjeta}
-                tema={tema}
                 placeholder={es ? "Ej. 0042" : "E.g. 0042"}
+                icono="card-outline"
+                requerido
               />
-            </>
-          )}
-          <Etiqueta>{es ? "Anticipo en efectivo" : "Cash deposit"}</Etiqueta>
-          <Campo
-            valor={control.anticipo}
-            alCambiar={control.alCambiarAnticipo}
-            tema={tema}
-            numerico
-          />
-          <Text style={estilos.saldo}>
-            {es ? "Saldo a financiar" : "Balance to finance"}: ${" "}
-            {saldoNuevo.toFixed(2)}
-          </Text>
-          {requiereFinanciamiento && (
-            <>
-              <Etiqueta>{es ? "Periodicidad" : "Frequency"}</Etiqueta>
-              <View style={estilos.selector}>
-                {(["SEMANAL", "QUINCENAL", "MENSUAL"] as const).map(
-                  (opcion) => (
-                    <Opcion
-                      key={opcion}
-                      texto={opcion}
-                      activa={control.periodicidad === opcion}
-                      compacta
-                      tema={tema}
-                      alPulsar={() => control.alCambiarPeriodicidad(opcion)}
-                    />
-                  ),
-                )}
+              <SelectorSegmentado
+                etiqueta={es ? "Cada cuándo pagará" : "Payment frequency"}
+                valor={control.periodicidad}
+                alCambiar={control.alCambiarPeriodicidad}
+                opciones={[
+                  { valor: "SEMANAL", texto: es ? "Semanal" : "Weekly" },
+                  {
+                    valor: "QUINCENAL",
+                    texto: es ? "Quincenal" : "Biweekly",
+                  },
+                  { valor: "MENSUAL", texto: es ? "Mensual" : "Monthly" },
+                ]}
+              />
+              <View
+                style={[
+                  estilos.camposPlan,
+                  (diseno.compacto || diseno.fontScale > 1.2) &&
+                    estilos.camposApilados,
+                ]}
+              >
+                <CampoMovil
+                  etiqueta={es ? "Monto de cada abono" : "Installment amount"}
+                  valor={control.cuota}
+                  alCambiar={control.alCambiarCuota}
+                  teclado="decimal-pad"
+                  placeholder="250.00"
+                  icono="wallet-outline"
+                  error={
+                    cuotaInvalida
+                      ? es
+                        ? "La cuota debe ser mayor a cero."
+                        : "The installment must be greater than zero."
+                      : undefined
+                  }
+                  requerido
+                  estilo={estilos.campoPlan}
+                />
+                <CampoMovil
+                  etiqueta={es ? "Primer vencimiento" : "First due date"}
+                  ayuda={es ? "Formato AAAA-MM-DD" : "YYYY-MM-DD format"}
+                  valor={control.primerVencimiento}
+                  alCambiar={control.alCambiarVencimiento}
+                  placeholder="AAAA-MM-DD"
+                  icono="calendar-outline"
+                  requerido
+                  estilo={estilos.campoPlan}
+                />
               </View>
-              <View style={estilos.dosCampos}>
-                <View style={estilos.expandir}>
-                  <Etiqueta>{es ? "Cuota" : "Installment"}</Etiqueta>
-                  <Campo
-                    valor={control.cuota}
-                    alCambiar={control.alCambiarCuota}
-                    tema={tema}
-                    numerico
-                    placeholder="250"
-                  />
-                </View>
-                <View style={estilos.vencimiento}>
-                  <Etiqueta>
-                    {es ? "Primer vencimiento" : "First due date"}
-                  </Etiqueta>
-                  <Campo
-                    valor={control.primerVencimiento}
-                    alCambiar={control.alCambiarVencimiento}
-                    tema={tema}
-                    placeholder="AAAA-MM-DD"
-                  />
-                </View>
-              </View>
-            </>
+            </View>
+          ) : (
+            <EstadoMovil
+              tipo="exito"
+              texto={
+                es
+                  ? "El pago cubre toda la venta: se registrará como contado, con este método y sin crear deuda."
+                  : "The payment covers the whole sale: it will be recorded as paid in full with this method and no debt."
+              }
+            />
           )}
         </>
       )}
@@ -132,114 +245,24 @@ export function ConfiguracionVenta({ es, tema, ...control }: Propiedades) {
   );
 }
 
-function Opcion({
-  texto,
-  activa,
-  compacta,
-  tema,
-  alPulsar,
-}: {
-  texto: string;
-  activa: boolean;
-  compacta?: boolean;
-  tema: ReturnType<typeof usarTema>;
-  alPulsar: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={alPulsar}
-      style={[
-        compacta ? estilos.opcionChica : estilos.opcion,
-        activa && estilos.activa,
-      ]}
-    >
-      <Text
-        style={
-          activa
-            ? estilos.textoActivo
-            : compacta
-              ? estilos.textoChico
-              : { color: tema.texto }
-        }
-      >
-        {texto}
-      </Text>
-    </Pressable>
-  );
-}
-
-function Etiqueta({ children }: { children: string }) {
-  return <Text style={estilos.etiqueta}>{children}</Text>;
-}
-
-function Campo({
-  valor,
-  alCambiar,
-  tema,
-  numerico,
-  placeholder,
-}: {
-  valor: string;
-  alCambiar: (valor: string) => void;
-  tema: ReturnType<typeof usarTema>;
-  numerico?: boolean;
-  placeholder?: string;
-}) {
-  return (
-    <TextInput
-      value={valor}
-      onChangeText={alCambiar}
-      keyboardType={numerico ? "decimal-pad" : "default"}
-      placeholder={placeholder}
-      placeholderTextColor={colores.gris}
-      style={[estilos.campo, { borderColor: tema.borde, color: tema.texto }]}
-    />
-  );
-}
-
 const estilos = StyleSheet.create({
-  panel: { borderWidth: 1, borderRadius: 14, padding: 15, marginTop: 16 },
-  subtitulo: { fontSize: 16, fontWeight: "800" },
-  selector: { flexDirection: "row", gap: 7, marginTop: 10 },
-  opcion: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colores.borde,
-    borderRadius: 10,
-    padding: 11,
+  contenido: { gap: 18 },
+  titulo: { fontSize: 20, lineHeight: 26, fontWeight: "900" },
+  detalle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
+  resumenImporte: { gap: 11 },
+  filaImporte: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
-  opcionChica: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colores.borde,
-    borderRadius: 9,
-    paddingVertical: 9,
-    alignItems: "center",
-  },
-  activa: { backgroundColor: colores.azul, borderColor: colores.azul },
-  textoActivo: { color: "white", fontWeight: "800", fontSize: 12 },
-  textoChico: { color: colores.gris, fontWeight: "700", fontSize: 9 },
-  etiqueta: {
-    color: colores.gris,
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 14,
-    marginBottom: 6,
-  },
-  campo: {
-    borderWidth: 1,
-    borderRadius: 10,
-    height: 45,
-    paddingHorizontal: 11,
-  },
-  saldo: {
-    color: colores.azul,
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 10,
-  },
-  dosCampos: { flexDirection: "row", gap: 9 },
-  expandir: { flex: 1 },
-  vencimiento: { flex: 1.35 },
+  importeEtiqueta: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: "700" },
+  total: { fontSize: 18, lineHeight: 24, fontWeight: "900" },
+  saldo: { fontSize: 20, lineHeight: 26, fontWeight: "900" },
+  separador: { height: 1 },
+  bloque: { gap: 15 },
+  bloqueTitulo: { fontSize: 16, lineHeight: 21, fontWeight: "900" },
+  camposPlan: { flexDirection: "row", gap: 11 },
+  camposApilados: { flexDirection: "column" },
+  campoPlan: { flex: 1 },
 });

@@ -153,7 +153,7 @@ export interface paths {
     /** Lista usuarios */
     get: operations["getUsuarios"];
     put?: never;
-    /** Crea usuario con contraseña final sin cambio forzado */
+    /** Crea usuario con contraseña temporal y cambio obligatorio */
     post: operations["postUsuarios"];
     delete?: never;
     options?: never;
@@ -187,7 +187,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Asigna una contraseña nueva y revoca sesiones */
+    /** Asigna contraseña temporal, revoca sesiones y fuerza su cambio */
     post: operations["postUsuariosIdRestablecerContrasena"];
     delete?: never;
     options?: never;

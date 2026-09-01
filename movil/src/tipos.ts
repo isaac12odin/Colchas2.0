@@ -29,6 +29,8 @@ export interface ProductoMovil {
   codigoQr?: string | null;
   existencia: number;
   precioVenta: string;
+  tieneFoto?: boolean;
+  fotoActualizadaEn?: string | null;
   actualizadoEn: string;
 }
 export interface ItemPedidoMovil {
@@ -95,6 +97,18 @@ export interface ClienteJornada {
     cobrarHoy: number;
     proximoVencimiento: string | null;
     cuotasVencidas: number;
+    retardosHistoricos?: number;
+    diasRetardoActual?: number;
+    diasRetardoMaximo?: number;
+    vencimientos?: Array<{
+      cuotaId: string;
+      fecha: string;
+      esperado: number;
+      recibido: number;
+      diferencia: number;
+      diasRetardo: number;
+      estado: "PAGADO" | "PARCIAL" | "VENCIDO" | "PENDIENTE";
+    }>;
   };
 }
 export interface Jornada {

@@ -1,20 +1,13 @@
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
 
-import { colores, type usarTema } from "../../tema";
+import { BotonMovil, EstadoMovil, HojaFormulario } from "../../componentes/ui";
+import { radios, tactilMinimo, type usarTema } from "../../tema";
 import type { ControlPedidos } from "./usarPedidosMoviles";
 
 /**
- * Etapa independiente de la entrega: aquí Administración, Contabilidad o
- * Almacén dejan documentado quién surtirá cada artículo.
+ * Etapa separada de la entrega: Administración, Contabilidad o Almacén dejan
+ * documentado quién surtirá cada artículo. El cobrador nunca ve esta acción.
  */
 export function ModalAsignarProveedor({
   control,
@@ -25,147 +18,161 @@ export function ModalAsignarProveedor({
   es: boolean;
   tema: ReturnType<typeof usarTema>;
 }) {
-  const completo = Boolean(
-    control.gestion?.items.every((item) => control.proveedoresPorItem[item.id]),
-  );
+  const seleccionados =
+    control.gestion?.items.filter((item) =>
+      Boolean(control.proveedoresPorItem[item.id]),
+    ).length ?? 0;
+  const total = control.gestion?.items.length ?? 0;
+  const completo = total > 0 && seleccionados === total;
+
   return (
-    <Modal
+    <HojaFormulario
       visible={Boolean(control.gestion)}
-      transparent
-      animationType="slide"
-      onRequestClose={control.cerrarGestion}
+      bloqueada={control.guardando}
+      alCerrar={control.cerrarGestion}
+      titulo={es ? "¿Quién surtirá el pedido?" : "Who will supply this order?"}
+      subtitulo={
+        es
+          ? `${control.gestion?.folio ?? ""} · ${seleccionados} de ${total} artículos asignados`
+          : `${control.gestion?.folio ?? ""} · ${seleccionados} of ${total} items assigned`
+      }
+      estiloContenido={estilos.contenido}
+      pie={
+        <BotonMovil
+          texto={
+            completo
+              ? es
+                ? "Confirmar pedido al proveedor"
+                : "Confirm supplier order"
+              : es
+                ? `Faltan ${total - seleccionados} por asignar`
+                : `${total - seleccionados} still unassigned`
+          }
+          icono={completo ? "send" : "alert-circle-outline"}
+          deshabilitado={!completo}
+          cargando={control.guardando}
+          alPulsar={() => void control.confirmarProveedor()}
+        />
+      }
     >
-      <View style={estilos.fondo}>
-        <View style={[estilos.modal, { backgroundColor: tema.panel }]}>
-          <View style={estilos.encabezado}>
-            <View style={{ flex: 1 }}>
-              <Text style={[estilos.titulo, { color: tema.texto }]}>
-                {es ? "Asignar proveedor" : "Assign supplier"}
-              </Text>
-              <Text style={estilos.ayuda}>
-                {es
-                  ? "Paso 1 de 3 · define quién surtirá; no es una entrega."
-                  : "Step 1 of 3 · choose who will supply; this is not a delivery."}
+      <EstadoMovil
+        tipo="informacion"
+        texto={
+          es
+            ? "Esta acción sólo registra trazabilidad de compra. El saldo de la clienta no cambia hasta entregar."
+            : "This only records purchasing traceability. The customer's balance does not change until delivery."
+        }
+      />
+
+      {control.proveedores.length === 0 ? (
+        <EstadoMovil
+          tipo="advertencia"
+          texto={
+            es
+              ? "No hay proveedores activos. Créalo desde la web antes de continuar."
+              : "There are no active suppliers. Create one on the web before continuing."
+          }
+        />
+      ) : null}
+
+      {control.gestion?.items.map((item, indice) => (
+        <View
+          key={item.id}
+          style={[
+            estilos.item,
+            { backgroundColor: tema.panelElevado, borderColor: tema.borde },
+          ]}
+        >
+          <View style={estilos.itemEncabezado}>
+            <View
+              style={[estilos.numero, { backgroundColor: tema.primarioSuave }]}
+            >
+              <Text style={[estilos.numeroTexto, { color: tema.primario }]}>
+                {indice + 1}
               </Text>
             </View>
-            <Pressable onPress={control.cerrarGestion} style={estilos.cerrar}>
-              <Ionicons name="close" size={24} color={tema.texto} />
-            </Pressable>
-          </View>
-          <ScrollView contentContainerStyle={estilos.items}>
-            {control.gestion?.items.map((item) => (
-              <View
-                key={item.id}
-                style={[estilos.item, { borderColor: tema.borde }]}
+            <View style={estilos.expandir}>
+              <Text style={[estilos.itemNombre, { color: tema.texto }]}>
+                {item.cantidad} × {item.descripcion}
+              </Text>
+              <Text
+                style={[estilos.itemAyuda, { color: tema.textoSecundario }]}
               >
-                <Text style={[estilos.itemNombre, { color: tema.texto }]}>
-                  {item.cantidad} × {item.descripcion}
-                </Text>
-                <View style={estilos.opciones}>
-                  {control.proveedores.map((proveedor) => {
-                    const activo =
-                      control.proveedoresPorItem[item.id] === proveedor.id;
-                    return (
-                      <Pressable
-                        key={proveedor.id}
-                        onPress={() =>
-                          control.establecerProveedor(item.id, proveedor.id)
-                        }
-                        style={[
-                          estilos.opcion,
-                          { borderColor: activo ? colores.azul : tema.borde },
-                          activo && estilos.opcionActiva,
-                        ]}
-                      >
-                        <Ionicons
-                          name={activo ? "checkmark-circle" : "ellipse-outline"}
-                          size={17}
-                          color={activo ? colores.azul : colores.gris}
-                        />
-                        <Text
-                          style={{
-                            color: activo ? colores.azul : tema.texto,
-                            fontWeight: "700",
-                            flexShrink: 1,
-                          }}
-                        >
-                          {proveedor.nombre}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-          <Pressable
-            disabled={!completo || control.guardando}
-            style={[
-              estilos.boton,
-              (!completo || control.guardando) && estilos.deshabilitado,
-            ]}
-            onPress={() => void control.confirmarProveedor()}
-          >
-            {control.guardando ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Ionicons name="send" color="white" size={18} />
-            )}
-            <Text style={estilos.botonTexto}>
-              {es ? "Confirmar pedido al proveedor" : "Confirm supplier order"}
-            </Text>
-          </Pressable>
+                {es ? "Selecciona un proveedor" : "Select one supplier"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={estilos.opciones}>
+            {control.proveedores.map((proveedor) => {
+              const activo =
+                control.proveedoresPorItem[item.id] === proveedor.id;
+              return (
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: activo }}
+                  accessibilityLabel={proveedor.nombre}
+                  key={proveedor.id}
+                  onPress={() =>
+                    control.establecerProveedor(item.id, proveedor.id)
+                  }
+                  style={({ pressed }) => [
+                    estilos.opcion,
+                    {
+                      borderColor: activo ? tema.primario : tema.bordeFuerte,
+                      backgroundColor: activo ? tema.primarioSuave : tema.campo,
+                      opacity: pressed ? 0.72 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={activo ? "checkmark-circle" : "ellipse-outline"}
+                    size={21}
+                    color={activo ? tema.primario : tema.textoTenue}
+                  />
+                  <Text
+                    style={[
+                      estilos.opcionTexto,
+                      { color: activo ? tema.primario : tema.texto },
+                    ]}
+                  >
+                    {proveedor.nombre}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
-      </View>
-    </Modal>
+      ))}
+    </HojaFormulario>
   );
 }
 
 const estilos = StyleSheet.create({
-  fondo: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,.48)",
-    justifyContent: "flex-end",
-  },
-  modal: {
-    maxHeight: "86%",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 22,
-    paddingBottom: 36,
-  },
-  encabezado: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  titulo: { fontSize: 20, fontWeight: "900" },
-  ayuda: { color: colores.gris, fontSize: 12, lineHeight: 18, marginTop: 4 },
-  cerrar: {
-    width: 44,
-    height: 44,
+  contenido: { gap: 14 },
+  item: { borderWidth: 1, borderRadius: radios.tarjeta, padding: 14, gap: 12 },
+  itemEncabezado: { flexDirection: "row", alignItems: "center", gap: 10 },
+  numero: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  items: { gap: 12, paddingVertical: 18 },
-  item: { borderWidth: 1, borderRadius: 14, padding: 14 },
-  itemNombre: { fontSize: 14, fontWeight: "800", marginBottom: 10 },
+  numeroTexto: { fontSize: 14, lineHeight: 19, fontWeight: "900" },
+  itemNombre: { fontSize: 15, lineHeight: 21, fontWeight: "900" },
+  itemAyuda: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   opciones: { gap: 8 },
   opcion: {
-    minHeight: 44,
+    minHeight: tactilMinimo,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: radios.campo,
     paddingHorizontal: 12,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 9,
   },
-  opcionActiva: { backgroundColor: "#edf5ff" },
-  boton: {
-    minHeight: 52,
-    borderRadius: 11,
-    backgroundColor: colores.azul,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  botonTexto: { color: "white", fontWeight: "800" },
-  deshabilitado: { opacity: 0.45 },
+  opcionTexto: { flex: 1, fontSize: 14, lineHeight: 19, fontWeight: "800" },
+  expandir: { flex: 1, minWidth: 0 },
 });

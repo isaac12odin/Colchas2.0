@@ -1,9 +1,21 @@
 import type { Jornada, ProductoMovil } from "../../tipos";
-import { redondearMoneda } from "../../utilidades/dinero";
+import {
+  parsearDineroCapturado,
+  redondearMoneda,
+} from "../../utilidades/dinero";
+import {
+  esFechaHoyOFutura,
+  finDiaMexicoISO,
+} from "../../utilidades/fechaLocal";
+import {
+  proyectarEstadoCuentaTrasCargo,
+  type PlanCreditoProyectado,
+} from "../../utilidades/proyeccionEstadoCuenta";
 
 export type TipoVenta = "CREDITO" | "CONTADO";
 export type Periodicidad = "SEMANAL" | "QUINCENAL" | "MENSUAL";
-export type PasoVenta = "PRODUCTOS" | "CONFIRMAR";
+export type MetodoPago = "EFECTIVO" | "TRANSFERENCIA" | "TARJETA" | "OTRO";
+export type PasoVenta = "PRODUCTOS" | "PAGO" | "CONFIRMAR";
 
 export interface LineaCarrito extends ProductoMovil {
   cantidad: number;
@@ -52,10 +64,12 @@ export function calcularImportes(
       0,
     ),
   );
-  const anticipoNumero = redondearMoneda(Number(anticipo || 0));
+  const anticipoParseado = parsearDineroCapturado(anticipo);
+  const anticipoNumero = anticipoParseado ?? 0;
   return {
     total,
     anticipoNumero,
+    anticipoValido: anticipoParseado !== null,
     financiado:
       tipo === "CREDITO"
         ? redondearMoneda(Math.max(0, total - anticipoNumero))
@@ -69,12 +83,17 @@ export function validarVenta(entrada: {
   clienteId?: string;
   total: number;
   anticipo: number;
+  anticipoValido?: boolean;
   numeroTarjeta: string;
   cuota: string;
   primerVencimiento: string;
 }) {
   if (!entrada.carrito.length) return "PRODUCTO" as const;
-  if (entrada.anticipo < 0 || entrada.anticipo > entrada.total) {
+  if (
+    entrada.anticipoValido === false ||
+    entrada.anticipo < 0 ||
+    entrada.anticipo > entrada.total
+  ) {
     return "ANTICIPO" as const;
   }
   if (
@@ -88,8 +107,8 @@ export function validarVenta(entrada: {
     entrada.tipo === "CREDITO" &&
     (!entrada.clienteId ||
       (entrada.total - entrada.anticipo > 0 &&
-        (!(Number(entrada.cuota) > 0) ||
-          !/^\d{4}-\d{2}-\d{2}$/.test(entrada.primerVencimiento))))
+        (!((parsearDineroCapturado(entrada.cuota) ?? 0) > 0) ||
+          !esFechaHoyOFutura(entrada.primerVencimiento))))
   ) {
     return "CREDITO" as const;
   }
@@ -106,6 +125,7 @@ export function crearDatosVenta(entrada: {
   cuota: string;
   primerVencimiento: string;
   fechaVenta: string;
+  metodoAnticipo?: MetodoPago;
 }) {
   const total = redondearMoneda(
     entrada.carrito.reduce(
@@ -115,15 +135,26 @@ export function crearDatosVenta(entrada: {
   );
   const requiereFinanciamiento =
     entrada.tipo === "CREDITO" && total - entrada.anticipo > 0;
+  const tipoNormalizado = requiereFinanciamiento
+    ? "CREDITO"
+    : entrada.clienteId
+      ? "CONTADO"
+      : "PUBLICO";
+  const montoCuota = requiereFinanciamiento
+    ? parsearDineroCapturado(entrada.cuota)
+    : null;
+  if (requiereFinanciamiento && !(montoCuota && montoCuota > 0)) {
+    throw new Error("CUOTA_INVALIDA");
+  }
   const datos: Record<string, unknown> = {
     clienteId: entrada.clienteId ?? null,
-    tipo: entrada.tipo,
+    tipo: tipoNormalizado,
     descuento: 0,
-    anticipo: entrada.tipo === "CREDITO" ? entrada.anticipo : 0,
+    anticipo: requiereFinanciamiento ? entrada.anticipo : 0,
     numeroTarjeta: requiereFinanciamiento
       ? entrada.numeroTarjeta.trim()
       : undefined,
-    metodoAnticipo: "EFECTIVO",
+    metodoAnticipo: entrada.metodoAnticipo ?? "EFECTIVO",
     fechaVenta: entrada.fechaVenta,
     notas: "Venta registrada en ruta desde el móvil",
     items: entrada.carrito.map((linea) => ({
@@ -135,10 +166,8 @@ export function crearDatosVenta(entrada: {
   if (requiereFinanciamiento) {
     datos.plan = {
       periodicidad: entrada.periodicidad,
-      montoCuota: Number(entrada.cuota),
-      primerVencimiento: new Date(
-        `${entrada.primerVencimiento}T12:00:00`,
-      ).toISOString(),
+      montoCuota,
+      primerVencimiento: finDiaMexicoISO(entrada.primerVencimiento),
     };
   }
   return datos;
@@ -160,6 +189,7 @@ export function proyectarSaldoVenta(
   jornada: Jornada,
   clienteId: string,
   financiado: number,
+  plan?: PlanCreditoProyectado,
 ): Jornada {
   return {
     ...jornada,
@@ -174,6 +204,12 @@ export function proyectarSaldoVenta(
                 ),
               ),
             },
+            estadoCuenta: proyectarEstadoCuentaTrasCargo(
+              cliente.estadoCuenta,
+              Number(cliente.saldo?.saldoActual ?? 0),
+              financiado,
+              plan,
+            ),
           }
         : cliente,
     ),

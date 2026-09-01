@@ -5,6 +5,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { AppState } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import {
   api,
@@ -14,6 +15,8 @@ import {
   prepararIntegridadDispositivo,
 } from "./api";
 import type { Usuario } from "./tipos";
+import { debePrepararIntegridadDispositivo } from "./permisos";
+import { suscribirSesionRevocada } from "./eventosSesion";
 import {
   confirmarSesionSegura,
   type EstadoSesionPersistida,
@@ -87,10 +90,6 @@ async function restaurarEstadoSesion(estado: EstadoSesionPersistida) {
   ]);
 }
 
-function requiereIntegridadOffline(usuario: Usuario) {
-  return usuario.rol === "ADMINISTRADOR" || usuario.rol === "COBRADOR";
-}
-
 async function borrarCredenciales() {
   await Promise.all([
     limpiarTokens(),
@@ -104,6 +103,19 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
   const [sesionOffline, establecerSesionOffline] = useState(false);
   const [idioma, establecerIdioma] = useState<"es" | "en">("es");
 
+  useEffect(
+    () =>
+      suscribirSesionRevocada(() => {
+        // Los tokens ya fueron retirados por la capa HTTP. Conservamos
+        // usuario_id_local y la base SQLCipher para no mezclar bitácoras.
+        void SecureStore.deleteItemAsync("usuario_local");
+        establecerUsuario(null);
+        establecerSesionOffline(false);
+        establecerCargando(false);
+      }),
+    [],
+  );
+
   useEffect(() => {
     Promise.all([
       SecureStore.getItemAsync("access_token"),
@@ -116,7 +128,12 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
         try {
           const respuesta = await api<{ usuario: Usuario }>("/auth/sesion");
           await guardarIdentidad(respuesta.usuario);
-          if (requiereIntegridadOffline(respuesta.usuario))
+          if (
+            debePrepararIntegridadDispositivo(
+              respuesta.usuario.rol,
+              respuesta.usuario.debeCambiarContrasena,
+            )
+          )
             await prepararIntegridadDispositivo();
           establecerUsuario(respuesta.usuario);
           establecerSesionOffline(false);
@@ -137,6 +154,33 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
       })
       .finally(() => establecerCargando(false));
   }, []);
+
+  useEffect(() => {
+    if (!usuario) return;
+    let vigente = true;
+    const validarAlVolver = async () => {
+      try {
+        const respuesta = await api<{ usuario: Usuario }>("/auth/sesion");
+        if (!vigente) return;
+        await guardarIdentidad(respuesta.usuario);
+        establecerUsuario(respuesta.usuario);
+        establecerSesionOffline(false);
+      } catch (error) {
+        if (!vigente) return;
+        if (error instanceof ErrorApi && error.estado === 0)
+          establecerSesionOffline(true);
+        // Un 401 no renovable ya emitió el evento global. Para 403/5xx la
+        // interfaz conserva identidad, pero los cargadores no sirven caché.
+      }
+    };
+    const suscripcion = AppState.addEventListener("change", (estado) => {
+      if (estado === "active") void validarAlVolver();
+    });
+    return () => {
+      vigente = false;
+      suscripcion.remove();
+    };
+  }, [usuario?.id]);
 
   async function iniciar(
     correo: string,
@@ -168,7 +212,12 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
           guardarTokens,
           guardarIdentidad: persistirIdentidad,
           prepararIntegridad: async (usuario) => {
-            if (requiereIntegridadOffline(usuario))
+            if (
+              debePrepararIntegridadDispositivo(
+                usuario.rol,
+                usuario.debeCambiarContrasena,
+              )
+            )
               await prepararIntegridadDispositivo();
           },
           restaurarEstado: restaurarEstadoSesion,

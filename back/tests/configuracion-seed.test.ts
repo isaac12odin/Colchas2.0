@@ -46,4 +46,18 @@ describe("credenciales iniciales sin fallback", () => {
     expect(fuenteSeed).toContain("activa: true");
     expect(fuenteSeed).toContain("Ruta administrativa web");
   });
+
+  it("crea la cuenta inicial como temporal y no pisa la clave al repetir el seed", () => {
+    expect(fuenteSeed).toContain("debeCambiarContrasena: true");
+    const bloqueActualizacion = fuenteSeed.match(
+      /update:\s*\{([\s\S]*?)\},\s*create:/,
+    )?.[1];
+    expect(bloqueActualizacion).toBeDefined();
+    expect(bloqueActualizacion).not.toContain("hashContrasena");
+    expect(bloqueActualizacion).not.toContain("debeCambiarContrasena");
+    expect(fuenteSeed).toContain(
+      "administrador.rol !== RolUsuario.ADMINISTRADOR",
+    );
+    expect(fuenteSeed).toContain("!administrador.activo");
+  });
 });

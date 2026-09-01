@@ -36,8 +36,9 @@ npm run dev:movil
 En un teléfono real, cambie `EXPO_PUBLIC_API_URL` por la IP HTTPS o la IP local de la computadora; `localhost` en el teléfono apunta al propio teléfono. SQLCipher requiere un development build (`npx expo run:android` o `npx expo run:ios`), no Expo Go.
 
 ```bash
-npm run build:android:preview -w movil  # APK interno para probar
-npm run build:android -w movil          # AAB de producción
+npm run build:android:preview -w movil  # APK universal interno para QA
+npm run build:android:apk -w movil      # APK arm64 optimizado para descarga directa
+npm run build:android -w movil          # AAB de producción para Google Play
 npm run build:ios -w movil              # iOS de producción
 ```
 
@@ -59,7 +60,7 @@ Para detenerla use `npm run db:stop:local`. La carpeta `.postgres-data` y su soc
 
 El proyecto no contiene correo ni contraseña predeterminados. Antes de ejecutar `npm run db:seed`, escriba en su `.env` un `SEED_ADMIN_EMAIL` explícito y un `SEED_ADMIN_PASSWORD` de al menos 6 caracteres. El seed se niega a continuar si faltan o coinciden con credenciales conocidas de ejemplo.
 
-El usuario resultante tiene rol `ADMINISTRADOR` y puede entrar directamente. Ejecutar de nuevo el seed rota su hash usando los valores explícitos; nunca recupera una clave anterior ni inventa una de respaldo.
+Si el administrador todavía no existe, el seed lo crea con una clave temporal y el primer acceso sólo permite sustituirla desde **Mi perfil**. Volver a ejecutar el seed conserva la contraseña y el estado de una cuenta existente; nunca rota silenciosamente una credencial ya confirmada ni inventa una de respaldo.
 
 ## Reglas principales
 
@@ -77,7 +78,7 @@ El usuario resultante tiene rol `ADMINISTRADOR` y puede entrar directamente. Eje
 - Devoluciones y anulaciones generan movimientos inversos auditados: nunca borran ventas, abonos o existencias históricas.
 - El expediente individual reúne saldo, calendario, ventas, abonos, pedidos, mora y riesgo.
 - Administración, Contabilidad y Ventas pueden corregir los datos permitidos del cliente; cualquier corrección manual de saldo exige reautenticación, motivo y genera un movimiento contable auditable en vez de reescribir el historial.
-- Las contraseñas admiten desde 6 caracteres. Administración puede cambiar la clave de cualquier cuenta, incluida la propia; el cambio cierra sus sesiones y no fuerza otro cambio al siguiente acceso.
+- Las contraseñas admiten desde 6 caracteres. Toda clave creada o restablecida por Administración es temporal: cierra las sesiones previas y bloquea los módulos hasta que su propietario la sustituye. El cambio voluntario desde Perfil produce una clave definitiva.
 - Almacenistas y cobradores trabajan sólo en la app móvil. Administración, Contabilidad y Ventas usan el panel web según sus permisos.
 - El corte de caja compara importes del sistema contra lo declarado y guarda firma y huella de integridad.
 - Dar de baja un producto lo oculta de nuevas operaciones, pero las ventas conservan su nombre, SKU, marca, costo y precio históricos.

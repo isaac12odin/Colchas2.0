@@ -1,17 +1,16 @@
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
 
-import { colores, type usarTema } from "../../tema";
+import {
+  BotonMovil,
+  CampoMovil,
+  SelectorSegmentado,
+  TarjetaMovil,
+} from "../../componentes/ui";
+import { type usarTema } from "../../tema";
 import type { ClienteJornada } from "../../tipos";
 import { dinero } from "../../utilidades/formato";
+import { parsearDineroCapturado } from "../../utilidades/dinero";
 import type { MetodoAbono } from "./dominioJornada";
 
 interface Propiedades {
@@ -37,221 +36,184 @@ export function FormularioAbono({
   tema,
   ...control
 }: Propiedades) {
-  function confirmar() {
-    const monto = Number(control.monto);
-    Alert.alert(
-      es ? "Confirma el abono" : "Confirm payment",
-      `${cliente.nombreCompleto}\n${dinero.format(monto)} · ${control.metodo}`,
-      [
-        { text: es ? "Revisar" : "Review", style: "cancel" },
-        {
-          text: es ? "Confirmar" : "Confirm",
-          onPress: () => control.alGuardar(monto),
-        },
-      ],
-    );
-  }
+  const saldoActual = Number(cliente.saldo?.saldoActual ?? 0);
+  const montoNumero = parsearDineroCapturado(control.monto);
+  const montoValido =
+    montoNumero !== null && montoNumero > 0 && montoNumero <= saldoActual;
+  const saldoRestante = Math.max(
+    0,
+    saldoActual - (montoValido ? montoNumero : 0),
+  );
+  const requiereReferencia = control.metodo !== "EFECTIVO";
 
   return (
-    <View>
-      <Pressable onPress={control.alVolver} style={estilos.atras}>
-        <Ionicons name="arrow-back" color={colores.azul} size={17} />
-        <Text style={estilos.atrasTexto}>
-          {es ? "Volver a acciones" : "Back to actions"}
+    <View style={estilos.contenido}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={es ? "Volver a acciones" : "Back to actions"}
+        onPress={control.alVolver}
+        style={estilos.atras}
+      >
+        <Ionicons name="arrow-back" color={tema.primario} size={19} />
+        <Text style={[estilos.atrasTexto, { color: tema.primario }]}>
+          {es ? "Volver" : "Back"}
         </Text>
       </Pressable>
-      <Etiqueta>{es ? "Monto recibido" : "Amount received"}</Etiqueta>
-      <View style={[estilos.montoCampo, { borderColor: tema.borde }]}>
-        <Text style={[estilos.simbolo, { color: tema.texto }]}>$</Text>
-        <TextInput
-          autoFocus
-          value={control.monto}
-          onChangeText={control.alCambiarMonto}
-          keyboardType="decimal-pad"
-          placeholder="0.00"
-          placeholderTextColor={colores.gris}
-          style={[estilos.montoInput, { color: tema.texto }]}
+
+      <View>
+        <Text style={[estilos.titulo, { color: tema.texto }]}>
+          {es ? "Registrar abono" : "Record payment"}
+        </Text>
+        <Text style={[estilos.identidad, { color: tema.textoSecundario }]}>
+          {cliente.telefono} ·{" "}
+          {cliente.numeroTarjeta
+            ? `${es ? "Tarjeta" : "Card"} ${cliente.numeroTarjeta}`
+            : es
+              ? "Sin tarjeta"
+              : "No card"}
+        </Text>
+      </View>
+
+      <CampoMovil
+        etiqueta={es ? "Monto recibido" : "Amount received"}
+        valor={control.monto}
+        alCambiar={control.alCambiarMonto}
+        teclado="decimal-pad"
+        placeholder="0.00"
+        icono="cash-outline"
+        ayuda={
+          !control.monto || montoValido
+            ? es
+              ? `Máximo ${dinero.format(saldoActual)}`
+              : `Maximum ${dinero.format(saldoActual)}`
+            : undefined
+        }
+        error={
+          control.monto && !montoValido
+            ? es
+              ? "El monto debe ser mayor a cero y no superar el saldo."
+              : "Amount must be greater than zero and not exceed the balance."
+            : undefined
+        }
+        autoFocus
+        requerido
+      />
+
+      <TarjetaMovil estilo={estilos.saldos}>
+        <Saldo
+          etiqueta={es ? "Saldo actual" : "Current balance"}
+          valor={dinero.format(saldoActual)}
+          tema={tema}
         />
-      </View>
-      <Etiqueta>{es ? "Método" : "Method"}</Etiqueta>
-      <View style={estilos.selector}>
-        {(["EFECTIVO", "TRANSFERENCIA"] as const).map((opcion) => (
-          <Metodo
-            key={opcion}
-            opcion={opcion}
-            activo={control.metodo === opcion}
-            es={es}
-            tema={tema}
-            alPulsar={() => control.alCambiarMetodo(opcion)}
-          />
-        ))}
-      </View>
-      {control.metodo === "TRANSFERENCIA" && (
-        <>
-          <Etiqueta>{es ? "Referencia" : "Reference"}</Etiqueta>
-          <Campo
-            valor={control.referencia}
-            alCambiar={control.alCambiarReferencia}
-            tema={tema}
-          />
-        </>
-      )}
-      <Etiqueta>{es ? "Nota opcional" : "Optional note"}</Etiqueta>
-      <Campo
+        <Ionicons name="arrow-forward" color={tema.textoTenue} size={21} />
+        <Saldo
+          etiqueta={es ? "Quedará en" : "Remaining"}
+          valor={dinero.format(saldoRestante)}
+          tema={tema}
+          destacado
+        />
+      </TarjetaMovil>
+
+      <SelectorSegmentado
+        etiqueta={es ? "Método recibido" : "Payment method"}
+        valor={control.metodo}
+        alCambiar={control.alCambiarMetodo}
+        opciones={[
+          { valor: "EFECTIVO", texto: es ? "Efectivo" : "Cash" },
+          { valor: "TRANSFERENCIA", texto: es ? "Transfer." : "Transfer" },
+          { valor: "TARJETA", texto: es ? "Tarjeta" : "Card" },
+          { valor: "OTRO", texto: es ? "Otro" : "Other" },
+        ]}
+      />
+      {requiereReferencia ? (
+        <CampoMovil
+          etiqueta={es ? "Referencia (opcional)" : "Reference (optional)"}
+          valor={control.referencia}
+          alCambiar={control.alCambiarReferencia}
+          placeholder={
+            control.metodo === "TRANSFERENCIA"
+              ? es
+                ? "Folio o últimos dígitos"
+                : "Receipt or last digits"
+              : es
+                ? "Dato para identificar el pago"
+                : "Payment identifier"
+          }
+          icono="document-text-outline"
+        />
+      ) : null}
+      <CampoMovil
+        etiqueta={es ? "Nota (opcional)" : "Note (optional)"}
         valor={control.notas}
         alCambiar={control.alCambiarNotas}
-        tema={tema}
         multilinea
+        maxLength={500}
+        placeholder={es ? "Observaciones de la visita" : "Visit notes"}
       />
-      <Pressable
-        disabled={control.guardando}
-        onPress={confirmar}
-        style={[estilos.guardar, control.guardando && estilos.deshabilitado]}
-      >
-        {control.guardando ? (
-          <ActivityIndicator color="white" />
-        ) : (
-          <Ionicons name="shield-checkmark" color="white" size={20} />
-        )}
-        <Text style={estilos.guardarTexto}>
-          {control.guardando
+
+      <BotonMovil
+        texto={
+          montoValido
             ? es
-              ? "Protegiendo…"
-              : "Securing…"
+              ? `Confirmar abono de ${dinero.format(montoNumero ?? 0)}`
+              : `Confirm ${dinero.format(montoNumero ?? 0)} payment`
             : es
-              ? "Guardar abono"
-              : "Save payment"}
-        </Text>
-      </Pressable>
+              ? "Escribe un monto válido"
+              : "Enter a valid amount"
+        }
+        icono="shield-checkmark"
+        cargando={control.guardando}
+        deshabilitado={!montoValido}
+        alPulsar={() => {
+          if (montoNumero !== null) control.alGuardar(montoNumero);
+        }}
+      />
     </View>
   );
 }
 
-function Metodo({
-  opcion,
-  activo,
-  es,
-  tema,
-  alPulsar,
-}: {
-  opcion: MetodoAbono;
-  activo: boolean;
-  es: boolean;
-  tema: ReturnType<typeof usarTema>;
-  alPulsar: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={alPulsar}
-      style={[
-        estilos.metodo,
-        { borderColor: tema.borde },
-        activo && estilos.metodoActivo,
-      ]}
-    >
-      <Ionicons
-        name={opcion === "EFECTIVO" ? "cash-outline" : "swap-horizontal"}
-        color={activo ? "white" : colores.azul}
-        size={18}
-      />
-      <Text style={activo ? estilos.metodoTextoActivo : { color: tema.texto }}>
-        {opcion === "EFECTIVO"
-          ? es
-            ? "Efectivo"
-            : "Cash"
-          : es
-            ? "Transferencia"
-            : "Transfer"}
-      </Text>
-    </Pressable>
-  );
-}
-
-function Etiqueta({ children }: { children: string }) {
-  return <Text style={estilos.etiqueta}>{children}</Text>;
-}
-
-function Campo({
+function Saldo({
+  etiqueta,
   valor,
-  alCambiar,
   tema,
-  multilinea = false,
+  destacado = false,
 }: {
+  etiqueta: string;
   valor: string;
-  alCambiar: (valor: string) => void;
   tema: ReturnType<typeof usarTema>;
-  multilinea?: boolean;
+  destacado?: boolean;
 }) {
   return (
-    <TextInput
-      value={valor}
-      onChangeText={alCambiar}
-      multiline={multilinea}
-      style={[
-        estilos.campo,
-        multilinea && estilos.notas,
-        { color: tema.texto, borderColor: tema.borde },
-      ]}
-    />
+    <View style={estilos.saldoBloque}>
+      <Text style={[estilos.saldoEtiqueta, { color: tema.textoSecundario }]}>
+        {etiqueta}
+      </Text>
+      <Text
+        style={[
+          estilos.saldoValor,
+          { color: destacado ? tema.primario : tema.texto },
+        ]}
+      >
+        {valor}
+      </Text>
+    </View>
   );
 }
 
 const estilos = StyleSheet.create({
-  atras: { flexDirection: "row", gap: 6, alignItems: "center", marginTop: 15 },
-  atrasTexto: { color: colores.azul, fontWeight: "700", fontSize: 12 },
-  etiqueta: {
-    color: colores.gris,
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 17,
-    marginBottom: 7,
-  },
-  montoCampo: {
-    height: 64,
-    borderWidth: 1,
-    borderRadius: 12,
+  contenido: { gap: 17 },
+  atras: {
+    minHeight: 40,
     flexDirection: "row",
+    gap: 7,
     alignItems: "center",
-    paddingHorizontal: 14,
+    alignSelf: "flex-start",
   },
-  simbolo: { fontSize: 25, fontWeight: "800" },
-  montoInput: {
-    flex: 1,
-    height: 62,
-    fontSize: 28,
-    fontWeight: "900",
-    paddingHorizontal: 8,
-  },
-  selector: { flexDirection: "row", gap: 8 },
-  metodo: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 11,
-    height: 47,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-  metodoActivo: { backgroundColor: colores.azul, borderColor: colores.azul },
-  metodoTextoActivo: { color: "white", fontWeight: "700" },
-  campo: {
-    borderWidth: 1,
-    minHeight: 46,
-    borderRadius: 10,
-    paddingHorizontal: 11,
-  },
-  notas: { height: 62, paddingTop: 9, textAlignVertical: "top" },
-  guardar: {
-    backgroundColor: colores.azul,
-    height: 53,
-    borderRadius: 12,
-    marginTop: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  guardarTexto: { color: "white", fontWeight: "900", fontSize: 15 },
-  deshabilitado: { opacity: 0.45 },
+  atrasTexto: { fontWeight: "800", fontSize: 13 },
+  titulo: { fontSize: 21, lineHeight: 27, fontWeight: "900" },
+  identidad: { fontSize: 12, lineHeight: 18, marginTop: 3 },
+  saldos: { flexDirection: "row", alignItems: "center", gap: 8, padding: 13 },
+  saldoBloque: { flex: 1 },
+  saldoEtiqueta: { fontSize: 11, lineHeight: 16, fontWeight: "700" },
+  saldoValor: { fontSize: 17, lineHeight: 23, fontWeight: "900", marginTop: 2 },
 });

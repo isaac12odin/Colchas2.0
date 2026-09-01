@@ -1,10 +1,9 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { colores, type usarTema } from "../../tema";
+import { BotonMovil } from "../../componentes/ui";
+import { type usarTema } from "../../tema";
 import { dinero } from "../../utilidades/formato";
 import type { ControlVenta } from "./usarVentaCampo";
-import { ConfiguracionVenta } from "./ConfiguracionVenta";
 import { ListaProductosVenta } from "./ListaProductosVenta";
 
 export function PasoProductosVenta({
@@ -18,6 +17,16 @@ export function PasoProductosVenta({
 }) {
   return (
     <>
+      <View style={estilos.cabecera}>
+        <Text style={[estilos.titulo, { color: tema.texto }]}>
+          {es ? "Elige los productos" : "Choose products"}
+        </Text>
+        <Text style={[estilos.detalle, { color: tema.textoSecundario }]}>
+          {es
+            ? "Busca y ajusta cantidades. Sólo aparecen productos con existencia."
+            : "Search and adjust quantities. Only in-stock products are shown."}
+        </Text>
+      </View>
       <ListaProductosVenta
         catalogoVacio={!control.catalogo.length}
         productos={control.visibles}
@@ -28,54 +37,24 @@ export function PasoProductosVenta({
         alBuscar={control.establecerBusqueda}
         alCambiarCantidad={control.cambiarCantidad}
       />
-      <ConfiguracionVenta
-        tipo={control.tipo}
-        montoTotal={control.total}
-        anticipo={control.anticipo}
-        periodicidad={control.periodicidad}
-        cuota={control.cuota}
-        primerVencimiento={control.primerVencimiento}
-        numeroTarjeta={control.numeroTarjeta}
-        es={es}
-        tema={tema}
-        alCambiarTipo={control.establecerTipo}
-        alCambiarAnticipo={control.establecerAnticipo}
-        alCambiarPeriodicidad={control.establecerPeriodicidad}
-        alCambiarCuota={control.establecerCuota}
-        alCambiarVencimiento={control.establecerPrimerVencimiento}
-        alCambiarNumeroTarjeta={control.establecerNumeroTarjeta}
+      <BotonMovil
+        texto={
+          es
+            ? `Continuar · ${dinero.format(control.total)}`
+            : `Continue · ${dinero.format(control.total)}`
+        }
+        icono="arrow-forward"
+        deshabilitado={!control.carrito.length}
+        alPulsar={control.continuarPago}
+        estilo={estilos.boton}
       />
-      <Pressable
-        disabled={!control.carrito.length}
-        onPress={control.revisar}
-        style={[
-          estilos.boton,
-          !control.carrito.length && estilos.deshabilitado,
-        ]}
-      >
-        <Text style={estilos.texto}>
-          {es
-            ? `Revisar venta · ${dinero.format(control.total)}`
-            : `Review sale · ${dinero.format(control.total)}`}
-        </Text>
-        <Ionicons name="arrow-forward" color="white" size={18} />
-      </Pressable>
     </>
   );
 }
 
 const estilos = StyleSheet.create({
-  boton: {
-    backgroundColor: colores.azul,
-    minHeight: 53,
-    borderRadius: 12,
-    marginTop: 18,
-    paddingHorizontal: 15,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  texto: { color: "white", fontWeight: "800", fontSize: 15 },
-  deshabilitado: { opacity: 0.42 },
+  cabecera: { marginBottom: 15 },
+  titulo: { fontSize: 20, lineHeight: 26, fontWeight: "900" },
+  detalle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
+  boton: { marginTop: 18 },
 });

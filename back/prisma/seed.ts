@@ -14,24 +14,22 @@ async function principal() {
     parallelism: 1,
   });
 
-  await prisma.usuario.upsert({
+  const administrador = await prisma.usuario.upsert({
     where: { correo },
-    update: {
-      hashContrasena,
-      rol: RolUsuario.ADMINISTRADOR,
-      activo: true,
-      debeCambiarContrasena: false,
-      intentosFallidos: 0,
-      bloqueadoHasta: null,
-    },
+    update: {},
     create: {
       nombre: "Administrador principal",
       correo,
       hashContrasena,
       rol: RolUsuario.ADMINISTRADOR,
-      debeCambiarContrasena: false,
+      debeCambiarContrasena: true,
     },
   });
+  if (administrador.rol !== RolUsuario.ADMINISTRADOR || !administrador.activo) {
+    throw new Error(
+      "SEED_ADMIN_EMAIL ya pertenece a una cuenta que no es administradora activa. El seed no cambiará roles ni reactivará cuentas existentes.",
+    );
+  }
 
   const localidad = await prisma.localidad.upsert({
     where: { nombre_estado: { nombre: "Centro", estado: "Sin especificar" } },
@@ -53,7 +51,9 @@ async function principal() {
   });
 
   console.info(`Usuario administrador preparado: ${correo}`);
-  console.info("La contraseña quedó lista para usarse.");
+  console.info(
+    "Si la cuenta fue creada ahora, deberá reemplazar la contraseña temporal en el primer acceso. Una cuenta existente conserva su contraseña y estado.",
+  );
 }
 
 principal()

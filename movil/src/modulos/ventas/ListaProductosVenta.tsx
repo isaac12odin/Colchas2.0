@@ -1,7 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ImageSourcePropType,
+} from "react-native";
 
-import { colores, type usarTema } from "../../tema";
+import { crearFuenteImagenApi } from "../../api";
+import { CampoMovil, EstadoMovil } from "../../componentes/ui";
+import { radios, tactilMinimo, type usarTema } from "../../tema";
 import type { ProductoMovil } from "../../tipos";
 import { dinero } from "../../utilidades/formato";
 import type { LineaCarrito } from "./dominioVenta";
@@ -29,33 +39,36 @@ export function ListaProductosVenta({
 }: Propiedades) {
   return (
     <>
-      <TextInput
-        value={busqueda}
-        onChangeText={alBuscar}
+      <CampoMovil
+        etiqueta={es ? "Buscar en inventario" : "Search inventory"}
+        valor={busqueda}
+        alCambiar={alBuscar}
         placeholder={
-          es
-            ? "Buscar producto, SKU o código…"
-            : "Search product, SKU, or code…"
+          es ? "Nombre, marca, SKU o código" : "Name, brand, SKU, or code"
         }
-        placeholderTextColor={colores.gris}
-        style={[
-          estilos.buscar,
-          {
-            backgroundColor: tema.panel,
-            borderColor: tema.borde,
-            color: tema.texto,
-          },
-        ]}
+        icono="search-outline"
+        autoCapitalize="none"
       />
-      {catalogoVacio && (
-        <View style={estilos.alerta}>
-          <Text style={estilos.alertaTexto}>
+      {catalogoVacio ? (
+        <EstadoMovil
+          tipo="advertencia"
+          texto={
+            es
+              ? "Conéctate y abre una ruta para descargar el catálogo antes de vender."
+              : "Connect and open a route to download the catalog before selling."
+          }
+        />
+      ) : null}
+      {!catalogoVacio && !productos.length ? (
+        <View style={estilos.vacio}>
+          <Ionicons name="search-outline" size={27} color={tema.textoTenue} />
+          <Text style={[estilos.vacioTexto, { color: tema.textoSecundario }]}>
             {es
-              ? "Descarga una ruta con internet antes de vender sin conexión."
-              : "Download a route online before selling offline."}
+              ? "No hay productos con existencia que coincidan."
+              : "No in-stock products match your search."}
           </Text>
         </View>
-      )}
+      ) : null}
       <View style={estilos.productos}>
         {productos.map((producto) => (
           <Producto
@@ -87,34 +100,98 @@ function Producto({
   tema: ReturnType<typeof usarTema>;
   alCambiar: (cambio: number) => void;
 }) {
+  const [fuente, establecerFuente] = useState<ImageSourcePropType>();
+
+  useEffect(() => {
+    let activo = true;
+    if (!producto.tieneFoto) return;
+    const version = producto.fotoActualizadaEn
+      ? `?v=${encodeURIComponent(producto.fotoActualizadaEn)}`
+      : "";
+    void crearFuenteImagenApi(
+      `/inventario/productos/${producto.id}/foto${version}`,
+    )
+      .then((resultado) => {
+        if (activo) establecerFuente(resultado);
+      })
+      .catch(() => {
+        if (activo) establecerFuente(undefined);
+      });
+    return () => {
+      activo = false;
+    };
+  }, [producto.fotoActualizadaEn, producto.id, producto.tieneFoto]);
+
   return (
     <View
       style={[
         estilos.producto,
-        { backgroundColor: tema.panel, borderColor: tema.borde },
+        {
+          backgroundColor: cantidad ? tema.primarioSuave : tema.panel,
+          borderColor: cantidad ? tema.primario : tema.borde,
+        },
       ]}
     >
-      <View style={estilos.expandir}>
-        <Text style={[estilos.nombre, { color: tema.texto }]}>
-          {producto.nombre}
-        </Text>
-        <Text style={estilos.detalle}>
-          {producto.marca} · {producto.existencia} {es ? "disp." : "available"}
-        </Text>
-        <Text style={estilos.precio}>
-          {dinero.format(Number(producto.precioVenta))}
-        </Text>
+      <View style={estilos.informacionFila}>
+        <View
+          style={[
+            estilos.miniatura,
+            { backgroundColor: tema.campoDeshabilitado },
+          ]}
+        >
+          {fuente ? (
+            <Image source={fuente} style={estilos.imagen} resizeMode="cover" />
+          ) : (
+            <Ionicons name="cube-outline" size={24} color={tema.textoTenue} />
+          )}
+        </View>
+        <View style={estilos.expandir}>
+          <Text
+            style={[estilos.nombre, { color: tema.texto }]}
+            numberOfLines={2}
+          >
+            {producto.nombre}
+          </Text>
+          <Text
+            style={[estilos.detalle, { color: tema.textoSecundario }]}
+            numberOfLines={2}
+          >
+            {producto.marca} · {producto.existencia}{" "}
+            {es ? "disponibles" : "available"}
+          </Text>
+          <Text style={[estilos.precio, { color: tema.primario }]}>
+            {dinero.format(Number(producto.precioVenta))}
+          </Text>
+        </View>
       </View>
       <View style={estilos.cantidad}>
+        <Text
+          style={[estilos.cantidadEtiqueta, { color: tema.textoSecundario }]}
+        >
+          {es ? "Cantidad" : "Quantity"}
+        </Text>
         <BotonCantidad
           icono="remove"
-          etiqueta={es ? "Quitar uno" : "Remove one"}
+          etiqueta={
+            es ? `Quitar ${producto.nombre}` : `Remove ${producto.nombre}`
+          }
+          tema={tema}
+          deshabilitado={cantidad === 0}
           alPulsar={() => alCambiar(-1)}
         />
-        <Text style={[estilos.numero, { color: tema.texto }]}>{cantidad}</Text>
+        <Text
+          accessibilityLabel={`${es ? "Cantidad" : "Quantity"}: ${cantidad}`}
+          style={[estilos.numero, { color: tema.texto }]}
+        >
+          {cantidad}
+        </Text>
         <BotonCantidad
           icono="add"
-          etiqueta={es ? "Agregar uno" : "Add one"}
+          etiqueta={
+            es ? `Agregar ${producto.nombre}` : `Add ${producto.nombre}`
+          }
+          tema={tema}
+          deshabilitado={cantidad >= producto.existencia}
           alPulsar={() => alCambiar(1)}
         />
       </View>
@@ -125,59 +202,78 @@ function Producto({
 function BotonCantidad({
   icono,
   etiqueta,
+  tema,
+  deshabilitado,
   alPulsar,
 }: {
   icono: "add" | "remove";
   etiqueta: string;
+  tema: ReturnType<typeof usarTema>;
+  deshabilitado: boolean;
   alPulsar: () => void;
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       accessibilityLabel={etiqueta}
-      style={estilos.botonCantidad}
+      accessibilityState={{ disabled: deshabilitado }}
+      disabled={deshabilitado}
+      style={({ pressed }) => [
+        estilos.botonCantidad,
+        { backgroundColor: tema.primarioSuave },
+        deshabilitado && { opacity: 0.35 },
+        pressed && { opacity: 0.65 },
+      ]}
       onPress={alPulsar}
     >
-      <Ionicons name={icono} color={colores.azul} size={20} />
+      <Ionicons name={icono} color={tema.primario} size={21} />
     </Pressable>
   );
 }
 
 const estilos = StyleSheet.create({
-  buscar: {
-    borderWidth: 1,
-    borderRadius: 12,
-    height: 50,
-    paddingHorizontal: 14,
-  },
-  alerta: {
-    backgroundColor: "#fff2e8",
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 12,
-  },
-  alertaTexto: { color: "#8a3b12", fontSize: 12 },
-  productos: { gap: 8, marginTop: 12 },
+  productos: { gap: 9, marginTop: 13 },
   producto: {
-    minHeight: 83,
+    minHeight: 142,
     borderWidth: 1,
-    borderRadius: 13,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
+    borderRadius: radios.tarjeta,
+    padding: 11,
     gap: 10,
   },
-  expandir: { flex: 1 },
-  nombre: { fontWeight: "700", fontSize: 14 },
-  detalle: { color: colores.gris, fontSize: 11, marginTop: 3 },
-  precio: { color: colores.azul, fontWeight: "800", marginTop: 5 },
-  cantidad: { flexDirection: "row", alignItems: "center", gap: 9 },
-  botonCantidad: {
-    width: 44,
-    height: 44,
+  informacionFila: { flexDirection: "row", alignItems: "center", gap: 11 },
+  miniatura: {
+    width: 62,
+    height: 70,
     borderRadius: 11,
-    backgroundColor: colores.azulClaro,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
-  numero: { minWidth: 18, textAlign: "center", fontWeight: "800" },
+  imagen: { width: "100%", height: "100%" },
+  expandir: { flex: 1, minWidth: 0 },
+  nombre: { fontWeight: "800", fontSize: 14, lineHeight: 19 },
+  detalle: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  precio: { fontWeight: "900", fontSize: 13, lineHeight: 18, marginTop: 4 },
+  cantidad: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 7,
+  },
+  cantidadEtiqueta: { flex: 1, fontSize: 12, fontWeight: "700" },
+  botonCantidad: {
+    width: tactilMinimo,
+    height: tactilMinimo,
+    borderRadius: radios.campo,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  numero: {
+    minWidth: 20,
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  vacio: { alignItems: "center", gap: 7, paddingVertical: 30 },
+  vacioTexto: { fontSize: 13, lineHeight: 19, textAlign: "center" },
 });

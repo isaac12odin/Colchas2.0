@@ -2,9 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { api } from "../../api";
+import { api, esFalloRealRed } from "../../api";
 import { guardarCache, leerCache } from "../../almacenLocal";
-import { colores, type usarTema } from "../../tema";
+import { EstadoMovil, usarDisenoResponsivo } from "../../componentes/ui";
+import { espaciado, radios, type usarTema } from "../../tema";
 import { usarDatosVivosMovil } from "../../usarDatosVivosMovil";
 import { dinero } from "../../utilidades/formato";
 
@@ -41,28 +42,43 @@ interface AgendaCobranza {
   };
 }
 
-export function AgendaCobranzaMovil({
-  es,
-  tema,
-}: {
-  es: boolean;
-  tema: ReturnType<typeof usarTema>;
-}) {
+type Tema = ReturnType<typeof usarTema>;
+
+export function AgendaCobranzaMovil({ es, tema }: { es: boolean; tema: Tema }) {
+  const diseno = usarDisenoResponsivo();
   const [agenda, establecerAgenda] = useState<AgendaCobranza | null>(null);
   const [offline, establecerOffline] = useState(false);
+  const [errorCarga, establecerErrorCarga] = useState("");
   const cargar = useCallback(async () => {
     try {
       const respuesta = await api<AgendaCobranza>("/abonos/agenda");
       establecerAgenda(respuesta);
       await guardarCache("agenda_cobranza", respuesta);
       establecerOffline(false);
-    } catch {
-      establecerAgenda(await leerCache<AgendaCobranza>("agenda_cobranza"));
-      establecerOffline(true);
+      establecerErrorCarga("");
+    } catch (error) {
+      if (esFalloRealRed(error)) {
+        establecerAgenda(await leerCache<AgendaCobranza>("agenda_cobranza"));
+        establecerOffline(true);
+        establecerErrorCarga("");
+      } else {
+        establecerAgenda(null);
+        establecerOffline(false);
+        establecerErrorCarga(
+          error instanceof Error
+            ? error.message
+            : es
+              ? "El servidor rechazó la agenda."
+              : "The server rejected the schedule request.",
+        );
+      }
     }
-  }, []);
+  }, [es]);
   usarDatosVivosMovil(cargar, 30_000);
-  if (!agenda) return null;
+
+  if (!agenda)
+    return errorCarga ? <EstadoMovil tipo="error" texto={errorCarga} /> : null;
+
   const prioritarios = [
     ...agenda.vencidos.items.map((item) => ({ ...item, vencido: true })),
     ...agenda.hoy.items.map((item) => ({ ...item, vencido: false })),
@@ -76,16 +92,23 @@ export function AgendaCobranzaMovil({
       ]}
     >
       <View style={estilos.encabezado}>
-        <View>
+        <View style={estilos.encabezadoTexto}>
           <Text style={[estilos.titulo, { color: tema.texto }]}>
             {es ? "Agenda de cobranza" : "Collection schedule"}
           </Text>
-          <Text style={estilos.periodo}>
+          <Text style={[estilos.periodo, { color: tema.textoSecundario }]}>
             {agenda.semana.inicio} · {agenda.semana.fin}
             {offline ? ` · ${es ? "copia guardada" : "saved copy"}` : ""}
           </Text>
         </View>
-        <Ionicons name="calendar" size={22} color={colores.azul} />
+        <View
+          style={[
+            estilos.iconoCalendario,
+            { backgroundColor: tema.primarioSuave },
+          ]}
+        >
+          <Ionicons name="calendar" size={22} color={tema.primario} />
+        </View>
       </View>
 
       <View style={estilos.metricas}>
@@ -93,25 +116,38 @@ export function AgendaCobranzaMovil({
           etiqueta={es ? "Cobrar hoy" : "Due today"}
           valor={`${agenda.hoy.cantidad}`}
           detalle={`${agenda.hoy.cuotas} ${es ? "abonos" : "payments"} · ${dinero.format(agenda.hoy.total)}`}
-          color="#0e6027"
+          color={tema.exito}
+          fondo={tema.exitoSuave}
+          tema={tema}
+          amplia={diseno.compacto}
         />
         <Metrica
           etiqueta={es ? "Esta semana" : "This week"}
           valor={`${agenda.semana.cantidad}`}
           detalle={`${agenda.semana.cuotas} ${es ? "abonos" : "payments"} · ${dinero.format(agenda.semana.total)}`}
-          color="#0043ce"
+          color={tema.primario}
+          fondo={tema.primarioSuave}
+          tema={tema}
+          amplia={diseno.compacto}
         />
         <Metrica
           etiqueta={es ? "Atrasados" : "Overdue"}
           valor={`${agenda.vencidos.cantidad}`}
           detalle={`${agenda.vencidos.cuotas} ${es ? "abonos" : "payments"} · ${dinero.format(agenda.vencidos.total)}`}
-          color={agenda.vencidos.cantidad ? "#a2191f" : "#525252"}
+          color={agenda.vencidos.cantidad ? tema.peligro : tema.textoSecundario}
+          fondo={
+            agenda.vencidos.cantidad
+              ? tema.peligroSuave
+              : tema.campoDeshabilitado
+          }
+          tema={tema}
+          amplia={diseno.compacto}
         />
       </View>
 
-      <View style={estilos.cobrado}>
-        <Ionicons name="checkmark-circle" size={18} color={colores.verde} />
-        <Text style={estilos.cobradoTexto}>
+      <View style={[estilos.cobrado, { backgroundColor: tema.exitoSuave }]}>
+        <Ionicons name="checkmark-circle" size={20} color={tema.exito} />
+        <Text style={[estilos.cobradoTexto, { color: tema.exito }]}>
           {es ? "Hoy ya registraste" : "Recorded today"}:{" "}
           {agenda.cobrado.hoy.cantidad} {es ? "abonos" : "payments"} ·{" "}
           {dinero.format(agenda.cobrado.hoy.total)}
@@ -126,7 +162,10 @@ export function AgendaCobranzaMovil({
           {prioritarios.map((item) => (
             <View
               key={item.cuotaId}
-              style={[estilos.pendiente, { borderColor: tema.borde }]}
+              style={[
+                estilos.pendiente,
+                { borderColor: tema.borde, backgroundColor: tema.campo },
+              ]}
             >
               <View style={estilos.pendienteTexto}>
                 <Text
@@ -135,7 +174,7 @@ export function AgendaCobranzaMovil({
                 >
                   {item.cliente.nombreCompleto}
                 </Text>
-                <Text style={estilos.cuota}>
+                <Text style={[estilos.cuota, { color: tema.textoSecundario }]}>
                   {item.venta.folio} · {es ? "Abono" : "Payment"} {item.numero}{" "}
                   · {item.fecha}
                 </Text>
@@ -144,7 +183,12 @@ export function AgendaCobranzaMovil({
                 <Text
                   style={[
                     estilos.estado,
-                    { color: item.vencido ? "#a2191f" : "#0e6027" },
+                    {
+                      color: item.vencido ? tema.peligro : tema.exito,
+                      backgroundColor: item.vencido
+                        ? tema.peligroSuave
+                        : tema.exitoSuave,
+                    },
                   ]}
                 >
                   {item.vencido
@@ -167,12 +211,18 @@ export function AgendaCobranzaMovil({
       {agenda.semana.dias.length > 0 && (
         <View style={estilos.dias}>
           {agenda.semana.dias.map((dia) => (
-            <View key={dia.fecha} style={estilos.dia}>
-              <Text style={estilos.diaFecha}>
-                {new Date(`${dia.fecha}T12:00:00`).toLocaleDateString("es-MX", {
-                  weekday: "short",
-                  day: "numeric",
-                })}
+            <View
+              key={dia.fecha}
+              style={[
+                estilos.dia,
+                { backgroundColor: tema.campo, borderColor: tema.borde },
+              ]}
+            >
+              <Text style={[estilos.diaFecha, { color: tema.textoSecundario }]}>
+                {new Date(`${dia.fecha}T12:00:00`).toLocaleDateString(
+                  es ? "es-MX" : "en-US",
+                  { weekday: "short", day: "numeric" },
+                )}
               </Text>
               <Text style={[estilos.diaTotal, { color: tema.texto }]}>
                 {dia.cantidad} · {dinero.format(dia.total)}
@@ -190,66 +240,117 @@ function Metrica({
   valor,
   detalle,
   color,
+  fondo,
+  tema,
+  amplia,
 }: {
   etiqueta: string;
   valor: string;
   detalle: string;
   color: string;
+  fondo: string;
+  tema: Tema;
+  amplia: boolean;
 }) {
   return (
-    <View style={estilos.metrica}>
-      <Text style={estilos.metricaEtiqueta}>{etiqueta}</Text>
+    <View
+      style={[
+        estilos.metrica,
+        amplia && estilos.metricaAmplia,
+        { backgroundColor: fondo },
+      ]}
+    >
+      <Text style={[estilos.metricaEtiqueta, { color: tema.textoSecundario }]}>
+        {etiqueta}
+      </Text>
       <Text style={[estilos.metricaValor, { color }]}>{valor}</Text>
-      <Text style={estilos.metricaDetalle}>{detalle}</Text>
+      <Text style={[estilos.metricaDetalle, { color: tema.textoSecundario }]}>
+        {detalle}
+      </Text>
     </View>
   );
 }
 
 const estilos = StyleSheet.create({
-  contenedor: { borderWidth: 1, borderRadius: 8, padding: 15, gap: 13 },
+  contenedor: {
+    borderWidth: 1,
+    borderRadius: radios.tarjeta,
+    padding: espaciado.md,
+    gap: espaciado.md,
+  },
   encabezado: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: espaciado.sm,
   },
-  titulo: { fontSize: 17, fontWeight: "900" },
-  periodo: { color: colores.gris, fontSize: 10, marginTop: 3 },
-  metricas: { flexDirection: "row", gap: 8 },
-  metrica: { flex: 1, minWidth: 0 },
-  metricaEtiqueta: { color: colores.gris, fontSize: 9, fontWeight: "800" },
-  metricaValor: { fontSize: 24, fontWeight: "900", marginTop: 2 },
-  metricaDetalle: { color: colores.gris, fontSize: 9, lineHeight: 13 },
+  encabezadoTexto: { flex: 1, minWidth: 0 },
+  iconoCalendario: {
+    width: 48,
+    height: 48,
+    borderRadius: radios.campo,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  titulo: { fontSize: 18, fontWeight: "900" },
+  periodo: { fontSize: 13, lineHeight: 18, marginTop: 3 },
+  metricas: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  metrica: {
+    flexGrow: 1,
+    flexBasis: "46%",
+    minWidth: 118,
+    borderRadius: radios.campo,
+    padding: 11,
+  },
+  metricaAmplia: { flexBasis: "100%" },
+  metricaEtiqueta: { fontSize: 12, lineHeight: 16, fontWeight: "800" },
+  metricaValor: {
+    fontSize: 26,
+    lineHeight: 31,
+    fontWeight: "900",
+    marginTop: 1,
+  },
+  metricaDetalle: { fontSize: 12, lineHeight: 17 },
   cobrado: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    backgroundColor: "#defbe6",
-    padding: 10,
-    borderRadius: 7,
+    padding: 11,
+    borderRadius: radios.campo,
   },
-  cobradoTexto: { flex: 1, color: "#0e6027", fontSize: 11, fontWeight: "700" },
-  pendientes: { gap: 7 },
-  seccionTitulo: { fontSize: 12, fontWeight: "900" },
+  cobradoTexto: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: "700" },
+  pendientes: { gap: 8 },
+  seccionTitulo: { fontSize: 14, fontWeight: "900" },
   pendiente: {
-    borderTopWidth: 1,
-    paddingTop: 7,
+    borderWidth: 1,
+    borderRadius: radios.campo,
+    padding: 11,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
   pendienteTexto: { flex: 1, minWidth: 0 },
-  cliente: { fontSize: 11, fontWeight: "800" },
-  cuota: { color: colores.gris, fontSize: 9, marginTop: 2 },
+  cliente: { fontSize: 14, lineHeight: 19, fontWeight: "800" },
+  cuota: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   importeBloque: { alignItems: "flex-end" },
-  estado: { fontSize: 8, fontWeight: "900", textTransform: "uppercase" },
-  importe: { fontSize: 11, fontWeight: "900", marginTop: 2 },
+  estado: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "900",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radios.pastilla,
+  },
+  importe: { fontSize: 14, fontWeight: "900", marginTop: 4 },
   dias: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
   dia: {
-    borderLeftWidth: 2,
-    borderLeftColor: colores.azul,
-    paddingLeft: 7,
-    minWidth: 80,
+    borderWidth: 1,
+    borderRadius: radios.campo,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: 112,
+    flexGrow: 1,
   },
-  diaFecha: { color: colores.gris, fontSize: 9, textTransform: "capitalize" },
-  diaTotal: { fontSize: 10, fontWeight: "800", marginTop: 2 },
+  diaFecha: { fontSize: 12, lineHeight: 17, textTransform: "capitalize" },
+  diaTotal: { fontSize: 13, lineHeight: 18, fontWeight: "800", marginTop: 2 },
 });

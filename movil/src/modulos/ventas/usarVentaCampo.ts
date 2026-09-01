@@ -6,6 +6,8 @@ import { crearIdLocal } from "../../api";
 import { encolarOperaciones, leerCache, leerJornada } from "../../almacenLocal";
 import type { Jornada, ProductoMovil } from "../../tipos";
 import { dinero } from "../../utilidades/formato";
+import { fechaSugeridaPlanPago } from "../../utilidades/fechaLocal";
+import { parsearDineroCapturado } from "../../utilidades/dinero";
 import {
   calcularImportes,
   cambiarCantidadCarrito,
@@ -15,6 +17,7 @@ import {
   proyectarSaldoVenta,
   validarVenta,
   type LineaCarrito,
+  type MetodoPago,
   type PasoVenta,
   type Periodicidad,
   type TipoVenta,
@@ -28,24 +31,24 @@ export interface ParametrosVenta {
   numeroTarjeta?: string;
 }
 
-const primerVencimientoInicial = new Date(Date.now() + 7 * 86_400_000)
-  .toISOString()
-  .slice(0, 10);
-
 export function usarVentaCampo(parametros: ParametrosVenta, es: boolean) {
   const [catalogo, establecerCatalogo] = useState<ProductoMovil[]>([]);
   const [busqueda, establecerBusqueda] = useState("");
   const [carrito, establecerCarrito] = useState<LineaCarrito[]>([]);
-  const [tipo, establecerTipo] = useState<TipoVenta>("CREDITO");
+  const [tipo, establecerTipo] = useState<TipoVenta>(
+    parametros.clienteId ? "CREDITO" : "CONTADO",
+  );
   const [anticipo, establecerAnticipo] = useState("0");
+  const [metodoAnticipo, establecerMetodoAnticipo] =
+    useState<MetodoPago>("EFECTIVO");
   const [numeroTarjeta, establecerNumeroTarjeta] = useState(
     parametros.numeroTarjeta ?? "",
   );
   const [cuota, establecerCuota] = useState("");
   const [periodicidad, establecerPeriodicidad] =
     useState<Periodicidad>("SEMANAL");
-  const [primerVencimiento, establecerPrimerVencimiento] = useState(
-    primerVencimientoInicial,
+  const [primerVencimiento, establecerPrimerVencimiento] = useState(() =>
+    fechaSugeridaPlanPago(),
   );
   const [paso, establecerPaso] = useState<PasoVenta>("PRODUCTOS");
   const [guardando, establecerGuardando] = useState(false);
@@ -71,6 +74,16 @@ export function usarVentaCampo(parametros: ParametrosVenta, es: boolean) {
     );
   }
 
+  function continuarPago() {
+    if (!carrito.length) {
+      Alert.alert(
+        es ? "Agrega al menos un producto" : "Add at least one product",
+      );
+      return;
+    }
+    establecerPaso("PAGO");
+  }
+
   function revisar() {
     const error = validarVenta({
       carrito,
@@ -78,6 +91,7 @@ export function usarVentaCampo(parametros: ParametrosVenta, es: boolean) {
       clienteId: parametros.clienteId,
       total: importes.total,
       anticipo: importes.anticipoNumero,
+      anticipoValido: importes.anticipoValido,
       numeroTarjeta,
       cuota,
       primerVencimiento,
@@ -122,11 +136,19 @@ export function usarVentaCampo(parametros: ParametrosVenta, es: boolean) {
         cuota,
         primerVencimiento,
         fechaVenta: new Date().toISOString(),
+        metodoAnticipo,
       });
       const catalogoActualizado = descontarCatalogo(catalogo, carrito);
       const jornada = await obtenerProyeccionJornada(
         parametros,
         importes.financiado,
+        importes.financiado > 0
+          ? {
+              periodicidad,
+              montoCuota: parsearDineroCapturado(cuota) ?? 0,
+              primerVencimiento,
+            }
+          : undefined,
       );
       await encolarOperaciones([{ id: operacionId, tipo: "VENTA", datos }], {
         caches: [{ clave: "catalogo_productos", datos: catalogoActualizado }],
@@ -162,21 +184,26 @@ export function usarVentaCampo(parametros: ParametrosVenta, es: boolean) {
     carrito,
     tipo,
     anticipo,
+    metodoAnticipo,
     numeroTarjeta,
     cuota,
     periodicidad,
     primerVencimiento,
     paso,
     guardando,
+    permiteCredito: Boolean(parametros.clienteId),
     ...importes,
     establecerBusqueda,
     establecerTipo,
     establecerAnticipo,
+    establecerMetodoAnticipo,
     establecerNumeroTarjeta,
     establecerCuota,
     establecerPeriodicidad,
     establecerPrimerVencimiento,
-    editar: () => establecerPaso("PRODUCTOS"),
+    continuarPago,
+    volverProductos: () => establecerPaso("PRODUCTOS"),
+    editar: () => establecerPaso("PAGO"),
     cambiarCantidad,
     revisar,
     confirmar,
@@ -186,13 +213,18 @@ export function usarVentaCampo(parametros: ParametrosVenta, es: boolean) {
 async function obtenerProyeccionJornada(
   parametros: ParametrosVenta,
   financiado: number,
+  plan?: {
+    periodicidad: Periodicidad;
+    montoCuota: number;
+    primerVencimiento: string;
+  },
 ): Promise<Jornada | null> {
   if (!parametros.rutaId || !parametros.fecha || !parametros.clienteId) {
     return null;
   }
   const jornada = await leerJornada(parametros.rutaId, parametros.fecha);
   return jornada
-    ? proyectarSaldoVenta(jornada, parametros.clienteId, financiado)
+    ? proyectarSaldoVenta(jornada, parametros.clienteId, financiado, plan)
     : null;
 }
 

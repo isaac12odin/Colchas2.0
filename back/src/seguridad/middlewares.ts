@@ -5,6 +5,14 @@ import { validarTokenAcceso } from "./tokens.js";
 import { rolTienePermiso, type Permiso } from "./permisos.js";
 import { prisma } from "../infraestructura/prisma.js";
 
+function permiteCambioContrasenaObligatorio(req: Request) {
+  const ruta = req.originalUrl.split("?", 1)[0];
+  return (
+    (req.method === "GET" && ruta === "/api/v1/auth/sesion") ||
+    (req.method === "POST" && ruta === "/api/v1/auth/cambiar-contrasena")
+  );
+}
+
 export async function autenticar(
   req: Request,
   _res: Response,
@@ -34,6 +42,7 @@ export async function autenticar(
       correo: true,
       rol: true,
       activo: true,
+      debeCambiarContrasena: true,
       tokenVersion: true,
     },
   });
@@ -52,6 +61,16 @@ export async function autenticar(
     correo: usuarioActual.correo,
     rol: usuarioActual.rol,
   };
+  if (
+    usuarioActual.debeCambiarContrasena &&
+    !permiteCambioContrasenaObligatorio(req)
+  ) {
+    throw new ErrorAplicacion(
+      "CAMBIO_CONTRASENA_REQUERIDO",
+      "Debe reemplazar la contraseña temporal antes de continuar.",
+      428,
+    );
+  }
   next();
 }
 

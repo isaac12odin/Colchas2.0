@@ -35,9 +35,9 @@ No se agrega un cifrado casero entre JavaScript y la API. En producción se exig
 
 ## Antes de producción
 
-1. Reemplace los secretos de `.env`; no reutilice los valores de ejemplo. El seed exige credenciales administrativas explícitas y aleatorias y no tiene fallback.
+1. Reemplace los secretos de `.env`; no reutilice los valores de ejemplo. El seed exige credenciales administrativas explícitas y aleatorias, no tiene fallback, fuerza el cambio en una cuenta recién creada y conserva la clave de una cuenta existente al repetirse.
 2. Use un administrador de secretos y claves independientes `FIELD_ENCRYPTION_KEY`/`SEARCH_HMAC_KEY` con rotación documentada.
-3. Obligue el cambio de la contraseña inicial y habilite el MFA ya incluido desde **Mi perfil**.
+3. Complete el cambio obligatorio de la contraseña inicial y habilite el MFA ya incluido desde **Mi perfil**.
 4. Termine TLS en un proxy, active HSTS y no publique PostgreSQL.
 5. Limite la red de PostgreSQL a la API, use un usuario sin privilegios de superusuario y copias cifradas.
 6. Habilite Redis para rate limiting compartido si hay varias réplicas.

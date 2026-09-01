@@ -12,7 +12,15 @@ import {
 import { obtenerClaveIntegridad } from "./infraestructura/baseLocal";
 import { hmacSha512 } from "./seguridad/integridadOffline";
 import { notificarDatosMoviles } from "./eventosDatosMovil";
+import { notificarSesionRevocada } from "./eventosSesion";
+import {
+  admiteRenovacionAutomatica,
+  ErrorApi,
+  esRechazoDefinitivoRefresco,
+} from "./erroresApi";
 import { TAMANO_LOTE_SINCRONIZACION } from "./sincronizacion/lotes";
+
+export { ErrorApi, esFalloRealRed } from "./erroresApi";
 
 const base = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 const TIEMPO_LIMITE_MS = 25_000;
@@ -22,21 +30,13 @@ const consultasRecientes = new Map<
   { secuencia: number; promesa: Promise<unknown> }
 >();
 const MAXIMO_CONSULTAS_RASTREADAS = 150;
-let renovacionEnCurso: Promise<boolean> | null = null;
+type ResultadoRenovacion = "RENOVADA" | "REVOCADA" | "NO_DISPONIBLE";
+let renovacionEnCurso: Promise<ResultadoRenovacion> | null = null;
 
 if (!__DEV__ && !base.startsWith("https://")) {
   throw new Error(
     "EXPO_PUBLIC_API_URL debe usar HTTPS en una compilación de producción.",
   );
-}
-
-export class ErrorApi extends Error {
-  constructor(
-    mensaje: string,
-    public estado = 0,
-  ) {
-    super(mensaje);
-  }
 }
 
 async function solicitar(url: string, opciones: RequestInit) {
@@ -81,9 +81,14 @@ async function ejecutarSolicitud<T>(
       ...opciones.headers,
     },
   });
-  if (respuesta.status === 401 && reintento && !ruta.startsWith("/auth/")) {
-    const renovado = await renovar();
-    if (renovado) return ejecutarSolicitud<T>(ruta, opciones, false);
+  if (
+    respuesta.status === 401 &&
+    reintento &&
+    admiteRenovacionAutomatica(ruta)
+  ) {
+    const resultadoRenovacion = await renovar();
+    if (resultadoRenovacion === "RENOVADA")
+      return ejecutarSolicitud<T>(ruta, opciones, false);
   }
   if (!respuesta.ok) {
     const cuerpo = await respuesta.json().catch(() => null);
@@ -196,7 +201,13 @@ async function ejecutarRenovacion() {
     SecureStore.getItemAsync("refresh_token"),
     SecureStore.getItemAsync("access_token"),
   ]);
-  if (!refreshToken) return false;
+  if (!refreshToken) {
+    // El aviso global no puede depender de que SecureStore responda: la raíz
+    // de sesión hará un segundo intento de limpieza sin tocar la bitácora.
+    await limpiarTokens().catch(() => undefined);
+    notificarSesionRevocada("SIN_TOKEN_DE_REFRESCO");
+    return "REVOCADA" as const;
+  }
   try {
     const respuesta = await solicitar(`${base}/auth/renovar`, {
       method: "POST",
@@ -206,12 +217,24 @@ async function ejecutarRenovacion() {
       },
       body: JSON.stringify({ refreshToken }),
     });
-    if (!respuesta.ok) return false;
-    const datos = await respuesta.json();
+    if (!respuesta.ok) {
+      if (esRechazoDefinitivoRefresco(respuesta.status)) {
+        await limpiarTokens().catch(() => undefined);
+        notificarSesionRevocada("REFRESCO_RECHAZADO");
+        return "REVOCADA" as const;
+      }
+      return "NO_DISPONIBLE" as const;
+    }
+    const datos = (await respuesta.json()) as {
+      accessToken?: string;
+      refreshToken?: string;
+    };
+    if (!datos.accessToken || !datos.refreshToken)
+      return "NO_DISPONIBLE" as const;
     await guardarTokens(datos.accessToken, datos.refreshToken);
-    return true;
+    return "RENOVADA" as const;
   } catch {
-    return false;
+    return "NO_DISPONIBLE" as const;
   }
 }
 

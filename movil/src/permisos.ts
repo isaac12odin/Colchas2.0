@@ -9,6 +9,7 @@ export type ModuloMovil =
   | "sincronizacion"
   | "resumen"
   | "capacitacion"
+  | "perfil"
   | "cambioContrasena";
 
 export const rolesPorModuloMovil: Record<ModuloMovil, readonly Rol[]> = {
@@ -26,6 +27,7 @@ export const rolesPorModuloMovil: Record<ModuloMovil, readonly Rol[]> = {
     "ALMACENISTA",
     "COBRADOR",
   ],
+  perfil: ["ADMINISTRADOR", "CONTABLE", "VENDEDOR", "ALMACENISTA", "COBRADOR"],
   cambioContrasena: [
     "ADMINISTRADOR",
     "CONTABLE",
@@ -73,6 +75,8 @@ function obtenerModuloMovil(
       return "resumen";
     case "capacitacion":
       return "capacitacion";
+    case "perfil":
+      return "perfil";
     case "cambiar-contrasena":
       return "cambioContrasena";
     default:
@@ -84,4 +88,28 @@ function obtenerModuloMovil(
 export function puedeAccederRutaMovil(rol: Rol, segmentos: readonly string[]) {
   const modulo = obtenerModuloMovil(segmentos);
   return modulo ? puedeAccederModuloMovil(rol, modulo) : false;
+}
+
+/**
+ * Una credencial temporal sólo puede abrir la pantalla real donde se sustituye.
+ * Se mantiene pura para que el guard de navegación pueda probarse sin Expo.
+ */
+export function debeForzarCambioContrasena(
+  debeCambiarContrasena: boolean,
+  segmentos: readonly string[],
+) {
+  return (
+    debeCambiarContrasena &&
+    obtenerModuloMovil(segmentos) !== "cambioContrasena"
+  );
+}
+
+/** El enrolamiento HMAC se pospone hasta confirmar una contraseña propia. */
+export function debePrepararIntegridadDispositivo(
+  rol: Rol,
+  debeCambiarContrasena: boolean,
+) {
+  return (
+    !debeCambiarContrasena && (rol === "ADMINISTRADOR" || rol === "COBRADOR")
+  );
 }

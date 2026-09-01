@@ -13,7 +13,7 @@ El despliegue vigente de Hostinger usa **Nginx + Certbot** en el host. Los conte
 7. Construya imágenes con etiqueta de versión, reemplace `api` y `front`, y conserve la etiqueta anterior hasta terminar los smoke tests. El procedimiento exacto vive en `docs/RELEASE.md`.
 8. Instale ambos archivos Nginx, ejecute `nginx -t` y recargue. Certbot renueva el certificado de `nexo.deadcode.cloud` mediante su temporizador.
 9. Compruebe `https://DOMINIO/salud`, `/salud/listo`, `/`, `/capacitacion` e inicio de sesión. Ambas rutas de salud son públicas deliberadamente y sólo revelan estado, nombre del servicio y disponibilidad general de PostgreSQL; nunca versión, host ni credenciales.
-10. Cambie la contraseña inicial y habilite MFA desde **Mi perfil** antes de crear otros usuarios.
+10. Inicie sesión, complete el cambio obligatorio de la contraseña inicial y habilite MFA desde **Mi perfil** antes de crear otros usuarios.
 
 Nunca cambie `FIELD_ENCRYPTION_KEY` directamente: dejaría ilegibles teléfono, dirección y secretos MFA existentes. Nunca cambie `SEARCH_HMAC_KEY` sin ejecutar una reindexación de teléfonos coordinada; las búsquedas exactas dejarían de coincidir. Rotar los secretos JWT cierra efectivamente todas las sesiones; hágalo en una ventana anunciada.
 

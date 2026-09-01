@@ -76,6 +76,7 @@ async function principal() {
       correo: `prueba-${marca}@nexo.local`,
       hashContrasena: "no-se-usa-en-esta-prueba",
       rol: RolUsuario.ADMINISTRADOR,
+      debeCambiarContrasena: false,
     },
   });
   creados.usuario = usuario.id;

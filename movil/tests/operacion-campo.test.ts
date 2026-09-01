@@ -99,6 +99,7 @@ describe("venta de campo y proyección de deuda", () => {
     expect(calcularImportes(carrito, "CREDITO", "10")).toEqual({
       total: 99.99,
       anticipoNumero: 10,
+      anticipoValido: true,
       financiado: 89.99,
     });
   });

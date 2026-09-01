@@ -127,7 +127,7 @@ model Usuario {
   hashContrasena              String
   rol                         RolUsuario
   activo                      Boolean                     @default(true)
-  debeCambiarContrasena       Boolean                     @default(false)
+  debeCambiarContrasena       Boolean                     @default(true)
   ultimoAcceso                DateTime?
   intentosFallidos            Int                         @default(0)
   bloqueadoHasta              DateTime?

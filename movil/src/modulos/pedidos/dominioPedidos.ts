@@ -1,6 +1,21 @@
 import type { Jornada, PedidoMovil } from "../../tipos";
-import { redondearMoneda } from "../../utilidades/dinero";
-import type { Periodicidad, TipoVenta } from "../ventas/dominioVenta";
+import {
+  parsearDineroCapturado,
+  redondearMoneda,
+} from "../../utilidades/dinero";
+import {
+  esFechaHoyOFutura,
+  finDiaMexicoISO,
+} from "../../utilidades/fechaLocal";
+import {
+  proyectarEstadoCuentaTrasCargo,
+  type PlanCreditoProyectado,
+} from "../../utilidades/proyeccionEstadoCuenta";
+import type {
+  MetodoPago,
+  Periodicidad,
+  TipoVenta,
+} from "../ventas/dominioVenta";
 
 export const siguienteEstado: Record<string, string> = {
   PENDIENTE_PEDIR: "PEDIDO_PROVEEDOR",
@@ -40,10 +55,7 @@ export function validarNuevoPedido(borrador: BorradorNuevoPedido) {
   if (!borrador.productoId) return "PRODUCTO" as const;
   const cantidad = Number(borrador.cantidad);
   if (!Number.isInteger(cantidad) || cantidad < 1) return "CANTIDAD" as const;
-  if (
-    borrador.fechaCompromiso &&
-    !/^\d{4}-\d{2}-\d{2}$/.test(borrador.fechaCompromiso)
-  )
+  if (borrador.fechaCompromiso && !esFechaHoyOFutura(borrador.fechaCompromiso))
     return "FECHA" as const;
   if (borrador.notas.trim().length > 1000) return "NOTAS" as const;
   return null;
@@ -72,12 +84,13 @@ export function crearDatosNuevoPedido(borrador: BorradorNuevoPedido) {
 export function validarEntrega(
   total: number,
   tipo: TipoVenta,
-  anticipo: number,
+  anticipo: number | null,
   cuota: string,
   fecha: string,
   numeroTarjeta: string,
 ) {
-  if (anticipo < 0 || anticipo > total) return "ANTICIPO" as const;
+  if (anticipo === null || anticipo < 0 || anticipo > total)
+    return "ANTICIPO" as const;
   if (
     tipo === "CREDITO" &&
     total - anticipo > 0 &&
@@ -87,7 +100,7 @@ export function validarEntrega(
   if (
     tipo === "CREDITO" &&
     total - anticipo > 0 &&
-    (!(Number(cuota) > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(fecha))
+    (!((parsearDineroCapturado(cuota) ?? 0) > 0) || !esFechaHoyOFutura(fecha))
   ) {
     return "PLAN" as const;
   }
@@ -104,23 +117,32 @@ export function crearDatosEntrega(entrada: {
   cuota: string;
   fecha: string;
   fechaEntrega: string;
+  metodoAnticipo?: MetodoPago;
 }) {
+  const requiereFinanciamiento =
+    entrada.tipo === "CREDITO" && entrada.total - entrada.anticipo > 0;
+  const tipoNormalizado = requiereFinanciamiento ? "CREDITO" : "CONTADO";
+  const montoCuota = requiereFinanciamiento
+    ? parsearDineroCapturado(entrada.cuota)
+    : null;
+  if (requiereFinanciamiento && !(montoCuota && montoCuota > 0)) {
+    throw new Error("CUOTA_INVALIDA");
+  }
   const datos: Record<string, unknown> = {
     pedidoId: entrada.pedidoId,
-    tipo: entrada.tipo,
-    anticipo: entrada.tipo === "CREDITO" ? entrada.anticipo : 0,
-    numeroTarjeta:
-      entrada.tipo === "CREDITO" && entrada.total - entrada.anticipo > 0
-        ? entrada.numeroTarjeta.trim()
-        : undefined,
-    metodoAnticipo: "EFECTIVO",
+    tipo: tipoNormalizado,
+    anticipo: requiereFinanciamiento ? entrada.anticipo : 0,
+    numeroTarjeta: requiereFinanciamiento
+      ? entrada.numeroTarjeta.trim()
+      : undefined,
+    metodoAnticipo: entrada.metodoAnticipo ?? "EFECTIVO",
     fechaEntrega: entrada.fechaEntrega,
   };
-  if (entrada.tipo === "CREDITO" && entrada.total - entrada.anticipo > 0) {
+  if (requiereFinanciamiento) {
     datos.plan = {
       periodicidad: entrada.periodicidad,
-      montoCuota: Number(entrada.cuota),
-      primerVencimiento: new Date(`${entrada.fecha}T12:00:00`).toISOString(),
+      montoCuota,
+      primerVencimiento: finDiaMexicoISO(entrada.fecha),
     };
   }
   return datos;
@@ -131,6 +153,7 @@ export function proyectarEntregaEnJornada(
   clienteId: string,
   pedidoId: string,
   montoFinanciado: number,
+  plan?: PlanCreditoProyectado,
 ): Jornada {
   return {
     ...jornada,
@@ -146,6 +169,12 @@ export function proyectarEntregaEnJornada(
                 ),
               ),
             },
+            estadoCuenta: proyectarEstadoCuentaTrasCargo(
+              cliente.estadoCuenta,
+              Number(cliente.saldo?.saldoActual ?? 0),
+              montoFinanciado,
+              plan,
+            ),
           }
         : cliente,
     ),

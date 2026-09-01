@@ -48,4 +48,4 @@ Una refactorización que sólo cambia patrones o tecnología, sin mejorar una m�
 
 ## Seguridad de secretos
 
-No guardar contraseñas, JWT, claves SQLCipher o datos de tarjeta en código, AsyncStorage, logs o variables `NEXT_PUBLIC_*`. Las contraseñas creadas o restablecidas por administración funcionan de inmediato y no obligan a recorrer un cambio en el primer acceso. En producción, los secretos se inyectan desde el gestor del entorno y la API sólo se publica detrás de HTTPS.
+No guardar contraseñas, JWT, claves SQLCipher o datos de tarjeta en código, AsyncStorage, logs o variables `NEXT_PUBLIC_*`. Las contraseñas creadas o restablecidas por Administración son temporales: el middleware sólo permite consultar la sesión y sustituir la clave hasta completar el cambio obligatorio. En producción, los secretos se inyectan desde el gestor del entorno y la API sólo se publica detrás de HTTPS.

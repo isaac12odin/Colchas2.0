@@ -17,11 +17,41 @@ Expo Doctor debe terminar sin fallos. Los cambios de parche se hacen juntos con 
 
 ```bash
 npm run build:android:preview -w movil
+npm run build:android:apk -w movil
 npm run build:android -w movil
 npm run build:ios -w movil
 ```
 
-Registre EAS build ID, commit, perfil, runtime/versionCode/buildNumber, checksum y enlace privado. Production no usa `e2e.invalid` ni habilita `EXPO_PUBLIC_E2E_SQLCIPHER`.
+Use `preview` sólo para QA universal. `apk-arm64` produce el APK optimizado
+para descarga directa en teléfonos Android ARM de 64 bits. `production` genera
+un AAB con las cuatro arquitecturas; Google Play entrega a cada dispositivo
+únicamente sus bibliotecas compatibles.
+
+Los perfiles de liberación activan R8, eliminación de recursos no usados,
+compresión del bundle y de bibliotecas JNI, retiran el decodificador GIF y
+conservan WebP porque los productos se sirven en ese formato. Los recursos
+nativos se limitan a español e inglés. El manifiesto exclusivo de `release`
+bloquea `SYSTEM_ALERT_WINDOW`; desarrollo conserva esa capacidad para las
+herramientas de Expo. Toda esta configuración vive en
+`movil/plugins/withVektraAndroidRelease.cjs`: no se debe editar manualmente la
+carpeta generada `movil/android`.
+
+La llave de firma tampoco debe guardarse dentro de `movil/android`: Expo puede
+regenerar por completo ese directorio. Manténgala fuera del árbol generado y
+fuera de Git (localmente se reserva `movil/.credenciales-release/`) y entregue
+su ruta mediante `VEKTRA_KEYSTORE_FILE`. La contraseña se obtiene del gestor de
+secretos y se pasa como `VEKTRA_STORE_PASSWORD`; nunca se escribe en `.env`,
+scripts, historial de terminal ni configuración versionada. El alias se indica
+con `VEKTRA_KEY_ALIAS`.
+
+Registre EAS build ID, commit, perfil, arquitecturas, tamaño,
+runtime/versionCode/buildNumber, checksum y enlace privado. Production no usa
+`e2e.invalid` ni habilita `EXPO_PUBLIC_E2E_SQLCIPHER`.
+
+Antes de publicar el APK directo, verifique que sólo exponga `arm64-v8a`, que
+esté firmado con la llave de producción y que no declare
+`SYSTEM_ALERT_WINDOW`. Conserve el AAB como artefacto canónico para Play y no
+renombre un APK universal anterior como si fuera el nuevo build ligero.
 
 ## Matriz física
 

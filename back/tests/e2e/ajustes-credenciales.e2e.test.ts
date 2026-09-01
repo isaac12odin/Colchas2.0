@@ -207,7 +207,14 @@ describe.sequential("ajustes financieros y credenciales", () => {
           cliente: "MOVIL",
         })
         .expect(200);
-      expect(accesoNuevo.body.usuario.debeCambiarContrasena).toBe(false);
+      expect(accesoNuevo.body.usuario.debeCambiarContrasena).toBe(true);
+      const operacionBloqueada = await request(app)
+        .get("/api/v1/clientes")
+        .set(cabeceras(accesoNuevo.body.accessToken))
+        .expect(428);
+      expect(operacionBloqueada.body.error.codigo).toBe(
+        "CAMBIO_CONTRASENA_REQUERIDO",
+      );
 
       const auditoria = await prisma.auditoria.findFirst({
         where: {
@@ -236,7 +243,7 @@ describe.sequential("ajustes financieros y credenciales", () => {
           cliente: "MOVIL",
         })
         .expect(401);
-      await request(app)
+      const accesoAdminRestablecido = await request(app)
         .post("/api/v1/auth/iniciar-sesion")
         .set("X-Forwarded-For", "10.42.0.6")
         .send({
@@ -245,6 +252,9 @@ describe.sequential("ajustes financieros y credenciales", () => {
           cliente: "MOVIL",
         })
         .expect(200);
+      expect(accesoAdminRestablecido.body.usuario.debeCambiarContrasena).toBe(
+        true,
+      );
     } finally {
       await escenario.limpiar();
     }

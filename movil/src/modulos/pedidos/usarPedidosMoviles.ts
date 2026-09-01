@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Alert } from "react-native";
 
-import { api, crearIdLocal, obtenerConectividad } from "../../api";
+import { api, crearIdLocal, esFalloRealRed } from "../../api";
 import {
   contarOperaciones,
   encolarOperaciones,
@@ -12,8 +12,17 @@ import {
 import type { Jornada, PedidoMovil, ProveedorMovil } from "../../tipos";
 import { usarDatosVivosMovil } from "../../usarDatosVivosMovil";
 import { dinero } from "../../utilidades/formato";
-import { redondearMoneda } from "../../utilidades/dinero";
-import type { Periodicidad, TipoVenta } from "../ventas/dominioVenta";
+import {
+  parsearDineroCapturado,
+  redondearMoneda,
+} from "../../utilidades/dinero";
+import { fechaSugeridaPlanPago } from "../../utilidades/fechaLocal";
+import { resolverProyeccionPendiente } from "../../utilidades/cacheOperativa";
+import type {
+  MetodoPago,
+  Periodicidad,
+  TipoVenta,
+} from "../ventas/dominioVenta";
 import {
   type BorradorNuevoPedido,
   crearDatosNuevoPedido,
@@ -24,6 +33,7 @@ import {
   totalPedido,
   validarEntrega,
 } from "./dominioPedidos";
+import { cargarPedidosPermitidos } from "./cargaPedidosPermitida";
 
 export interface ParametrosPedidos {
   clienteId?: string;
@@ -31,24 +41,29 @@ export interface ParametrosPedidos {
   fecha?: string;
 }
 
-const fechaInicial = new Date(Date.now() + 7 * 86_400_000)
-  .toISOString()
-  .slice(0, 10);
-
-export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
+export function usarPedidosMoviles(
+  parametros: ParametrosPedidos,
+  es: boolean,
+  puedeConsultarProveedores = false,
+) {
   const [pedidos, establecerPedidos] = useState<PedidoMovil[]>([]);
   const [cargando, establecerCargando] = useState(true);
   const [offline, establecerOffline] = useState(false);
   const [porConfirmar, establecerPorConfirmar] = useState(0);
+  const [errorCarga, establecerErrorCarga] = useState("");
   const [entrega, establecerEntrega] = useState<PedidoMovil | null>(null);
   const [gestion, establecerGestion] = useState<PedidoMovil | null>(null);
   const [tipo, establecerTipo] = useState<TipoVenta>("CREDITO");
   const [anticipo, establecerAnticipo] = useState("0");
+  const [metodoAnticipo, establecerMetodoAnticipo] =
+    useState<MetodoPago>("EFECTIVO");
   const [numeroTarjeta, establecerNumeroTarjeta] = useState("");
   const [cuota, establecerCuota] = useState("");
   const [periodicidad, establecerPeriodicidad] =
     useState<Periodicidad>("SEMANAL");
-  const [fechaPlan, establecerFechaPlan] = useState(fechaInicial);
+  const [fechaPlan, establecerFechaPlan] = useState(() =>
+    fechaSugeridaPlanPago(),
+  );
   const [guardando, establecerGuardando] = useState(false);
   const [nuevoAbierto, establecerNuevoAbierto] = useState(false);
   const [creandoPedido, establecerCreandoPedido] = useState(false);
@@ -63,44 +78,84 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
       const pendientes = await contarOperaciones();
       establecerPorConfirmar(pendientes);
       if (pendientes > 0) {
-        const [pedidosLocales, proveedoresLocales, red] = await Promise.all([
+        const [pedidosLocales, proveedoresLocales] = await Promise.all([
           leerCache<PedidoMovil[]>("pedidos_moviles"),
           leerCache<ProveedorMovil[]>("proveedores_moviles"),
-          obtenerConectividad().catch(() => ({ conectada: false })),
         ]);
-        if (pedidosLocales || proveedoresLocales) {
-          establecerPedidos(pedidosLocales ?? []);
-          establecerProveedores(proveedoresLocales ?? []);
-          establecerOffline(!red.conectada);
+        const proyeccion = await resolverProyeccionPendiente({
+          pendientes,
+          cachePrincipal: pedidosLocales,
+          revalidarSesion: () => api("/auth/sesion"),
+        });
+        if (proyeccion.usar) {
+          establecerPedidos(proyeccion.datos);
+          establecerProveedores(
+            puedeConsultarProveedores ? (proveedoresLocales ?? []) : [],
+          );
+          establecerOffline(proyeccion.offline);
+          establecerErrorCarga("");
           return;
         }
       }
-      const [respuesta, catalogo] = await Promise.all([
-        api<{ datos: PedidoMovil[] }>("/pedidos"),
-        api<{ datos: ProveedorMovil[] }>("/proveedores/opciones"),
-      ]);
-      const activos = respuesta.datos.filter(
+      const remotos = await cargarPedidosPermitidos({
+        puedeConsultarProveedores,
+        consultarPedidos: async () =>
+          (await api<{ datos: PedidoMovil[] }>("/pedidos")).datos,
+        consultarProveedores: async () =>
+          (await api<{ datos: ProveedorMovil[] }>("/proveedores/opciones"))
+            .datos,
+      });
+      // Un rechazo del catálogo nunca se reemplaza por una copia anterior.
+      const catalogo = remotos.proveedores ?? [];
+      const activos = remotos.pedidos.filter(
         (pedido) => !["ENTREGADO", "CANCELADO"].includes(pedido.estado),
       );
       establecerPedidos(activos);
-      establecerProveedores(catalogo.datos);
+      establecerProveedores(catalogo);
       await Promise.all([
         guardarCache("pedidos_moviles", activos),
-        guardarCache("proveedores_moviles", catalogo.datos),
+        ...(puedeConsultarProveedores
+          ? [guardarCache("proveedores_moviles", catalogo)]
+          : []),
       ]);
       establecerOffline(false);
-    } catch {
-      establecerPedidos(
-        (await leerCache<PedidoMovil[]>("pedidos_moviles")) ?? [],
+      establecerErrorCarga(
+        "errorProveedores" in remotos
+          ? remotos.errorProveedores instanceof Error
+            ? remotos.errorProveedores.message
+            : es
+              ? "No se pudo consultar el catálogo de proveedores."
+              : "The supplier catalog could not be loaded."
+          : "",
       );
-      establecerProveedores(
-        (await leerCache<ProveedorMovil[]>("proveedores_moviles")) ?? [],
-      );
-      establecerOffline(true);
+    } catch (error) {
+      if (esFalloRealRed(error)) {
+        establecerPedidos(
+          (await leerCache<PedidoMovil[]>("pedidos_moviles")) ?? [],
+        );
+        establecerProveedores(
+          puedeConsultarProveedores
+            ? ((await leerCache<ProveedorMovil[]>("proveedores_moviles")) ?? [])
+            : [],
+        );
+        establecerOffline(true);
+        establecerErrorCarga("");
+      } else {
+        establecerPedidos([]);
+        establecerProveedores([]);
+        establecerOffline(false);
+        establecerErrorCarga(
+          error instanceof Error
+            ? error.message
+            : es
+              ? "El servidor rechazó la consulta de pedidos."
+              : "The server rejected the orders request.",
+        );
+      }
     } finally {
       establecerCargando(false);
     }
-  }, []);
+  }, [puedeConsultarProveedores, es]);
 
   usarDatosVivosMovil(cargar);
   const visibles = useMemo(
@@ -220,16 +275,17 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
     establecerEntrega(pedido);
     establecerTipo("CREDITO");
     establecerAnticipo("0");
+    establecerMetodoAnticipo("EFECTIVO");
     establecerNumeroTarjeta(pedido.cliente?.numeroTarjeta ?? "");
     establecerCuota("");
     establecerPeriodicidad("SEMANAL");
-    establecerFechaPlan(fechaInicial);
+    establecerFechaPlan(fechaSugeridaPlanPago());
   }
 
   async function confirmarEntrega() {
     if (!entrega || guardando) return;
     const total = totalPedido(entrega);
-    const anticipoNumero = Number(anticipo || 0);
+    const anticipoNumero = parsearDineroCapturado(anticipo);
     const error = validarEntrega(
       total,
       tipo,
@@ -241,6 +297,7 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
     if (error === "ANTICIPO") {
       return Alert.alert(es ? "Anticipo inválido" : "Invalid deposit");
     }
+    if (anticipoNumero === null) return;
     if (error === "PLAN") {
       return Alert.alert(
         es ? "Completa el plan de pago" : "Complete the payment plan",
@@ -275,12 +332,20 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
         cuota,
         fecha: fechaPlan,
         fechaEntrega: new Date().toISOString(),
+        metodoAnticipo,
       });
       const actualizados = pedidos.filter((pedido) => pedido.id !== entrega.id);
       const jornada = await obtenerProyeccionJornada(
         parametros,
         entrega.id,
         tipo === "CREDITO" ? redondearMoneda(total - anticipoNumero) : 0,
+        tipo === "CREDITO" && total - anticipoNumero > 0
+          ? {
+              periodicidad,
+              montoCuota: parsearDineroCapturado(cuota) ?? 0,
+              primerVencimiento: fechaPlan,
+            }
+          : undefined,
       );
       const operacionId = crearIdLocal();
       await encolarOperaciones([{ id: operacionId, tipo: "ENTREGA", datos }], {
@@ -316,10 +381,12 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
     cargando,
     offline,
     porConfirmar,
+    errorCarga,
     entrega,
     gestion,
     tipo,
     anticipo,
+    metodoAnticipo,
     numeroTarjeta,
     cuota,
     periodicidad,
@@ -344,6 +411,7 @@ export function usarPedidosMoviles(parametros: ParametrosPedidos, es: boolean) {
     confirmarEntrega,
     establecerTipo,
     establecerAnticipo,
+    establecerMetodoAnticipo,
     establecerNumeroTarjeta,
     establecerCuota,
     establecerPeriodicidad,
@@ -360,6 +428,11 @@ async function obtenerProyeccionJornada(
   parametros: ParametrosPedidos,
   pedidoId: string,
   montoFinanciado: number,
+  plan?: {
+    periodicidad: Periodicidad;
+    montoCuota: number;
+    primerVencimiento: string;
+  },
 ): Promise<Jornada | null> {
   if (!parametros.rutaId || !parametros.fecha || !parametros.clienteId) {
     return null;
@@ -371,6 +444,7 @@ async function obtenerProyeccionJornada(
         parametros.clienteId,
         pedidoId,
         montoFinanciado,
+        plan,
       )
     : null;
 }

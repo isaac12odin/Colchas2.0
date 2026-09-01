@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "react-native";
 
-import { api, ErrorApi } from "../../api";
+import { api, ErrorApi, esFalloRealRed } from "../../api";
 import { guardarCache, leerCache } from "../../almacenLocal";
 import { usarDatosVivosMovil } from "../../usarDatosVivosMovil";
 import type {
@@ -27,6 +27,7 @@ export function usarInventarioMovil(es: boolean) {
   const [totalProductos, establecerTotalProductos] = useState(0);
   const [guardando, establecerGuardando] = useState(false);
   const [offline, establecerOffline] = useState(false);
+  const [errorCarga, establecerErrorCarga] = useState("");
   const [modalAbierto, establecerModalAbierto] = useState(false);
   const [productoEditar, establecerProductoEditar] =
     useState<ProductoInventarioMovil | null>(null);
@@ -51,12 +52,16 @@ export function usarInventarioMovil(es: boolean) {
           datos: ProductoInventarioMovil[];
           paginacion: { pagina: number; total: number; totalPaginas: number };
         }>(`/inventario/productos?${parametros.toString()}`);
-        const [respuesta, catalogos] = await Promise.all([
-          peticionProductos,
-          pagina === 1
-            ? api<CatalogosProductoMovil>("/inventario/catalogos-producto")
-            : Promise.resolve(null),
-        ]);
+        const [respuestaResultado, catalogosResultado] =
+          await Promise.allSettled([
+            peticionProductos,
+            pagina === 1
+              ? api<CatalogosProductoMovil>("/inventario/catalogos-producto")
+              : Promise.resolve(null),
+          ]);
+        if (respuestaResultado.status === "rejected")
+          throw respuestaResultado.reason;
+        const respuesta = respuestaResultado.value;
         const idsNuevos = new Set(
           respuesta.datos.map((producto) => producto.id),
         );
@@ -73,15 +78,39 @@ export function usarInventarioMovil(es: boolean) {
         establecerPaginaActual(respuesta.paginacion.pagina);
         establecerTotalPaginas(respuesta.paginacion.totalPaginas);
         establecerTotalProductos(respuesta.paginacion.total);
-        if (catalogos) {
-          establecerCategorias(catalogos.categorias);
-          await guardarCache("categorias_producto", catalogos.categorias);
+        if (catalogosResultado.status === "fulfilled") {
+          const catalogos = catalogosResultado.value;
+          if (catalogos) {
+            establecerCategorias(catalogos.categorias);
+            await guardarCache("categorias_producto", catalogos.categorias);
+          }
+          establecerErrorCarga("");
+        } else if (esFalloRealRed(catalogosResultado.reason)) {
+          establecerCategorias(
+            (await leerCache<CategoriaProductoMovil[]>(
+              "categorias_producto",
+            )) ?? [],
+          );
+          establecerErrorCarga(
+            es
+              ? "Los productos están actualizados; las agrupaciones usan la última copia por un fallo de red."
+              : "Products are current; groups use the last copy due to a network failure.",
+          );
+        } else {
+          establecerCategorias([]);
+          establecerErrorCarga(
+            catalogosResultado.reason instanceof Error
+              ? catalogosResultado.reason.message
+              : es
+                ? "No se pudieron consultar las agrupaciones."
+                : "Product groups could not be loaded.",
+          );
         }
         if (!buscar.trim() && !categoriaId)
           await guardarCache("inventario", actualizados);
         establecerOffline(false);
-      } catch {
-        if (pagina === 1) {
+      } catch (error) {
+        if (esFalloRealRed(error)) {
           const guardados =
             (await leerCache<ProductoInventarioMovil[]>("inventario")) ?? [];
           productosRef.current = guardados;
@@ -92,14 +121,30 @@ export function usarInventarioMovil(es: boolean) {
               "categorias_producto",
             )) ?? [],
           );
+          establecerOffline(true);
+          establecerErrorCarga("");
+        } else {
+          productosRef.current = [];
+          establecerProductos([]);
+          establecerTotalProductos(0);
+          establecerCategorias([]);
+          establecerPaginaActual(1);
+          establecerTotalPaginas(1);
+          establecerOffline(false);
+          establecerErrorCarga(
+            error instanceof Error
+              ? error.message
+              : es
+                ? "El servidor rechazó la consulta de inventario."
+                : "The server rejected the inventory request.",
+          );
         }
-        establecerOffline(true);
       } finally {
         if (pagina === 1) establecerCargando(false);
         else establecerCargandoMas(false);
       }
     },
-    [buscar, categoriaId],
+    [buscar, categoriaId, es],
   );
 
   usarDatosVivosMovil(cargar);
@@ -259,6 +304,7 @@ export function usarInventarioMovil(es: boolean) {
     cargandoMas,
     guardando,
     offline,
+    errorCarga,
     modalAbierto,
     productoEditar,
     codigoInicial,
