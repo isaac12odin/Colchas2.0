@@ -24,38 +24,76 @@ export function PasoCobroEntrega({
           ? `Total ${dinero.format(total)}. Si es contado se cobra completo. Si es crédito, sólo el anticipo entra hoy y el resto se agrega al saldo.`
           : `Total ${dinero.format(total)}. Cash requires full payment.`}
       </div>
-      <label>
-        <span className="etiqueta">{es ? "Tipo de venta" : "Sale type"}</span>
-        <select
-          className="campo"
-          value={control.tipo}
-          onChange={(evento) =>
-            control.cambiarTipo(evento.target.value as "CREDITO" | "CONTADO")
-          }
-          data-capacitacion="pedidos.entrega.tipo-venta"
-        >
-          <option value="CREDITO">{es ? "Crédito" : "Credit"}</option>
-          <option value="CONTADO">
-            {es ? "Contado · pago completo" : "Cash · full payment"}
-          </option>
-        </select>
-      </label>
-      <label>
-        <span className="etiqueta">
-          {es ? "Dinero recibido hoy" : "Payment received"}
-        </span>
-        <input
-          className="campo"
-          type="number"
-          min="0"
-          max={control.tipo === "CREDITO" ? Math.max(0, total - 0.01) : total}
-          step="0.01"
-          value={control.anticipo}
-          readOnly={control.tipo === "CONTADO"}
-          onChange={(evento) => control.establecerAnticipo(evento.target.value)}
-          data-capacitacion="pedidos.entrega.anticipo"
-        />
-      </label>
+      <fieldset className="sm:col-span-2">
+        <legend className="etiqueta">
+          {es ? "Elige el tipo de venta" : "Choose the sale type"}
+        </legend>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            className={`min-h-20 rounded-xl border p-4 text-left transition ${
+              control.tipo === "CONTADO"
+                ? "border-blue-600 bg-blue-50 ring-2 ring-blue-200 dark:bg-blue-950/40"
+                : "border-slate-200 hover:border-blue-400 dark:border-slate-700"
+            }`}
+            aria-pressed={control.tipo === "CONTADO"}
+            onClick={() => control.cambiarTipo("CONTADO")}
+            data-capacitacion="pedidos.entrega.tipo-contado"
+          >
+            <strong className="block">{es ? "Contado" : "Cash"}</strong>
+            <span className="mt-1 block text-xs text-slate-500">
+              {es
+                ? `Recibes ${dinero.format(total)} y no se genera saldo.`
+                : `Receive ${dinero.format(total)} with no balance.`}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`min-h-20 rounded-xl border p-4 text-left transition ${
+              control.tipo === "CREDITO"
+                ? "border-blue-600 bg-blue-50 ring-2 ring-blue-200 dark:bg-blue-950/40"
+                : "border-slate-200 hover:border-blue-400 dark:border-slate-700"
+            }`}
+            aria-pressed={control.tipo === "CREDITO"}
+            onClick={() => control.cambiarTipo("CREDITO")}
+            data-capacitacion="pedidos.entrega.tipo-credito"
+          >
+            <strong className="block">{es ? "Crédito" : "Credit"}</strong>
+            <span className="mt-1 block text-xs text-slate-500">
+              {es
+                ? "Captura anticipo y plan; el resto se suma al saldo."
+                : "Set the deposit and plan; the rest becomes balance."}
+            </span>
+          </button>
+        </div>
+        {!control.tipo && (
+          <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+            {es
+              ? "Debes elegir cómo se pagará antes de continuar."
+              : "Choose how this sale will be paid before continuing."}
+          </p>
+        )}
+      </fieldset>
+      {control.tipo && (
+        <label>
+          <span className="etiqueta">
+            {es ? "Dinero recibido hoy" : "Payment received"}
+          </span>
+          <input
+            className="campo"
+            type="number"
+            min="0"
+            max={control.tipo === "CREDITO" ? Math.max(0, total - 0.01) : total}
+            step="0.01"
+            value={control.anticipo}
+            readOnly={control.tipo === "CONTADO"}
+            onChange={(evento) =>
+              control.establecerAnticipo(evento.target.value)
+            }
+            data-capacitacion="pedidos.entrega.anticipo"
+          />
+        </label>
+      )}
       {Number(control.anticipo || 0) > 0 && (
         <label>
           <span className="etiqueta">
@@ -113,7 +151,7 @@ export function PasoCobroEntrega({
               className="campo"
               value={control.periodicidad}
               onChange={(evento) =>
-                control.establecerPeriodicidad(
+                control.cambiarPeriodicidad(
                   evento.target.value as typeof control.periodicidad,
                 )
               }
@@ -148,6 +186,7 @@ export function PasoCobroEntrega({
             <input
               className="campo"
               type="date"
+              min={control.fechaMinima}
               value={control.primerVencimiento}
               onChange={(evento) =>
                 control.establecerPrimerVencimiento(evento.target.value)
@@ -155,6 +194,13 @@ export function PasoCobroEntrega({
               required
               data-capacitacion="pedidos.entrega.fecha"
             />
+            {!control.primerVencimientoValido && (
+              <small className="mt-1 block font-semibold text-red-600">
+                {es
+                  ? "El primer vencimiento debe ser desde mañana en adelante."
+                  : "The first due date must be tomorrow or later."}
+              </small>
+            )}
           </label>
         </>
       )}

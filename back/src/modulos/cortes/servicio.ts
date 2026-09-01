@@ -17,6 +17,22 @@ export interface DeclaracionCorte {
   otro: number;
 }
 
+/**
+ * Un operador de caja es quien recibe o entrega dinero durante la jornada.
+ * Esta lista no concede permiso para consultar o firmar cortes: esas acciones
+ * siguen gobernadas por CORTES_CONSULTAR y CORTES_CERRAR.
+ */
+export const ROLES_OPERADOR_CAJA = [
+  RolUsuario.ADMINISTRADOR,
+  RolUsuario.CONTABLE,
+  RolUsuario.VENDEDOR,
+  RolUsuario.COBRADOR,
+] as const;
+
+export function esRolOperadorCaja(rol: RolUsuario) {
+  return (ROLES_OPERADOR_CAJA as readonly RolUsuario[]).includes(rol);
+}
+
 function acumular(
   acumulado: Record<MetodoPago, number>,
   metodo: MetodoPago | null,
@@ -43,7 +59,7 @@ async function calcularCorteConCliente(
         where: {
           id: usuarioOperadorId,
           activo: true,
-          rol: { in: [RolUsuario.COBRADOR, RolUsuario.ADMINISTRADOR] },
+          rol: { in: [...ROLES_OPERADOR_CAJA] },
         },
         select: { id: true, nombre: true, rol: true },
       }),
@@ -93,7 +109,7 @@ async function calcularCorteConCliente(
   if (!operador)
     throw new ErrorAplicacion(
       "OPERADOR_INVALIDO",
-      "Seleccione un cobrador activo.",
+      "Seleccione un operador de caja activo y autorizado.",
       422,
     );
 

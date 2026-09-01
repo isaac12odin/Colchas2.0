@@ -19,8 +19,8 @@ Este documento define el contrato operativo. Tener un endpoint de salud no equiv
 
 ## Logs y errores
 
-- API emite JSON con Pino. El agregador añade ambiente, versión/commit, host y `X-Request-Id`.
-- Nginx propaga `X-Request-Id`; soporte correlaciona por ese ID, folio técnico y rango de tiempo, nunca por teléfono completo.
+- API emite JSON con Pino y valida o genera `X-Request-Id`; el mismo valor queda en `req.id` y vuelve en la respuesta. El agregador añade ambiente, versión/commit y host.
+- Nginx debe propagar `X-Request-Id`; soporte correlaciona por ese ID, folio técnico y rango de tiempo, nunca por teléfono completo.
 - No se capturan cuerpos, cookies, `Authorization`, contraseñas, claves, base64, dirección ni tokens.
 - Backend, Next y Expo deben reportar excepciones a un proyecto por ambiente. Antes de activar un SDK, pruebe la función de sanitización y el muestreo con datos sintéticos.
 - Retención inicial de logs: 30 días operativos y 90 días de seguridad, sujeta a revisión legal/costo.

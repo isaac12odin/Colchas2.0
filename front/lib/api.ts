@@ -1,4 +1,8 @@
-import { notificarCambioDatos } from "./eventosDatos";
+import {
+  notificarCambioDatos,
+  notificarSesionInvalidada,
+} from "./eventosDatos";
+import { indicePracticasWeb } from "@/modulos/capacitacion/indicePracticasWeb";
 
 const base = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 let secuenciaConsulta = 0;
@@ -8,8 +12,15 @@ const consultasRecientes = new Map<
 >();
 const MAXIMO_CONSULTAS_RASTREADAS = 200;
 let renovacionEnCurso: Promise<boolean> | null = null;
+const controladoresActivos = new Set<AbortController>();
+const TIEMPO_MAXIMO_PREDETERMINADO_MS = 45_000;
+const TIEMPO_MAXIMO_RENOVACION_MS = 12_000;
 
 const CLAVE_MUTACIONES_PRACTICA = "nexo:capacitacion:mutaciones-reales:v3";
+
+export interface OpcionesApi extends RequestInit {
+  tiempoMaximoMs?: number;
+}
 
 interface MutacionPracticaLocal {
   leccionId: string;
@@ -19,22 +30,102 @@ interface MutacionPracticaLocal {
   registradaEn: string;
 }
 
-function leccionPracticaActiva() {
-  if (typeof window === "undefined") return null;
-  return new URL(window.location.href).searchParams.get("practica");
+interface PracticaApiPermitida {
+  mutaciones: readonly {
+    metodo: "POST" | "PATCH" | "DELETE";
+    patron: RegExp;
+  }[];
 }
 
-function limpiarDatosSensibles(valor: unknown): unknown {
-  if (Array.isArray(valor)) return valor.map(limpiarDatosSensibles);
-  if (!valor || typeof valor !== "object") return valor;
-  return Object.fromEntries(
-    Object.entries(valor as Record<string, unknown>).map(([clave, dato]) => [
-      clave,
-      /contrasena|password|token|secreto|archivoBase64/i.test(clave)
-        ? "[NO GUARDADO]"
-        : limpiarDatosSensibles(dato),
-    ]),
-  );
+/**
+ * Lista mínima y auditable de escrituras que el entrenador puede simular.
+ * Una query string por sí sola nunca activa la simulación: también se exige
+ * el entrenador montado, la pantalla correcta y una mutación esperada.
+ */
+const practicasApiPermitidas: Readonly<Record<string, PracticaApiPermitida>> = {
+  "clientes-alta": {
+    mutaciones: [{ metodo: "POST", patron: /^\/clientes$/ }],
+  },
+  "clientes-edicion": {
+    mutaciones: [{ metodo: "PATCH", patron: /^\/clientes\/[^/?]+$/ }],
+  },
+  "cobranza-abono": {
+    mutaciones: [{ metodo: "POST", patron: /^\/abonos$/ }],
+  },
+  "compras-proveedor": {
+    mutaciones: [{ metodo: "POST", patron: /^\/compras$/ }],
+  },
+  "compras-proveedores": {
+    mutaciones: [{ metodo: "POST", patron: /^\/proveedores$/ }],
+  },
+  "configuracion-localidades": {
+    mutaciones: [{ metodo: "POST", patron: /^\/localidades$/ }],
+  },
+  "cortes-liquidacion": {
+    mutaciones: [{ metodo: "POST", patron: /^\/cortes$/ }],
+  },
+  "devoluciones-seguras": {
+    mutaciones: [{ metodo: "POST", patron: /^\/devoluciones$/ }],
+  },
+  "importacion-inicial": {
+    mutaciones: [{ metodo: "POST", patron: /^\/importaciones\/excel$/ }],
+  },
+  "inventario-producto": {
+    mutaciones: [{ metodo: "POST", patron: /^\/inventario\/productos$/ }],
+  },
+  "pedido-asignar-proveedor": {
+    mutaciones: [{ metodo: "PATCH", patron: /^\/pedidos\/[^/?]+\/estado$/ }],
+  },
+  "pedido-crear": {
+    mutaciones: [{ metodo: "POST", patron: /^\/pedidos$/ }],
+  },
+  "pedido-entregar": {
+    mutaciones: [{ metodo: "POST", patron: /^\/pedidos\/[^/?]+\/entregar$/ }],
+  },
+  "pedido-recibir-preparar": {
+    mutaciones: [{ metodo: "PATCH", patron: /^\/pedidos\/[^/?]+\/estado$/ }],
+  },
+  "rutas-configuracion": {
+    mutaciones: [{ metodo: "POST", patron: /^\/rutas$/ }],
+  },
+  "rutas-jornada": {
+    mutaciones: [{ metodo: "POST", patron: /^\/rutas\/[^/?]+\/visitas$/ }],
+  },
+  "seguridad-usuarios": {
+    mutaciones: [{ metodo: "POST", patron: /^\/usuarios$/ }],
+  },
+  "ventas-contado-credito": {
+    mutaciones: [{ metodo: "POST", patron: /^\/ventas$/ }],
+  },
+};
+
+const mutacionesPractica: MutacionPracticaLocal[] = [];
+let persistenciaLegadaLimpiada = false;
+
+function limpiarPersistenciaPracticaLegada() {
+  if (persistenciaLegadaLimpiada || typeof window === "undefined") return;
+  persistenciaLegadaLimpiada = true;
+  // Las versiones anteriores persistían cuerpos completos de formularios.
+  localStorage.removeItem(CLAVE_MUTACIONES_PRACTICA);
+}
+
+function practicaApiActiva() {
+  if (typeof window === "undefined") return null;
+  limpiarPersistenciaPracticaLegada();
+  if (document.documentElement.dataset.capacitacionActiva !== "true")
+    return null;
+  const leccionId = new URL(window.location.href).searchParams.get("practica");
+  if (!leccionId) return null;
+  const practica = indicePracticasWeb.find(({ id }) => id === leccionId);
+  if (!practica) return null;
+  const configuracion = practicasApiPermitidas[leccionId] ?? {
+    mutaciones: [],
+  };
+  const rutaActual = window.location.pathname;
+  const rutaValida =
+    rutaActual === practica.rutaReal ||
+    rutaActual.startsWith(`${practica.rutaReal}/`);
+  return { leccionId, configuracion, rutaValida };
 }
 
 function cuerpoJson(opciones: RequestInit) {
@@ -47,25 +138,7 @@ function cuerpoJson(opciones: RequestInit) {
 }
 
 function leerMutacionesPractica() {
-  if (typeof window === "undefined") return [];
-  try {
-    const guardado = JSON.parse(
-      localStorage.getItem(CLAVE_MUTACIONES_PRACTICA) ?? "[]",
-    ) as unknown;
-    return Array.isArray(guardado)
-      ? guardado.filter(
-          (item): item is MutacionPracticaLocal =>
-            typeof item === "object" &&
-            item !== null &&
-            "leccionId" in item &&
-            "metodo" in item &&
-            "ruta" in item &&
-            "cuerpo" in item,
-        )
-      : [];
-  } catch {
-    return [];
-  }
+  return mutacionesPractica;
 }
 
 /** Mantiene en pantalla los cambios secuenciales de una práctica sin servidor. */
@@ -166,14 +239,11 @@ function ejecutarMutacionPractica<T>(
     leccionId,
     metodo,
     ruta,
-    cuerpo: limpiarDatosSensibles(cuerpo),
+    cuerpo,
     registradaEn: new Date().toISOString(),
   };
-  const historial = leerMutacionesPractica();
-  localStorage.setItem(
-    CLAVE_MUTACIONES_PRACTICA,
-    JSON.stringify([...historial, registro].slice(-100)),
-  );
+  mutacionesPractica.push(registro);
+  if (mutacionesPractica.length > 100) mutacionesPractica.shift();
   window.dispatchEvent(
     new CustomEvent("nexo:capacitacion:mutacion-local", {
       detail: registro,
@@ -197,22 +267,144 @@ export class ErrorApi extends Error {
     mensaje: string,
     public codigo: string,
     public estado: number,
+    /** Corresponde al encabezado X-Request-Id enviado y/o recibido. */
+    public solicitudId?: string,
   ) {
     super(mensaje);
+    this.name = "ErrorApi";
   }
+}
+
+function nuevaSolicitudId() {
+  if (typeof globalThis.crypto?.randomUUID === "function")
+    return globalThis.crypto.randomUUID();
+  return `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function crearControlTiempo(
+  senalExterna: AbortSignal | null | undefined,
+  tiempoMaximoMs: number,
+) {
+  const controlador = new AbortController();
+  let vencio = false;
+  const abortarPorSenal = () => controlador.abort(senalExterna?.reason);
+  if (senalExterna?.aborted) abortarPorSenal();
+  else senalExterna?.addEventListener("abort", abortarPorSenal, { once: true });
+  const temporizador = globalThis.setTimeout(() => {
+    vencio = true;
+    controlador.abort(
+      new DOMException("Tiempo de espera agotado", "TimeoutError"),
+    );
+  }, tiempoMaximoMs);
+  controladoresActivos.add(controlador);
+  return {
+    senal: controlador.signal,
+    vencio: () => vencio,
+    liberar: () => {
+      globalThis.clearTimeout(temporizador);
+      senalExterna?.removeEventListener("abort", abortarPorSenal);
+      controladoresActivos.delete(controlador);
+    },
+  };
+}
+
+async function fetchControlado(
+  url: string,
+  opciones: RequestInit,
+  tiempoMaximoMs: number,
+  solicitudId: string,
+) {
+  const control = crearControlTiempo(opciones.signal, tiempoMaximoMs);
+  try {
+    return await fetch(url, { ...opciones, signal: control.senal });
+  } catch (error) {
+    if (control.vencio())
+      throw new ErrorApi(
+        "La solicitud tardó demasiado. Verifica tu conexión e inténtalo nuevamente.",
+        "TIEMPO_AGOTADO",
+        408,
+        solicitudId,
+      );
+    if (control.senal.aborted)
+      throw new ErrorApi(
+        "La solicitud fue cancelada.",
+        "SOLICITUD_CANCELADA",
+        0,
+        solicitudId,
+      );
+    throw new ErrorApi(
+      "No se pudo conectar con el servidor.",
+      "ERROR_RED",
+      0,
+      solicitudId,
+    );
+  } finally {
+    control.liberar();
+  }
+}
+
+function encabezadosSolicitud(
+  metodo: string,
+  esConsulta: boolean,
+  opciones: RequestInit,
+  solicitudId: string,
+) {
+  const encabezados = new Headers(opciones.headers);
+  if (typeof opciones.body === "string" && !encabezados.has("Content-Type"))
+    encabezados.set("Content-Type", "application/json");
+  if (esConsulta) {
+    encabezados.set("Cache-Control", "no-cache");
+    encabezados.set("Pragma", "no-cache");
+  } else {
+    encabezados.set("X-CSRF-Token", csrfDesdeCookie());
+  }
+  if (!encabezados.has("X-Request-Id"))
+    encabezados.set("X-Request-Id", solicitudId);
+  return encabezados;
+}
+
+function puedeRenovarSesion(ruta: string) {
+  return ruta === "/auth/sesion" || !ruta.startsWith("/auth/");
+}
+
+let sesionYaInvalidada = false;
+
+export function limpiarEstadoApi() {
+  consultasRecientes.clear();
+  mutacionesPractica.splice(0, mutacionesPractica.length);
+  if (typeof window !== "undefined")
+    localStorage.removeItem(CLAVE_MUTACIONES_PRACTICA);
+  for (const controlador of controladoresActivos)
+    controlador.abort(new DOMException("Sesión finalizada", "AbortError"));
+  controladoresActivos.clear();
+}
+
+function invalidarSesion(
+  motivo: "NO_AUTENTICADO" | "RENOVACION_FALLIDA",
+  solicitudId?: string,
+) {
+  limpiarEstadoApi();
+  if (sesionYaInvalidada) return;
+  sesionYaInvalidada = true;
+  notificarSesionInvalidada({ motivo, solicitudId });
 }
 
 function renovarSesionCompartida() {
   if (renovacionEnCurso) return renovacionEnCurso;
-  renovacionEnCurso = fetch(`${base}/auth/renovar`, {
+  const solicitudId = nuevaSolicitudId();
+  const opciones: RequestInit = {
     method: "POST",
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrfDesdeCookie(),
-    },
+    cache: "no-store",
+    headers: encabezadosSolicitud("POST", false, { body: "{}" }, solicitudId),
     body: "{}",
-  })
+  };
+  renovacionEnCurso = fetchControlado(
+    `${base}/auth/renovar`,
+    opciones,
+    TIEMPO_MAXIMO_RENOVACION_MS,
+    solicitudId,
+  )
     .then((respuesta) => respuesta.ok)
     .catch(() => false)
     .finally(() => {
@@ -223,56 +415,73 @@ function renovarSesionCompartida() {
 
 async function ejecutarSolicitud<T>(
   ruta: string,
-  opciones: RequestInit = {},
+  opciones: OpcionesApi = {},
   reintentar = true,
 ): Promise<T> {
   const metodo = opciones.method?.toUpperCase() ?? "GET";
   const esConsulta = ["GET", "HEAD"].includes(metodo);
+  const solicitudId = nuevaSolicitudId();
   const separador = ruta.includes("?") ? "&" : "?";
   const rutaFresca = esConsulta
     ? `${ruta}${separador}__nexo=${Date.now()}-${++secuenciaConsulta}`
     : ruta;
-  const respuesta = await fetch(`${base}${rutaFresca}`, {
-    ...opciones,
-    // Los recursos operativos (saldo, cartera, stock y rutas) no deben salir
-    // del HTTP cache después de una venta, abono o devolución.
-    cache: opciones.cache ?? "no-store",
-    credentials: "include",
-    headers: {
-      ...(opciones.body ? { "Content-Type": "application/json" } : {}),
-      ...(esConsulta
-        ? { "Cache-Control": "no-cache", Pragma: "no-cache" }
-        : {}),
-      ...(!["GET", "HEAD"].includes(metodo)
-        ? { "X-CSRF-Token": csrfDesdeCookie() }
-        : {}),
-      ...opciones.headers,
+  const { tiempoMaximoMs = TIEMPO_MAXIMO_PREDETERMINADO_MS, ...opcionesFetch } =
+    opciones;
+  const respuesta = await fetchControlado(
+    `${base}${rutaFresca}`,
+    {
+      ...opcionesFetch,
+      // Los recursos operativos (saldo, cartera, stock y rutas) no deben salir
+      // del HTTP cache después de una venta, abono o devolución.
+      cache: opcionesFetch.cache ?? "no-store",
+      credentials: "include",
+      headers: encabezadosSolicitud(
+        metodo,
+        esConsulta,
+        opcionesFetch,
+        solicitudId,
+      ),
     },
-  });
-  if (respuesta.status === 401 && reintentar && !ruta.startsWith("/auth/")) {
-    if (await renovarSesionCompartida())
+    tiempoMaximoMs,
+    solicitudId,
+  );
+  const solicitudIdRespuesta =
+    respuesta.headers.get("X-Request-Id") ?? solicitudId;
+  if (respuesta.status === 401 && puedeRenovarSesion(ruta)) {
+    if (reintentar && (await renovarSesionCompartida()))
       return ejecutarSolicitud<T>(ruta, opciones, false);
+    invalidarSesion(
+      reintentar ? "RENOVACION_FALLIDA" : "NO_AUTENTICADO",
+      solicitudIdRespuesta,
+    );
   }
   if (!respuesta.ok) {
-    const cuerpo = await respuesta.json().catch(() => ({
-      error: {
-        mensaje: "No se pudo completar la solicitud.",
-        codigo: "ERROR_RED",
-      },
-    }));
+    const cuerpo = (await respuesta.json().catch(() => ({}))) as {
+      error?: { mensaje?: string; codigo?: string; solicitudId?: string };
+    };
     throw new ErrorApi(
-      cuerpo.error?.mensaje ?? "Ocurrio un error.",
+      cuerpo.error?.mensaje ?? "No se pudo completar la solicitud.",
       cuerpo.error?.codigo ?? "ERROR",
       respuesta.status,
+      cuerpo.error?.solicitudId ?? solicitudIdRespuesta,
     );
   }
   const cuerpo =
-    respuesta.status === 204
+    respuesta.status === 204 || metodo === "HEAD"
       ? (undefined as T)
-      : ((await respuesta.json()) as T);
+      : await respuesta.json().catch(() => {
+          throw new ErrorApi(
+            "El servidor devolvió una respuesta inválida.",
+            "RESPUESTA_INVALIDA",
+            respuesta.status,
+            solicitudIdRespuesta,
+          );
+        });
+  if (ruta === "/auth/sesion" || ruta === "/auth/iniciar-sesion")
+    sesionYaInvalidada = false;
   if (!esConsulta && !ruta.startsWith("/auth/"))
     notificarCambioDatos({ metodo, ruta });
-  return cuerpo;
+  return cuerpo as T;
 }
 
 /**
@@ -282,13 +491,29 @@ async function ejecutarSolicitud<T>(
  */
 export function api<T>(
   ruta: string,
-  opciones: RequestInit = {},
+  opciones: OpcionesApi = {},
   reintentar = true,
 ): Promise<T> {
   const metodo = opciones.method?.toUpperCase() ?? "GET";
-  const practica = leccionPracticaActiva();
-  if (practica && !["GET", "HEAD"].includes(metodo))
-    return ejecutarMutacionPractica<T>(practica, ruta, opciones);
+  const practica = practicaApiActiva();
+  if (practica && !["GET", "HEAD"].includes(metodo)) {
+    const rutaSinConsulta = ruta.split("?")[0] ?? ruta;
+    const mutacionPermitida =
+      practica.rutaValida &&
+      practica.configuracion.mutaciones.some(
+        (mutacion) =>
+          mutacion.metodo === metodo && mutacion.patron.test(rutaSinConsulta),
+      );
+    if (!mutacionPermitida)
+      return Promise.reject(
+        new ErrorApi(
+          "La práctica bloqueó una operación diferente a la esperada.",
+          "PRACTICA_OPERACION_NO_PERMITIDA",
+          409,
+        ),
+      );
+    return ejecutarMutacionPractica<T>(practica.leccionId, ruta, opciones);
+  }
   if (!["GET", "HEAD"].includes(metodo))
     return ejecutarSolicitud<T>(ruta, opciones, reintentar);
 
@@ -296,7 +521,9 @@ export function api<T>(
   const secuencia = ++secuenciaConsulta;
   const solicitud = ejecutarSolicitud<T>(ruta, opciones, reintentar).then(
     (datos) =>
-      practica ? aplicarEstadoLocalPractica(practica, ruta, datos) : datos,
+      practica?.rutaValida
+        ? aplicarEstadoLocalPractica(practica.leccionId, ruta, datos)
+        : datos,
   );
   const resultado = solicitud.then(
     (datos) => {

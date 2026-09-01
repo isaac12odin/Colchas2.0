@@ -6,6 +6,7 @@ import { prisma } from "../../infraestructura/prisma.js";
 import { autenticar, permitir } from "../../seguridad/middlewares.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
 import { auditar } from "../../compartido/auditoria.js";
+import { crearPagina, esquemaPaginacion } from "../../compartido/paginacion.js";
 import {
   crearHashContrasena,
   esquemaContrasenaSegura,
@@ -25,12 +26,45 @@ const camposPublicos = {
   creadoEn: true,
 } as const;
 
-rutasUsuarios.get("/", async (_req, res) => {
-  const usuarios = await prisma.usuario.findMany({
-    select: camposPublicos,
-    orderBy: { nombre: "asc" },
-  });
-  res.json({ datos: usuarios });
+export const esquemaConsultaUsuarios = esquemaPaginacion.extend({
+  rol: z.nativeEnum(RolUsuario).optional(),
+  activo: z
+    .enum(["true", "false"])
+    .transform((valor) => valor === "true")
+    .optional(),
+});
+
+rutasUsuarios.get("/", async (req, res) => {
+  const { pagina, limite, buscar, rol, activo } = esquemaConsultaUsuarios.parse(
+    req.query,
+  );
+  const where = {
+    ...(rol ? { rol } : {}),
+    ...(activo !== undefined ? { activo } : {}),
+    ...(buscar
+      ? {
+          OR: [
+            {
+              nombre: { contains: buscar, mode: "insensitive" as const },
+            },
+            {
+              correo: { contains: buscar, mode: "insensitive" as const },
+            },
+          ],
+        }
+      : {}),
+  };
+  const [usuarios, total] = await prisma.$transaction([
+    prisma.usuario.findMany({
+      where,
+      select: camposPublicos,
+      orderBy: [{ nombre: "asc" }, { id: "asc" }],
+      skip: (pagina - 1) * limite,
+      take: limite,
+    }),
+    prisma.usuario.count({ where }),
+  ]);
+  res.json(crearPagina(usuarios, total, pagina, limite));
 });
 
 rutasUsuarios.post("/", async (req, res) => {
@@ -84,6 +118,23 @@ rutasUsuarios.patch("/:id", async (req, res) => {
         SELECT pg_advisory_xact_lock(hashtext('nexo:administradores-activos'))
       ) AS candado
     `;
+    // La autorización del middleware pudo quedar obsoleta mientras esta
+    // solicitud esperaba el candado. Releer al actor impide que dos
+    // administradores ya admitidos se degraden mutuamente en paralelo.
+    const autorizadorActual = await tx.usuario.findUnique({
+      where: { id: req.usuario!.id },
+      select: { activo: true, rol: true },
+    });
+    if (
+      !autorizadorActual?.activo ||
+      autorizadorActual.rol !== RolUsuario.ADMINISTRADOR
+    ) {
+      throw new ErrorAplicacion(
+        "AUTORIZACION_REVOCADA",
+        "La autorización administrativa cambió mientras se procesaba la solicitud. Actualice la sesión.",
+        422,
+      );
+    }
     const antes = await tx.usuario.findUniqueOrThrow({
       where: { id: String(req.params.id) },
     });

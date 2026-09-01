@@ -79,6 +79,12 @@ export function SelectorClienteRemoto({
       }
       alBuscar={establecerTermino}
       sinResultados={es ? "Cliente no encontrado." : "Customer not found."}
+      textoCambiar={es ? "Cambiar" : "Change"}
+      ayuda={
+        es
+          ? "Escribe para buscar entre todos y presiona Enter cuando haya una sola coincidencia."
+          : "Type to search all customers and press Enter when there is one match."
+      }
       prefijoCapacitacion={prefijoCapacitacion}
     />
   );
@@ -136,6 +142,12 @@ export function SelectorProductoRemoto({
             ? "No hay producto con existencia disponible."
             : "Primero registra el producto en Inventario."
           : "Product not found."
+      }
+      textoCambiar={es ? "Cambiar" : "Change"}
+      ayuda={
+        es
+          ? "Escribe para buscar o escanea un código y presiona Enter."
+          : "Type to search, or scan a code and press Enter."
       }
       prefijoCapacitacion={prefijoCapacitacion}
     />

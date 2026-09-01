@@ -27,7 +27,7 @@ async function sesionBasica(page: Page, usuario = admin) {
   });
 }
 
-test("el perfil muestra claves y genera una contraseña sencilla confirmada", async ({
+test("el perfil muestra claves y genera una contraseña robusta confirmada", async ({
   page,
 }) => {
   await sesionBasica(page);
@@ -36,13 +36,14 @@ test("el perfil muestra claves y genera una contraseña sencilla confirmada", as
   await page
     .getByRole("button", { name: "Generar y confirmar clave segura" })
     .click();
-  const nueva = page.getByLabel("Nueva contraseña (mínimo 6)");
+  const nueva = page.getByLabel("Nueva contraseña (mínimo 12)");
   const confirmacion = page.getByLabel("Confirmar nueva contraseña");
   const valor = await nueva.inputValue();
-  expect(valor).toHaveLength(8);
+  expect(valor).toHaveLength(16);
   expect(valor).toMatch(/[a-z]/);
   expect(valor).toMatch(/[A-Z]/);
   expect(valor).toMatch(/\d/);
+  expect(valor).toMatch(/[!@#$%_-]/);
   await expect(confirmacion).toHaveValue(valor);
 
   await nueva
@@ -50,6 +51,39 @@ test("el perfil muestra claves y genera una contraseña sencilla confirmada", as
     .getByRole("button", { name: "Mostrar clave" })
     .click();
   await expect(nueva).toHaveAttribute("type", "text");
+});
+
+test("activar MFA consume la sesión rotada sin pedir una sesión ya revocada", async ({
+  page,
+}) => {
+  const sinMfa = { ...admin, mfaHabilitado: false };
+  let consultasSesion = 0;
+  await page.route("**/api/**", async (route) => {
+    const ruta = new URL(route.request().url()).pathname;
+    if (ruta.endsWith("/auth/sesion")) {
+      consultasSesion += 1;
+      return json(route, { usuario: sinMfa });
+    }
+    if (ruta.endsWith("/alertas"))
+      return json(route, { totales: { total: 0 } });
+    if (ruta.endsWith("/auth/mfa/iniciar"))
+      return json(route, {
+        secreto: "JBSWY3DPEHPK3PXP",
+        uri: "otpauth://totp/Vektra:admin",
+      });
+    if (ruta.endsWith("/auth/mfa/confirmar"))
+      return json(route, { usuario: { ...sinMfa, mfaHabilitado: true } });
+    return json(route, { error: { mensaje: `Sin mock para ${ruta}` } }, 404);
+  });
+
+  await page.goto("/perfil");
+  await page.getByRole("button", { name: "Configurar segundo factor" }).click();
+  await page.getByLabel("Código actual de 6 dígitos").fill("123456");
+  await page.getByRole("button", { name: "Confirmar y activar" }).click();
+
+  await expect(page.getByText(/Segundo factor habilitado/)).toBeVisible();
+  await expect(page.getByText(/Activo ·/)).toBeVisible();
+  expect(consultasSesion).toBe(1);
 });
 
 test("administración abre restablecimiento ajeno con generador y confirmación", async ({
@@ -83,12 +117,14 @@ test("administración abre restablecimiento ajeno con generador y confirmación"
   await expect(
     dialogo.getByRole("heading", { name: /Restablecer contraseña/ }),
   ).toBeVisible();
-  await dialogo.getByRole("button", { name: "Generar clave segura" }).click();
+  await dialogo
+    .getByRole("button", { name: "Generar contraseña segura" })
+    .click();
   const nueva = dialogo.getByLabel("Nueva contraseña");
   const confirmacion = dialogo.getByLabel("Confirmar contraseña");
   const valor = await nueva.inputValue();
   await expect(confirmacion).toHaveValue(valor);
-  expect(valor).toMatch(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/);
+  expect(valor).toMatch(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{12,}$/);
 });
 
 const cliente = {
@@ -181,4 +217,49 @@ test("administración abre el ajuste protegido y conserva el saldo visible", asy
   await expect(confirmacion).toHaveAttribute("type", "password");
   await dialogo.getByRole("button", { name: "Mostrar clave" }).click();
   await expect(confirmacion).toHaveAttribute("type", "text");
+});
+
+async function prepararAltaCliente(
+  page: Page,
+  rol: "ADMINISTRADOR" | "CONTABLE" | "VENDEDOR",
+) {
+  await page.route("**/api/**", async (route) => {
+    const ruta = new URL(route.request().url()).pathname;
+    if (ruta.endsWith("/auth/sesion"))
+      return json(route, { usuario: { ...admin, rol } });
+    if (ruta.endsWith("/alertas"))
+      return json(route, { totales: { total: 0 } });
+    if (ruta.endsWith("/clientes"))
+      return json(route, {
+        datos: [],
+        paginacion: {
+          pagina: 1,
+          limite: 20,
+          total: 0,
+          totalPaginas: 0,
+        },
+      });
+    if (ruta.endsWith("/localidades"))
+      return json(route, { datos: [cliente.localidad] });
+    return json(route, { error: { mensaje: `Sin mock para ${ruta}` } }, 404);
+  });
+}
+
+test("el alta oculta el límite financiero al Vendedor", async ({ page }) => {
+  await prepararAltaCliente(page, "VENDEDOR");
+  await page.goto("/clientes?accion=nuevo");
+
+  const dialogo = page.getByRole("dialog");
+  await expect(
+    dialogo.getByRole("heading", { name: "Nuevo cliente" }),
+  ).toBeVisible();
+  await expect(dialogo.getByLabel(/Límite de crédito/)).toHaveCount(0);
+});
+
+test("el alta conserva el límite para Contabilidad", async ({ page }) => {
+  await prepararAltaCliente(page, "CONTABLE");
+  await page.goto("/clientes?accion=nuevo");
+
+  const dialogo = page.getByRole("dialog");
+  await expect(dialogo.getByLabel(/Límite de crédito/)).toHaveValue("0");
 });

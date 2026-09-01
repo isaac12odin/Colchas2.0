@@ -536,7 +536,22 @@ rutasAutenticacion.post("/mfa/confirmar", autenticar, async (req, res) => {
       },
     }),
   ]);
-  res.status(204).send();
+  // Activar MFA revoca deliberadamente todas las sesiones anteriores. La
+  // solicitud que acaba de demostrar el TOTP recibe una sesión nueva para no
+  // dejar la interfaz en un estado autenticado aparente pero ya inválido.
+  const usuarioVigente = await prisma.usuario.findUniqueOrThrow({
+    where: { id: usuario.id },
+  });
+  const movil =
+    !req.cookies?.access_token &&
+    Boolean(req.get("authorization")?.startsWith("Bearer "));
+  const tokens = await emitirSesion(req, res, usuarioVigente, movil);
+  res.json({
+    usuario: usuarioPublico(usuarioVigente),
+    ...(movil
+      ? { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }
+      : { csrfToken: tokens.csrfToken }),
+  });
 });
 
 rutasAutenticacion.post("/mfa/deshabilitar", autenticar, async (req, res) => {

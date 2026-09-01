@@ -1,17 +1,11 @@
 import { Router } from "express";
-import {
-  endOfMonth,
-  endOfYear,
-  startOfMonth,
-  startOfYear,
-  subMonths,
-} from "date-fns";
 import { RolUsuario } from "@prisma/client";
 import { z } from "zod";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { prisma } from "../../infraestructura/prisma.js";
 import { autenticar, permitir } from "../../seguridad/middlewares.js";
+import { fechaMexicoISO } from "../../compartido/fechas.js";
 
 export const rutasReportes = Router();
 rutasReportes.use(
@@ -19,16 +13,53 @@ rutasReportes.use(
   permitir(RolUsuario.ADMINISTRADOR, RolUsuario.CONTABLE),
 );
 
-function rangoPeriodo(
-  periodo: "MES" | "BIMESTRE" | "SEMESTRE" | "ANIO",
-  fecha: Date,
+const esquemaFechaReporte = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(
+    (valor) =>
+      new Date(`${valor}T12:00:00.000Z`).toISOString().slice(0, 10) === valor,
+    "La fecha no existe en el calendario.",
+  );
+
+function primerDiaMes(
+  anio: number,
+  mesBaseUno: number,
+  desplazamiento: number,
 ) {
-  if (periodo === "ANIO")
-    return { desde: startOfYear(fecha), hasta: endOfYear(fecha) };
-  const meses = periodo === "MES" ? 1 : periodo === "BIMESTRE" ? 2 : 6;
+  const calendario = new Date(
+    Date.UTC(anio, mesBaseUno - 1 + desplazamiento, 1),
+  );
   return {
-    desde: startOfMonth(subMonths(fecha, meses - 1)),
-    hasta: endOfMonth(fecha),
+    anio: calendario.getUTCFullYear(),
+    mes: calendario.getUTCMonth() + 1,
+  };
+}
+
+function inicioMesMexico(anio: number, mes: number) {
+  return new Date(
+    `${anio.toString().padStart(4, "0")}-${mes.toString().padStart(2, "0")}-01T00:00:00.000-06:00`,
+  );
+}
+
+export function rangoPeriodo(
+  periodo: "MES" | "BIMESTRE" | "SEMESTRE" | "ANIO",
+  fecha: string,
+) {
+  const [anio, mes] = fecha.split("-").map(Number) as [number, number, number];
+  if (periodo === "ANIO") {
+    const desde = inicioMesMexico(anio, 1);
+    const siguiente = inicioMesMexico(anio + 1, 1);
+    return { desde, hasta: new Date(siguiente.getTime() - 1) };
+  }
+  const meses = periodo === "MES" ? 1 : periodo === "BIMESTRE" ? 2 : 6;
+  const inicio = primerDiaMes(anio, mes, -(meses - 1));
+  const finSiguiente = primerDiaMes(anio, mes, 1);
+  const desde = inicioMesMexico(inicio.anio, inicio.mes);
+  const siguiente = inicioMesMexico(finSiguiente.anio, finSiguiente.mes);
+  return {
+    desde,
+    hasta: new Date(siguiente.getTime() - 1),
   };
 }
 
@@ -37,9 +68,8 @@ rutasReportes.get("/resumen", async (req, res) => {
     .enum(["MES", "BIMESTRE", "SEMESTRE", "ANIO"])
     .default("MES")
     .parse(req.query.periodo);
-  const fecha = z.coerce
-    .date()
-    .default(() => new Date())
+  const fecha = esquemaFechaReporte
+    .default(() => fechaMexicoISO(new Date()))
     .parse(req.query.fecha);
   const { desde, hasta } = rangoPeriodo(periodo, fecha);
   const [

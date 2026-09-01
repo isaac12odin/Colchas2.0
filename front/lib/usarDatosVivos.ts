@@ -1,10 +1,20 @@
 import { useEffect, useRef } from "react";
 
-import { suscribirCambioDatos } from "./eventosDatos";
+import {
+  recursosParaPantalla,
+  suscribirCambioDatos,
+  type RecursoDatos,
+} from "./eventosDatos";
 
 interface OpcionesDatosVivos {
-  intervaloMs?: number;
+  /** Sondeo de respaldo. Las mutaciones y el foco actualizan antes. */
+  intervaloMs?: number | false;
+  /** Permite declarar dependencias cuando una pantalla mezcla recursos. */
+  recursos?: readonly RecursoDatos[];
 }
+
+const INTERVALO_PREDETERMINADO_MS = 120_000;
+const INTERVALO_MINIMO_MS = 60_000;
 
 /**
  * Mantiene fresca la consulta visible sin obligar a recargar toda la página.
@@ -13,10 +23,14 @@ interface OpcionesDatosVivos {
  */
 export function usarDatosVivos(
   actualizar: () => void | Promise<unknown>,
-  { intervaloMs = 30_000 }: OpcionesDatosVivos = {},
+  {
+    intervaloMs = INTERVALO_PREDETERMINADO_MS,
+    recursos,
+  }: OpcionesDatosVivos = {},
 ) {
   const referencia = useRef(actualizar);
   referencia.current = actualizar;
+  const claveRecursos = recursos?.join("|") ?? "";
 
   useEffect(() => {
     let ejecutando = false;
@@ -42,18 +56,31 @@ export function usarDatosVivos(
     const alMostrar = () => {
       if (document.visibilityState === "visible") void ejecutar();
     };
-    const cancelarCambio = suscribirCambioDatos(() => void ejecutar());
+    const recursosObservados =
+      recursos ?? recursosParaPantalla(window.location.pathname);
+    const cancelarCambio = suscribirCambioDatos(
+      () => void ejecutar(),
+      recursosObservados,
+    );
     window.addEventListener("focus", ejecutar);
     window.addEventListener("online", ejecutar);
     document.addEventListener("visibilitychange", alMostrar);
-    const intervalo = window.setInterval(() => void ejecutar(), intervaloMs);
+    const intervalo =
+      intervaloMs === false
+        ? null
+        : window.setInterval(
+            () => void ejecutar(),
+            Math.max(intervaloMs, INTERVALO_MINIMO_MS),
+          );
 
     return () => {
       cancelarCambio();
       window.removeEventListener("focus", ejecutar);
       window.removeEventListener("online", ejecutar);
       document.removeEventListener("visibilitychange", alMostrar);
-      window.clearInterval(intervalo);
+      if (intervalo !== null) window.clearInterval(intervalo);
     };
-  }, [intervaloMs]);
+    // La clave evita resuscripciones por arreglos equivalentes creados al renderizar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intervaloMs, claveRecursos]);
 }

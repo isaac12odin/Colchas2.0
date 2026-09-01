@@ -47,7 +47,7 @@ test("una clave temporal dirige al formulario real y no consulta módulos", asyn
   expect(rutasApi.filter((ruta) => ruta.endsWith("/alertas"))).toHaveLength(0);
 
   await page.getByLabel("Contraseña actual").fill("Temporal!2026");
-  await page.getByLabel("Nueva contraseña (mínimo 6)").fill("Definitiva!2026");
+  await page.getByLabel("Nueva contraseña (mínimo 12)").fill("Definitiva!2026");
   await page.getByLabel("Confirmar nueva contraseña").fill("Definitiva!2026");
   await page
     .getByRole("button", { name: "Actualizar y cerrar sesiones" })

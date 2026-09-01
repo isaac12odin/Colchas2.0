@@ -65,11 +65,13 @@ describe.sequential("suite robusta con datos automáticos", () => {
         .expect(201);
       escenario.registrarCategoriaProducto(categoria.body.id);
 
+      const skuProductoApi = `API-${escenario.marca}`;
+      escenario.registrarProductoEsperado(skuProductoApi);
       const producto = await request(app)
         .post("/api/v1/inventario/productos")
         .set(cabeceras(almacenista.token))
         .send({
-          sku: `API-${escenario.marca}`,
+          sku: skuProductoApi,
           nombre: `Producto por API ${escenario.marca}`,
           marca: "Nexo Test",
           categoriaId: categoria.body.id,
@@ -137,7 +139,6 @@ describe.sequential("suite robusta con datos automáticos", () => {
           telefono,
           direccion: `Avenida Búsqueda número 10 ${escenario.marca}`,
           localidadId: localidad.body.id,
-          limiteCredito: 10_000,
         })
         .expect(201);
       escenario.registrarCliente(cliente.body.id);
@@ -1051,6 +1052,7 @@ describe.sequential("suite robusta con datos automáticos", () => {
         rutaNombre: datos.ruta,
       });
       const archivoBase64 = await crearExcelImportacion(datos);
+      const archivoBinario = Buffer.from(archivoBase64, "base64");
 
       await request(app)
         .post("/api/v1/importaciones/excel")
@@ -1061,7 +1063,11 @@ describe.sequential("suite robusta con datos automáticos", () => {
       const importacion = await request(app)
         .post("/api/v1/importaciones/excel")
         .set(cabeceras(admin.token))
-        .send({ archivoBase64 });
+        .set(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        .send(archivoBinario);
       expect(importacion.status, JSON.stringify(importacion.body)).toBe(201);
       expect(importacion.body.resumen).toEqual({
         localidades: 1,

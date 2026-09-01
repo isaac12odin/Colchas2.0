@@ -43,6 +43,7 @@ test("la capacitación es operable en móvil sin desbordamiento", async ({
   await expect(boton).toBeInViewport();
   await boton.click();
   await expect(page).toHaveURL(/\/pedidos\?practica=/);
+  await expect(page.getByTestId("banner-practica-segura")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pedidos" })).toBeVisible();
   const entrenador = page.getByTestId("entrenador-pantalla-real");
   await expect(entrenador).toBeVisible();

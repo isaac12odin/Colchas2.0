@@ -1,6 +1,10 @@
 import { expect, type Page, type Route, test } from "@playwright/test";
 import { leccionesCapacitacion } from "../../modulos/capacitacion/catalogo";
 import {
+  indicePracticasWeb,
+  obtenerPracticaWebSegura,
+} from "../../modulos/capacitacion/indicePracticasWeb";
+import {
   pasosAtomicosDe,
   totalLeccionesWebConGuion,
 } from "../../modulos/capacitacion/guionesAtomicos";
@@ -59,6 +63,39 @@ test("las 24 prácticas web tienen un guion atómico completo y sin pasos duplic
       expect(paso.verificacion.es, `${leccion.id}/${paso.id}`).not.toBe("");
     }
   }
+});
+
+test("el índice ligero de prácticas coincide con el catálogo operativo", () => {
+  const catalogo = leccionesCapacitacion
+    .filter((leccion): leccion is typeof leccion & { rutaReal: string } =>
+      Boolean(leccion.rutaReal),
+    )
+    .map(({ id, rutaReal, roles }) => ({ id, rutaReal, roles: [...roles] }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const indice = indicePracticasWeb
+    .map(({ id, rutaReal, roles }) => ({ id, rutaReal, roles: [...roles] }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  expect(indice).toEqual(catalogo);
+});
+
+test("el índice rechaza prácticas desconocidas, de otro módulo o de otro rol", () => {
+  expect(
+    obtenerPracticaWebSegura(
+      "clientes-expediente",
+      "/clientes/cliente-42",
+      "VENDEDOR",
+    )?.id,
+  ).toBe("clientes-expediente");
+  expect(
+    obtenerPracticaWebSegura("clientes-expediente", "/ventas", "VENDEDOR"),
+  ).toBeNull();
+  expect(
+    obtenerPracticaWebSegura("seguridad-usuarios", "/usuarios", "VENDEDOR"),
+  ).toBeNull();
+  expect(
+    obtenerPracticaWebSegura("leccion-inventada", "/ventas", "ADMINISTRADOR"),
+  ).toBeNull();
 });
 
 test("las prácticas web críticas abren exactamente sus módulos operativos", async ({

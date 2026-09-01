@@ -29,6 +29,21 @@ export function manejarError(
   res: Response,
   _next: NextFunction,
 ) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "type" in error &&
+    error.type === "entity.too.large"
+  ) {
+    res.status(413).json({
+      error: {
+        codigo: "CUERPO_DEMASIADO_GRANDE",
+        mensaje: "El archivo o contenido enviado supera el límite permitido.",
+      },
+    });
+    return;
+  }
+
   if (error instanceof ErrorAplicacion) {
     res.status(error.estadoHttp).json({
       error: {

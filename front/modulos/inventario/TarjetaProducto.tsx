@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import {
   AlertTriangle,
   Barcode,
@@ -9,6 +8,7 @@ import {
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
+import Image from "next/image";
 
 import type { ProductoInventario } from "./tipos";
 import { urlFotoProducto } from "./tipos";
@@ -91,25 +91,41 @@ export function TarjetaProducto({
         {puedeGestionar && (
           <div className="flex gap-2">
             <button
+              type="button"
               className="boton-secundario px-3"
               onClick={alEditar}
               title={es ? "Editar producto" : "Edit product"}
+              aria-label={
+                es ? `Editar ${producto.nombre}` : `Edit ${producto.nombre}`
+              }
               data-capacitacion="inventario.producto.editar-abrir"
             >
               <Edit3 size={16} />
             </button>
             <button
+              type="button"
               className="boton-secundario px-3"
               onClick={alAjustar}
               title={es ? "Ajustar existencia" : "Adjust stock"}
+              aria-label={
+                es
+                  ? `Ajustar existencia de ${producto.nombre}`
+                  : `Adjust stock for ${producto.nombre}`
+              }
               data-capacitacion="inventario.ajuste.abrir"
             >
               <SlidersHorizontal size={16} />
             </button>
             <button
+              type="button"
               className="boton-secundario px-3 text-red-600"
               onClick={alDarDeBaja}
               title={es ? "Dar de baja" : "Deactivate"}
+              aria-label={
+                es
+                  ? `Dar de baja ${producto.nombre}`
+                  : `Deactivate ${producto.nombre}`
+              }
               data-capacitacion="inventario.baja.abrir"
             >
               <Trash2 size={16} />

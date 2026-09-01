@@ -1,6 +1,6 @@
 # API y reglas de negocio
 
-Base local: `http://localhost:4000/api/v1`. Todas las respuestas de error usan `{ "error": { "codigo", "mensaje", "detalles" } }`.
+Base local: `http://localhost:4000/api/v1`. Todas las respuestas de error usan `{ "error": { "codigo", "mensaje", "detalles" } }`. Cada respuesta incluye `X-Request-Id`; el cliente puede enviar un identificador válido y usar el valor devuelto al solicitar soporte.
 
 El contrato consumible está en [`openapi.yaml`](../openapi.yaml) y la decisión de reintento/acción por código en [`ERRORES_API.md`](ERRORES_API.md). Si una ruta o `ErrorAplicacion` cambia, ambos deben actualizarse en la misma revisión.
 
@@ -44,6 +44,9 @@ El contrato consumible está en [`openapi.yaml`](../openapi.yaml) y la decisión
 | `GET /reportes/ventas.xlsx`                        | Excel con utilidad y fórmulas                |
 | `GET /reportes/clientes.xlsx`                      | Excel de cartera                             |
 | `GET /reportes/pedidos-pendientes.pdf`             | Lista de surtido                             |
+| `POST /importaciones/excel`                        | Importación XLSX binaria y transaccional     |
+
+`POST /importaciones/excel` recibe preferentemente el archivo XLSX directamente con `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (también admite `application/octet-stream`) y un máximo de 7.5 MB. El formato JSON/base64 anterior sigue disponible sólo por compatibilidad y está marcado como obsoleto en OpenAPI. La web envía binario para reducir memoria y evitar inflar el archivo aproximadamente un tercio.
 
 ## Ejemplo: venta a crédito
 

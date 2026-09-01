@@ -5,7 +5,7 @@ import { prisma } from "../../infraestructura/prisma.js";
 import { autenticar, permitirPermiso } from "../../seguridad/middlewares.js";
 import { crearPagina, esquemaPaginacion } from "../../compartido/paginacion.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
-import { calcularCorte, cerrarCorte } from "./servicio.js";
+import { calcularCorte, cerrarCorte, ROLES_OPERADOR_CAJA } from "./servicio.js";
 import { dineroNoNegativo } from "../../compartido/dinero.js";
 
 export const rutasCortes = Router();
@@ -31,7 +31,7 @@ rutasCortes.get("/operadores", async (req, res) => {
         ? { id: req.usuario!.id }
         : {
             activo: true,
-            rol: { in: [RolUsuario.COBRADOR, RolUsuario.ADMINISTRADOR] },
+            rol: { in: [...ROLES_OPERADOR_CAJA] },
           },
     select: { id: true, nombre: true, rol: true },
     orderBy: { nombre: "asc" },

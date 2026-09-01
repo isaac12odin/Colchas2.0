@@ -190,6 +190,19 @@ test("la práctica guía la selección y el orden sin escribir la ruta en la API
   page,
 }) => {
   const escriturasRed: string[] = [];
+  await page.addInitScript(() => {
+    const estado = window as unknown as {
+      __mutacionesPracticaPrueba?: unknown[];
+    };
+    estado.__mutacionesPracticaPrueba = [];
+    window.addEventListener(
+      "nexo:capacitacion:mutacion-local",
+      (evento: Event) =>
+        estado.__mutacionesPracticaPrueba?.push(
+          (evento as CustomEvent<unknown>).detail,
+        ),
+    );
+  });
   const localidad = {
     id: "localidad-practica-centro",
     nombre: "Centro",
@@ -317,10 +330,13 @@ test("la práctica guía la selección y el orden sin escribir la ruta en la API
     "La ruta queda simulada sólo en este navegador",
   );
 
-  const mutacionesLocales = await page.evaluate(() =>
-    JSON.parse(
-      localStorage.getItem("nexo:capacitacion:mutaciones-reales:v3") ?? "[]",
-    ),
+  const mutacionesLocales = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __mutacionesPracticaPrueba?: Array<Record<string, unknown>>;
+        }
+      ).__mutacionesPracticaPrueba ?? [],
   );
   expect(mutacionesLocales).toMatchObject([
     {

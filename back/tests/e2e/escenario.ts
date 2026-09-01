@@ -19,6 +19,7 @@ export class EscenarioPrueba {
   readonly localidadIds = new Set<string>();
   readonly clienteIds = new Set<string>();
   readonly productoIds = new Set<string>();
+  readonly productoSkusEsperados = new Set<string>();
   readonly categoriaProductoIds = new Set<string>();
   readonly proveedorIds = new Set<string>();
   readonly rutaIds = new Set<string>();
@@ -215,6 +216,11 @@ export class EscenarioPrueba {
     this.productoIds.add(id);
   }
 
+  /** Recupera la fila aun si la API confirmó la mutación pero falló al responder. */
+  registrarProductoEsperado(sku: string) {
+    this.productoSkusEsperados.add(sku);
+  }
+
   registrarCategoriaProducto(id: string) {
     this.categoriaProductoIds.add(id);
   }
@@ -266,6 +272,26 @@ export class EscenarioPrueba {
       clientes.forEach(({ id }) => this.clienteIds.add(id));
       rutas.forEach(({ id }) => this.rutaIds.add(id));
     }
+
+    const [productosPorSku, productosPorCategoria] = await Promise.all([
+      this.productoSkusEsperados.size
+        ? prisma.producto.findMany({
+            where: { sku: { in: [...this.productoSkusEsperados] } },
+            select: { id: true },
+          })
+        : [],
+      this.categoriaProductoIds.size
+        ? prisma.producto.findMany({
+            where: {
+              categoriaId: { in: [...this.categoriaProductoIds] },
+            },
+            select: { id: true },
+          })
+        : [],
+    ]);
+    [...productosPorSku, ...productosPorCategoria].forEach(({ id }) =>
+      this.productoIds.add(id),
+    );
 
     const usuarioIds = [...this.usuarioIds];
     const clienteIds = [...this.clienteIds];

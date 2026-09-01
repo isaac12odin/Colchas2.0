@@ -70,14 +70,18 @@ export function FormularioEntregaPedido({
         />
       )}
       <div className="mt-6 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between">
-        <button type="button" className="boton-secundario" onClick={alCancelar}>
+        <button
+          type="button"
+          className="boton-secundario justify-center"
+          onClick={alCancelar}
+        >
           {cancelar}
         </button>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           {control.paso > 1 && (
             <button
               type="button"
-              className="boton-secundario"
+              className="boton-secundario justify-center"
               onClick={control.anterior}
             >
               <ChevronLeft size={17} /> {es ? "Atrás" : "Back"}
@@ -87,7 +91,7 @@ export function FormularioEntregaPedido({
             <button
               key="continuar-entrega"
               type="button"
-              className="boton-primario"
+              className="boton-primario justify-center"
               disabled={
                 control.paso === 1
                   ? !control.todosVerificados
@@ -102,7 +106,7 @@ export function FormularioEntregaPedido({
             <button
               key="confirmar-entrega"
               type="submit"
-              className="boton-primario"
+              className="boton-primario justify-center"
               disabled={guardando || !control.cobroValido}
               data-capacitacion="pedidos.entrega.confirmar"
             >

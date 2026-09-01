@@ -110,7 +110,16 @@ export function usarFormularioVenta({
 
   async function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    if (esCredito === null) return;
+    if (
+      paso !== 3 ||
+      esCredito === null ||
+      lineas.length === 0 ||
+      (esCredito && !cliente) ||
+      Number(anticipo || 0) > total ||
+      (financiado > 0 &&
+        (numeroTarjeta.trim().length < 3 || Number(montoCuota) <= 0))
+    )
+      return;
     const tipo: TipoVentaWeb = esCredito
       ? "CREDITO"
       : cliente

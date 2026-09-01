@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   CheckCircle2,
   FileSignature,
@@ -84,6 +91,10 @@ export default function PaginaCortes() {
   const [pagina, establecerPagina] = useState(1);
   const [modal, establecerModal] = useState(false);
   const [error, establecerError] = useState("");
+  const [errorOperacion, establecerErrorOperacion] = useState("");
+  const [guardando, establecerGuardando] = useState(false);
+  const [resultado, establecerResultado] = useState<Corte | null>(null);
+  const guardandoRef = useRef(false);
 
   const cargarHistorial = useCallback(() => {
     api<Pagina<Corte>>(`/cortes?pagina=${pagina}&limite=15`)
@@ -123,9 +134,13 @@ export default function PaginaCortes() {
 
   async function cerrar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
+    if (guardandoRef.current) return;
     const formulario = new FormData(evento.currentTarget);
+    guardandoRef.current = true;
+    establecerGuardando(true);
+    establecerErrorOperacion("");
     try {
-      await api("/cortes", {
+      const corte = await api<Corte>("/cortes", {
         method: "POST",
         body: JSON.stringify({
           usuarioOperadorId: operadorId,
@@ -139,12 +154,34 @@ export default function PaginaCortes() {
           notas: formulario.get("notas") || undefined,
         }),
       });
-      establecerModal(false);
-      await previsualizar();
+      establecerResultado(corte);
+      void previsualizar();
       cargarHistorial();
     } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      establecerErrorOperacion(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No se pudo firmar el corte. Revise los datos e intente de nuevo."
+            : "The closing could not be signed. Review the data and try again.",
+      );
+    } finally {
+      guardandoRef.current = false;
+      establecerGuardando(false);
     }
+  }
+
+  function abrirCierre() {
+    establecerErrorOperacion("");
+    establecerResultado(null);
+    establecerModal(true);
+  }
+
+  function cerrarModal() {
+    if (guardandoRef.current) return;
+    establecerModal(false);
+    establecerErrorOperacion("");
+    establecerResultado(null);
   }
 
   const totalSistema = calculo?.sistema.total ?? 0;
@@ -160,14 +197,14 @@ export default function PaginaCortes() {
         }
         descripcion={
           es
-            ? "Cuadra abonos, ventas de contado, reembolsos y entregas por cobrador."
-            : "Reconcile collections, cash sales, refunds, and deliveries."
+            ? "Cuadra abonos, ventas de contado, reembolsos y entregas por cada operador de caja."
+            : "Reconcile collections, cash sales, refunds, and deliveries for each cash operator."
         }
         accion={
           <button
             className="boton-primario"
             disabled={!calculo || Boolean(calculo.cerrado)}
-            onClick={() => establecerModal(true)}
+            onClick={abrirCierre}
             data-capacitacion="cortes.cierre.abrir"
           >
             <FileSignature size={18} /> Firmar cierre
@@ -179,14 +216,16 @@ export default function PaginaCortes() {
         className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
         data-capacitacion="cortes.sincronizacion-revisar"
       >
-        Antes de firmar, sincroniza todos los teléfonos del cobrador. Una
-        jornada cerrada queda sellada y ya no admite abonos, ventas, entregas ni
-        devoluciones tardías de esa fecha.
+        {es
+          ? "Antes de firmar, sincroniza los dispositivos del operador seleccionado. Una jornada cerrada queda sellada y ya no admite abonos, ventas, entregas ni devoluciones tardías de esa fecha."
+          : "Before signing, sync the selected operator's devices. A closed day is sealed and no longer accepts late payments, sales, deliveries, or refunds for that date."}
       </div>
       <section className="panel mb-6 p-5" data-capacitacion="cortes.filtros">
         <div className="grid gap-4 md:grid-cols-[1fr_220px_auto]">
           <label>
-            <span className="etiqueta">Cobrador / responsable</span>
+            <span className="etiqueta">
+              {es ? "Operador real de caja" : "Actual cash operator"}
+            </span>
             <select
               className="campo"
               value={operadorId}
@@ -195,7 +234,7 @@ export default function PaginaCortes() {
             >
               {operadores.map((operador) => (
                 <option key={operador.id} value={operador.id}>
-                  {operador.nombre}
+                  {operador.nombre} · {operador.rol.toLocaleLowerCase("es-MX")}
                 </option>
               ))}
             </select>
@@ -347,84 +386,153 @@ export default function PaginaCortes() {
       </section>
       <Modal
         abierto={modal}
-        cerrar={() => establecerModal(false)}
-        titulo={`Cerrar jornada · ${etiquetaFecha}`}
+        cerrar={cerrarModal}
+        titulo={
+          resultado
+            ? es
+              ? "Corte registrado"
+              : "Closing recorded"
+            : `${es ? "Cerrar jornada" : "Close business day"} · ${etiquetaFecha}`
+        }
+        bloqueado={guardando}
       >
-        <form
-          onSubmit={cerrar}
-          className="space-y-5"
-          data-capacitacion="cortes.cierre.formulario"
-        >
-          <p
-            className="rounded-lg bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100"
-            data-capacitacion="cortes.cierre.esperado-revisar"
+        {resultado ? (
+          <div className="space-y-5" aria-live="polite">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+              <CheckCircle2 className="mb-3" size={34} aria-hidden="true" />
+              <p className="font-semibold">
+                {es
+                  ? "La jornada quedó cerrada y firmada."
+                  : "The business day was closed and signed."}
+              </p>
+              <p className="mt-3 text-xs uppercase tracking-wide opacity-75">
+                {es ? "Folio del corte" : "Closing reference"}
+              </p>
+              <p
+                className="mt-1 break-all font-mono text-xl font-bold"
+                data-testid="folio-corte-confirmado"
+              >
+                {resultado.folio}
+              </p>
+              <p className="mt-3 text-sm">
+                {es ? "Diferencia registrada:" : "Recorded difference:"}{" "}
+                <strong>{dinero.format(Number(resultado.diferencia))}</strong>
+              </p>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="boton-primario"
+                onClick={cerrarModal}
+              >
+                {es ? "Listo" : "Done"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form
+            onSubmit={cerrar}
+            data-capacitacion="cortes.cierre.formulario"
+            aria-busy={guardando || undefined}
           >
-            El sistema espera <strong>{dinero.format(totalSistema)}</strong>.
-            Capture lo realmente recibido por cada método; la diferencia se
-            conservará en el cierre.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {["efectivo", "transferencia", "tarjeta", "otro"].map((metodo) => (
-              <label key={metodo}>
-                <span className="etiqueta capitalize">{metodo} declarado</span>
+            <fieldset disabled={guardando} className="space-y-5">
+              <legend className="sr-only">Datos del corte de caja</legend>
+              {errorOperacion && <MensajeError mensaje={errorOperacion} />}
+              <p
+                className="rounded-lg bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100"
+                data-capacitacion="cortes.cierre.esperado-revisar"
+              >
+                El sistema espera <strong>{dinero.format(totalSistema)}</strong>
+                {". "}Capture lo realmente recibido por cada método; la
+                diferencia se conservará en el cierre.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {["efectivo", "transferencia", "tarjeta", "otro"].map(
+                  (metodo) => (
+                    <label key={metodo}>
+                      <span className="etiqueta capitalize">
+                        {metodo} declarado
+                      </span>
+                      <input
+                        name={metodo}
+                        className="campo"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        defaultValue="0"
+                        required
+                        data-capacitacion={`cortes.cierre.declarado.${metodo}`}
+                      />
+                    </label>
+                  ),
+                )}
+              </div>
+              <label>
+                <span className="etiqueta">Nombre completo de quien firma</span>
                 <input
-                  name={metodo}
+                  name="firmaNombre"
                   className="campo"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue="0"
+                  minLength={3}
                   required
-                  data-capacitacion={`cortes.cierre.declarado.${metodo}`}
+                  data-capacitacion="cortes.cierre.firma"
                 />
               </label>
-            ))}
-          </div>
-          <label>
-            <span className="etiqueta">Nombre completo de quien firma</span>
-            <input
-              name="firmaNombre"
-              className="campo"
-              minLength={3}
-              required
-              data-capacitacion="cortes.cierre.firma"
-            />
-          </label>
-          <label>
-            <span className="etiqueta">Confirmación exacta</span>
-            <input
-              name="confirmacion"
-              className="campo font-mono"
-              placeholder={`CERRAR ${fecha}`}
-              pattern={`CERRAR ${fecha}`}
-              required
-              data-capacitacion="cortes.cierre.confirmacion"
-            />
-          </label>
-          <label>
-            <span className="etiqueta">Notas o explicación de diferencias</span>
-            <textarea
-              name="notas"
-              className="campo min-h-20 py-3"
-              data-capacitacion="cortes.cierre.notas"
-            />
-          </label>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              className="boton-secundario"
-              onClick={() => establecerModal(false)}
-            >
-              Cancelar
-            </button>
-            <button
-              className="boton-primario"
-              data-capacitacion="cortes.cierre.guardar"
-            >
-              <FileSignature size={17} /> Firmar y cerrar
-            </button>
-          </div>
-        </form>
+              <label>
+                <span className="etiqueta">Confirmación exacta</span>
+                <input
+                  name="confirmacion"
+                  className="campo font-mono"
+                  placeholder={`CERRAR ${fecha}`}
+                  pattern={`CERRAR ${fecha}`}
+                  required
+                  data-capacitacion="cortes.cierre.confirmacion"
+                />
+              </label>
+              <label>
+                <span className="etiqueta">
+                  Notas o explicación de diferencias
+                </span>
+                <textarea
+                  name="notas"
+                  className="campo min-h-20 py-3"
+                  data-capacitacion="cortes.cierre.notas"
+                />
+              </label>
+              <p className="sr-only" aria-live="assertive">
+                {guardando
+                  ? es
+                    ? "Firmando el corte. No cierre esta ventana."
+                    : "Signing the closing. Do not close this window."
+                  : ""}
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="boton-secundario"
+                  onClick={cerrarModal}
+                >
+                  {es ? "Cancelar" : "Cancel"}
+                </button>
+                <button
+                  className="boton-primario"
+                  data-capacitacion="cortes.cierre.guardar"
+                >
+                  {guardando ? (
+                    <>
+                      <RefreshCw className="animate-spin" size={17} />
+                      {es ? "Firmando cierre…" : "Signing…"}
+                    </>
+                  ) : (
+                    <>
+                      <FileSignature size={17} />
+                      {es ? "Firmar y cerrar" : "Sign and close"}
+                    </>
+                  )}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        )}
       </Modal>
     </>
   );

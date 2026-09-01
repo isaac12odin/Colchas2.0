@@ -145,7 +145,7 @@ paths:
                   type: string
                 nuevaContrasena:
                   type: string
-                  minLength: 6
+                  minLength: 12
       responses:
         "204":
           description: Contraseña cambiada
@@ -172,6 +172,7 @@ paths:
       x-roles:
         - ADMINISTRADOR
       summary: Confirma MFA con TOTP
+      description: Revoca las sesiones anteriores y entrega una sesión rotada al cliente que confirmó el código.
       responses:
         "200":
           $ref: "#/components/responses/Exito"
@@ -1496,6 +1497,24 @@ paths:
       x-roles:
         - ADMINISTRADOR
       summary: Importa clientes/productos/saldos/localidades/rutas atómicamente
+      requestBody:
+        required: true
+        content:
+          application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+            schema:
+              type: string
+              format: binary
+              maxLength: 7500000
+          application/json:
+            schema:
+              type: object
+              deprecated: true
+              required:
+                - archivoBase64
+              properties:
+                archivoBase64:
+                  type: string
+                  format: byte
       responses:
         "201":
           $ref: "#/components/responses/Exito"

@@ -208,6 +208,30 @@ rutasClientes.post(
   "/",
   permitir(RolUsuario.ADMINISTRADOR, RolUsuario.CONTABLE, RolUsuario.VENDEDOR),
   async (req, res) => {
+    if (
+      req.usuario!.rol === RolUsuario.VENDEDOR &&
+      req.body !== null &&
+      typeof req.body === "object" &&
+      Object.prototype.hasOwnProperty.call(req.body, "limiteCredito")
+    ) {
+      await auditar(
+        req,
+        "RECHAZAR_LIMITE_CREDITO",
+        "Cliente",
+        undefined,
+        undefined,
+        {
+          resultado: "RECHAZADO",
+          campo: "limiteCredito",
+          rol: req.usuario!.rol,
+        },
+      );
+      throw new ErrorAplicacion(
+        "CAMPO_FINANCIERO_RESTRINGIDO",
+        "El vendedor puede crear el cliente, pero el limite de credito solo lo define Administracion o Contabilidad.",
+        403,
+      );
+    }
     const datos = esquemaCliente.parse(req.body);
     const telefono = normalizarTelefono(datos.telefono);
     const cliente = await prisma.cliente.create({
@@ -226,9 +250,18 @@ rutasClientes.post(
       include: { localidad: true, saldo: true },
     });
     await auditar(req, "CREAR", "Cliente", cliente.id, undefined, {
-      ...cliente,
-      telefonoCifrado: "[CIFRADO]",
-      direccionCifrada: "[CIFRADO]",
+      localidadId: cliente.localidadId,
+      limiteCredito: Number(cliente.limiteCredito),
+      activo: cliente.activo,
+      saldoInicial: Number(cliente.saldo?.saldoActual ?? 0),
+      camposCapturados: [
+        "nombreCompleto",
+        "telefono",
+        "direccion",
+        "localidadId",
+        ...(datos.limiteCredito !== undefined ? ["limiteCredito"] : []),
+        ...(datos.notas !== undefined ? ["notas"] : []),
+      ],
     });
     res.status(201).json(presentarCliente(cliente));
   },

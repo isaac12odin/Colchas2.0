@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { raw, Router } from "express";
 import { DiaSemana, Prisma, RolUsuario } from "@prisma/client";
 import { z } from "zod";
 import ExcelJS from "exceljs";
@@ -16,6 +16,12 @@ import { dineroNoNegativo, dineroPositivo } from "../../compartido/dinero.js";
 
 export const rutasImportaciones = Router();
 rutasImportaciones.use(autenticar, permitirPermiso("IMPORTACIONES_EJECUTAR"));
+
+const MIMES_EXCEL = [
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/octet-stream",
+];
+const recibirExcelBinario = raw({ type: MIMES_EXCEL, limit: "8mb" });
 
 async function buscarClientePorTelefono(
   tx: Prisma.TransactionClient,
@@ -217,11 +223,23 @@ rutasImportaciones.get("/plantilla.xlsx", async (_req, res) => {
   res.send(Buffer.from(buffer));
 });
 
-rutasImportaciones.post("/excel", async (req, res) => {
-  const { archivoBase64 } = z
-    .object({ archivoBase64: z.string().min(100).max(10_500_000) })
-    .parse(req.body);
-  const contenido = Buffer.from(archivoBase64, "base64");
+rutasImportaciones.post("/excel", recibirExcelBinario, async (req, res) => {
+  // El binario evita mantener simultáneamente File + Data URL + JSON (~33 %
+  // extra). Se conserva JSON/Base64 temporalmente para clientes anteriores.
+  const contenido = Buffer.isBuffer(req.body)
+    ? req.body
+    : Buffer.from(
+        z
+          .object({ archivoBase64: z.string().min(100).max(10_500_000) })
+          .parse(req.body).archivoBase64,
+        "base64",
+      );
+  if (contenido.length < 100)
+    throw new ErrorAplicacion(
+      "EXCEL_VACIO",
+      "Seleccione un archivo XLSX con información.",
+      422,
+    );
   if (contenido.length > 7_500_000)
     throw new ErrorAplicacion(
       "ARCHIVO_GRANDE",

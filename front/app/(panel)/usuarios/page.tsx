@@ -1,32 +1,58 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Edit3, KeyRound, Plus, ShieldCheck } from "lucide-react";
-import { api, ErrorApi } from "@/lib/api";
-import { usarDatosVivos } from "@/lib/usarDatosVivos";
-import { EncabezadoPagina, MensajeError, Modal } from "@/componentes/ui";
-import { usarAplicacion } from "@/componentes/proveedores";
 import {
-  BotonGenerarContrasena,
-  CampoContrasena,
-  RequisitosContrasena,
-} from "@/componentes/CampoContrasena";
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Plus } from "lucide-react";
+import { EncabezadoPagina, MensajeError } from "@/componentes/ui";
+import { usarAplicacion } from "@/componentes/proveedores";
+import { api, ErrorApi } from "@/lib/api";
+import type { Pagina } from "@/lib/tipos";
+import { usarDatosVivos } from "@/lib/usarDatosVivos";
+import { FiltrosUsuarios } from "@/modulos/usuarios/FiltrosUsuarios";
+import { ListaUsuarios } from "@/modulos/usuarios/ListaUsuarios";
+import {
+  ModalesUsuarios,
+  type UsuarioAdministrable as Usuario,
+} from "@/modulos/usuarios/ModalesUsuarios";
 
-interface Usuario {
-  id: string;
-  nombre: string;
-  correo: string;
-  rol: string;
-  activo: boolean;
-  ultimoAcceso: string | null;
-  debeCambiarContrasena: boolean;
+type OperacionUsuario = "CREAR" | "EDITAR" | "RESTABLECER" | `ESTADO:${string}`;
+
+const LIMITE_USUARIOS = 15;
+
+function normalizarPagina(
+  respuesta: Pagina<Usuario> | { datos: Usuario[] },
+  pagina: number,
+): Pagina<Usuario> {
+  if ("paginacion" in respuesta) return respuesta;
+  return {
+    datos: respuesta.datos,
+    paginacion: {
+      pagina,
+      limite: LIMITE_USUARIOS,
+      total: respuesta.datos.length,
+      totalPaginas: 1,
+    },
+  };
 }
 
 export default function PaginaUsuarios() {
   const { t, idioma, usuario: usuarioSesion } = usarAplicacion();
   const es = idioma === "es";
-  const [usuarios, establecerUsuarios] = useState<Usuario[]>([]);
-  const [modal, establecerModal] = useState(false);
+  const [respuesta, establecerRespuesta] = useState<Pagina<Usuario> | null>(
+    null,
+  );
+  const [buscar, establecerBuscar] = useState("");
+  const [consulta, establecerConsulta] = useState("");
+  const [rol, establecerRol] = useState("");
+  const [activo, establecerActivo] = useState("");
+  const [pagina, establecerPagina] = useState(1);
+  const [cargando, establecerCargando] = useState(true);
+  const [modalNuevo, establecerModalNuevo] = useState(false);
   const [usuarioEditar, establecerUsuarioEditar] = useState<Usuario | null>(
     null,
   );
@@ -41,90 +67,210 @@ export default function PaginaUsuarios() {
     useState("");
   const [mensaje, establecerMensaje] = useState("");
   const [error, establecerError] = useState("");
-  const cargar = useCallback(
-    () =>
-      api<{ datos: Usuario[] }>("/usuarios")
-        .then((r) => establecerUsuarios(r.datos))
-        .catch((e) => establecerError(e.message)),
-    [],
+  const [errorModal, establecerErrorModal] = useState("");
+  const [operacion, establecerOperacion] = useState<OperacionUsuario | null>(
+    null,
   );
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const solicitudActual = useRef(0);
+  const operacionEnCurso = useRef(false);
+
+  const cargar = useCallback(async () => {
+    const solicitud = ++solicitudActual.current;
+    const parametros = new URLSearchParams({
+      pagina: String(pagina),
+      limite: String(LIMITE_USUARIOS),
+    });
+    if (consulta) parametros.set("buscar", consulta);
+    if (rol) parametros.set("rol", rol);
+    if (activo) parametros.set("activo", activo);
+    establecerCargando(true);
+    establecerError("");
+    try {
+      const datos = await api<Pagina<Usuario> | { datos: Usuario[] }>(
+        `/usuarios?${parametros.toString()}`,
+      );
+      if (solicitud !== solicitudActual.current) return;
+      const paginaRecibida = normalizarPagina(datos, pagina);
+      if (pagina > paginaRecibida.paginacion.totalPaginas) {
+        establecerPagina(paginaRecibida.paginacion.totalPaginas);
+        establecerRespuesta(null);
+      } else establecerRespuesta(paginaRecibida);
+    } catch (e) {
+      if (solicitud !== solicitudActual.current) return;
+      establecerError(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No fue posible cargar los usuarios."
+            : "Unable to load users.",
+      );
+    } finally {
+      if (solicitud === solicitudActual.current) establecerCargando(false);
+    }
+  }, [activo, consulta, es, pagina, rol]);
+
+  useEffect(() => void cargar(), [cargar]);
   usarDatosVivos(cargar);
+
+  async function ejecutarOperacion(
+    clave: OperacionUsuario,
+    accion: () => Promise<unknown>,
+    alFallar: (mensaje: string) => void,
+  ) {
+    if (operacionEnCurso.current) return false;
+    operacionEnCurso.current = true;
+    establecerOperacion(clave);
+    try {
+      await accion();
+      return true;
+    } catch (e) {
+      alFallar(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No fue posible completar la operación."
+            : "The operation could not be completed.",
+      );
+      return false;
+    } finally {
+      operacionEnCurso.current = false;
+      establecerOperacion(null);
+    }
+  }
+
   async function crear(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const datos = Object.fromEntries(new FormData(evento.currentTarget));
-    try {
-      await api("/usuarios", { method: "POST", body: JSON.stringify(datos) });
-      establecerModal(false);
-      establecerContrasenaTemporal("");
-      cargar();
-    } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
-    }
+    establecerErrorModal("");
+    establecerMensaje("");
+    const creado = await ejecutarOperacion(
+      "CREAR",
+      () => api("/usuarios", { method: "POST", body: JSON.stringify(datos) }),
+      establecerErrorModal,
+    );
+    if (!creado) return;
+    establecerModalNuevo(false);
+    establecerContrasenaTemporal("");
+    establecerMensaje(
+      es ? "Usuario creado correctamente." : "User created successfully.",
+    );
+    await cargar();
   }
-  async function editarUsuario(evento: FormEvent<HTMLFormElement>) {
+
+  async function editar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     if (!usuarioEditar) return;
     const formulario = new FormData(evento.currentTarget);
-    const rol = formulario.get("rol");
-    try {
-      await api(`/usuarios/${usuarioEditar.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          nombre: formulario.get("nombre"),
-          ...(rol ? { rol } : {}),
+    const rolSeleccionado = formulario.get("rol");
+    establecerErrorModal("");
+    establecerMensaje("");
+    const editado = await ejecutarOperacion(
+      "EDITAR",
+      () =>
+        api(`/usuarios/${usuarioEditar.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            nombre: formulario.get("nombre"),
+            ...(rolSeleccionado ? { rol: rolSeleccionado } : {}),
+          }),
         }),
-      });
-      establecerUsuarioEditar(null);
-      await cargar();
-    } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
-    }
+      establecerErrorModal,
+    );
+    if (!editado) return;
+    establecerUsuarioEditar(null);
+    establecerMensaje(
+      es ? "Usuario actualizado correctamente." : "User updated successfully.",
+    );
+    await cargar();
   }
+
   async function restablecerContrasena(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     if (!usuarioRestablecer) return;
     if (contrasenaRestablecida !== confirmacionRestablecida) {
-      establecerError(
+      establecerErrorModal(
         es ? "Las contraseñas no coinciden." : "Passwords do not match.",
       );
       return;
     }
-    try {
-      await api(`/usuarios/${usuarioRestablecer.id}/restablecer-contrasena`, {
-        method: "POST",
-        body: JSON.stringify({
-          contrasenaAdministrador,
-          contrasenaTemporal: contrasenaRestablecida,
+    establecerErrorModal("");
+    establecerMensaje("");
+    const restablecida = await ejecutarOperacion(
+      "RESTABLECER",
+      () =>
+        api(`/usuarios/${usuarioRestablecer.id}/restablecer-contrasena`, {
+          method: "POST",
+          body: JSON.stringify({
+            contrasenaAdministrador,
+            contrasenaTemporal: contrasenaRestablecida,
+          }),
         }),
-      });
-      establecerMensaje(
-        es
-          ? `Contraseña actualizada para ${usuarioRestablecer.nombre}. Sus sesiones fueron cerradas.`
-          : `Password updated for ${usuarioRestablecer.nombre}. Their sessions were closed.`,
-      );
-      establecerUsuarioRestablecer(null);
-      establecerContrasenaAdministrador("");
-      establecerContrasenaRestablecida("");
-      establecerConfirmacionRestablecida("");
-      await cargar();
-    } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
-    }
+      establecerErrorModal,
+    );
+    if (!restablecida) return;
+    establecerMensaje(
+      es
+        ? `Contraseña actualizada para ${usuarioRestablecer.nombre}. Sus sesiones fueron cerradas.`
+        : `Password updated for ${usuarioRestablecer.nombre}. Their sessions were closed.`,
+    );
+    establecerUsuarioRestablecer(null);
+    establecerContrasenaAdministrador("");
+    establecerContrasenaRestablecida("");
+    establecerConfirmacionRestablecida("");
+    await cargar();
   }
+
   async function alternar(usuario: Usuario) {
-    try {
-      await api(`/usuarios/${usuario.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ activo: !usuario.activo }),
-      });
-      cargar();
-    } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
-    }
+    if (usuario.id === usuarioSesion?.id && usuario.activo) return;
+    if (
+      usuario.activo &&
+      !window.confirm(
+        es
+          ? `¿Desactivar la cuenta de ${usuario.nombre}? Ya no podrá iniciar sesión.`
+          : `Disable ${usuario.nombre}'s account? They will no longer be able to sign in.`,
+      )
+    )
+      return;
+    establecerError("");
+    establecerMensaje("");
+    const actualizado = await ejecutarOperacion(
+      `ESTADO:${usuario.id}`,
+      () =>
+        api(`/usuarios/${usuario.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ activo: !usuario.activo }),
+        }),
+      establecerError,
+    );
+    if (!actualizado) return;
+    establecerMensaje(
+      usuario.activo
+        ? es
+          ? `Cuenta de ${usuario.nombre} desactivada.`
+          : `${usuario.nombre}'s account was disabled.`
+        : es
+          ? `Cuenta de ${usuario.nombre} activada.`
+          : `${usuario.nombre}'s account was enabled.`,
+    );
+    await cargar();
   }
+
+  function cambiarFiltro(establecer: (valor: string) => void, valor: string) {
+    establecer(valor);
+    establecerPagina(1);
+    establecerRespuesta(null);
+  }
+
+  function abrirEdicion(usuario: Usuario) {
+    establecerErrorModal("");
+    establecerUsuarioEditar(usuario);
+  }
+
+  function abrirRestablecimiento(usuario: Usuario) {
+    establecerErrorModal("");
+    establecerUsuarioRestablecer(usuario);
+  }
+
   return (
     <>
       <EncabezadoPagina
@@ -136,9 +282,14 @@ export default function PaginaUsuarios() {
         }
         accion={
           <button
+            type="button"
             className="boton-primario"
             data-capacitacion="usuarios.nuevo.abrir"
-            onClick={() => establecerModal(true)}
+            disabled={Boolean(operacion)}
+            onClick={() => {
+              establecerErrorModal("");
+              establecerModalNuevo(true);
+            }}
           >
             <Plus size={18} />
             {t.nuevo}
@@ -154,347 +305,80 @@ export default function PaginaUsuarios() {
           {mensaje}
         </div>
       )}
-      <div
-        className="panel overflow-hidden"
-        data-capacitacion="usuarios.listado"
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[740px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-950">
-              <tr>
-                <th className="px-4 py-3">{es ? "Usuario" : "User"}</th>
-                <th className="px-4 py-3">{es ? "Rol" : "Role"}</th>
-                <th className="px-4 py-3">{es ? "Estado" : "Status"}</th>
-                <th className="px-4 py-3">
-                  {es ? "Último acceso" : "Last access"}
-                </th>
-                <th />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {usuarios.map((u) => (
-                <tr key={u.id} data-capacitacion="usuarios.registro">
-                  <td className="px-4 py-4">
-                    <p className="font-semibold">{u.nombre}</p>
-                    <p className="text-xs text-slate-500">{u.correo}</p>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950">
-                      <ShieldCheck size={14} />
-                      {u.rol}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span
-                      className={u.activo ? "text-emerald-600" : "text-red-600"}
-                    >
-                      {u.activo
-                        ? es
-                          ? "Activo"
-                          : "Active"
-                        : es
-                          ? "Inactivo"
-                          : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-slate-500">
-                    {u.ultimoAcceso
-                      ? new Date(u.ultimoAcceso).toLocaleString(
-                          es ? "es-MX" : "en-US",
-                        )
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        className="boton-secundario px-3"
-                        data-capacitacion="usuarios.registro.editar"
-                        onClick={() => establecerUsuarioEditar(u)}
-                        title={es ? "Editar usuario" : "Edit user"}
-                      >
-                        <Edit3 size={16} />
-                      </button>
-                      <button
-                        className="boton-secundario px-3"
-                        data-capacitacion="usuarios.registro.restablecer-contrasena"
-                        onClick={() => {
-                          establecerError("");
-                          establecerUsuarioRestablecer(u);
-                        }}
-                        title={es ? "Cambiar contraseña" : "Change password"}
-                      >
-                        <KeyRound size={16} />
-                      </button>
-                      <button
-                        className="boton-secundario"
-                        data-capacitacion="usuarios.registro.alternar-estado"
-                        onClick={() => alternar(u)}
-                      >
-                        {u.activo
-                          ? es
-                            ? "Desactivar"
-                            : "Disable"
-                          : es
-                            ? "Activar"
-                            : "Enable"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <FiltrosUsuarios
+        buscar={buscar}
+        rol={rol}
+        activo={activo}
+        es={es}
+        alBuscar={establecerBuscar}
+        alAplicarBusqueda={() => {
+          establecerConsulta(buscar.trim());
+          establecerPagina(1);
+          establecerRespuesta(null);
+        }}
+        alLimpiarBusqueda={() => {
+          establecerBuscar("");
+          cambiarFiltro(establecerConsulta, "");
+        }}
+        alCambiarRol={(valor) => cambiarFiltro(establecerRol, valor)}
+        alCambiarActivo={(valor) => cambiarFiltro(establecerActivo, valor)}
+      />
+      {cargando && !respuesta && (
+        <div
+          className="panel p-8 text-center text-sm text-slate-500"
+          role="status"
+        >
+          {es ? "Cargando usuarios…" : "Loading users…"}
         </div>
-      </div>
-      <Modal
-        abierto={modal}
-        cerrar={() => establecerModal(false)}
-        titulo={es ? "Nuevo usuario" : "New user"}
-      >
-        <form
-          onSubmit={crear}
-          className="space-y-4"
-          data-capacitacion="usuarios.nuevo.formulario"
-        >
-          <label>
-            <span className="etiqueta">{es ? "Nombre" : "Name"}</span>
-            <input
-              name="nombre"
-              className="campo"
-              data-capacitacion="usuarios.nuevo.nombre"
-              required
-            />
-          </label>
-          <label>
-            <span className="etiqueta">{es ? "Correo" : "Email"}</span>
-            <input
-              name="correo"
-              className="campo"
-              data-capacitacion="usuarios.nuevo.correo"
-              type="email"
-              required
-            />
-          </label>
-          <label>
-            <span className="etiqueta">{es ? "Rol" : "Role"}</span>
-            <select
-              name="rol"
-              className="campo"
-              data-capacitacion="usuarios.nuevo.rol"
-            >
-              <option value="ADMINISTRADOR">
-                {es ? "Administrador" : "Administrator"}
-              </option>
-              <option value="CONTABLE">{es ? "Contable" : "Accounting"}</option>
-              <option value="VENDEDOR">{es ? "Vendedor" : "Sales"}</option>
-              <option value="ALMACENISTA">
-                {es ? "Almacenista" : "Warehouse"}
-              </option>
-              <option value="COBRADOR">{es ? "Cobrador" : "Collector"}</option>
-            </select>
-          </label>
-          <div>
-            <label htmlFor="usuario-contrasena-temporal" className="etiqueta">
-              {es ? "Contraseña (mínimo 6)" : "Password (minimum 6)"}
-            </label>
-            <CampoContrasena
-              id="usuario-contrasena-temporal"
-              name="contrasenaTemporal"
-              className="campo"
-              data-capacitacion="usuarios.nuevo.contrasena-temporal"
-              autoComplete="new-password"
-              value={contrasenaTemporal}
-              onChange={(evento) =>
-                establecerContrasenaTemporal(evento.target.value)
-              }
-              minLength={6}
-              required
-            />
-          </div>
-          <RequisitosContrasena valor={contrasenaTemporal} />
-          <BotonGenerarContrasena
-            alGenerar={establecerContrasenaTemporal}
-            dataCapacitacion="usuarios.nuevo.generar-clave"
-          />
-          <p className="text-xs leading-5 text-slate-500">
-            {es
-              ? "La clave queda lista para usarse; no se pedirá cambiarla al entrar."
-              : "This password is final; no first-login change is required."}
-          </p>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              className="boton-secundario"
-              onClick={() => establecerModal(false)}
-            >
-              {t.cancelar}
-            </button>
-            <button
-              className="boton-primario"
-              data-capacitacion="usuarios.nuevo.guardar"
-            >
-              {t.guardar}
-            </button>
-          </div>
-        </form>
-      </Modal>
-      <Modal
-        abierto={Boolean(usuarioEditar)}
-        cerrar={() => establecerUsuarioEditar(null)}
-        titulo={es ? "Editar usuario" : "Edit user"}
-      >
-        {usuarioEditar && (
-          <form
-            onSubmit={editarUsuario}
-            className="space-y-4"
-            data-capacitacion="usuarios.edicion.formulario"
-          >
-            <label>
-              <span className="etiqueta">{es ? "Nombre" : "Name"}</span>
-              <input
-                name="nombre"
-                className="campo"
-                data-capacitacion="usuarios.edicion.nombre"
-                defaultValue={usuarioEditar.nombre}
-                required
-              />
-            </label>
-            <label>
-              <span className="etiqueta">{es ? "Rol" : "Role"}</span>
-              <select
-                name="rol"
-                className="campo"
-                data-capacitacion="usuarios.edicion.rol"
-                defaultValue={usuarioEditar.rol}
-                disabled={usuarioEditar.id === usuarioSesion?.id}
-              >
-                <option value="ADMINISTRADOR">Administrador</option>
-                <option value="CONTABLE">Contable</option>
-                <option value="VENDEDOR">Vendedor</option>
-                <option value="ALMACENISTA">Almacenista</option>
-                <option value="COBRADOR">Cobrador</option>
-              </select>
-            </label>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="boton-secundario"
-                onClick={() => establecerUsuarioEditar(null)}
-              >
-                {t.cancelar}
-              </button>
-              <button
-                className="boton-primario"
-                data-capacitacion="usuarios.edicion.guardar"
-              >
-                {t.guardar}
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
-      <Modal
-        abierto={Boolean(usuarioRestablecer)}
-        cerrar={() => establecerUsuarioRestablecer(null)}
-        titulo={`${es ? "Restablecer contraseña" : "Reset password"} · ${usuarioRestablecer?.nombre ?? ""}`}
-      >
-        <form
-          onSubmit={restablecerContrasena}
-          className="space-y-4"
-          data-capacitacion="usuarios.contrasena.formulario"
-        >
-          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-            {es
-              ? "Se cerrarán las sesiones del usuario y podrá entrar directamente con la nueva contraseña."
-              : "The user's sessions will close and the new password will work immediately."}
-          </p>
-          <div>
-            <label
-              htmlFor="restablecer-contrasena-administrador"
-              className="etiqueta"
-            >
-              {es
-                ? "Tu contraseña de administrador"
-                : "Your administrator password"}
-            </label>
-            <CampoContrasena
-              id="restablecer-contrasena-administrador"
-              name="contrasenaAdministrador"
-              data-capacitacion="usuarios.contrasena.administrador"
-              value={contrasenaAdministrador}
-              onChange={(evento) =>
-                establecerContrasenaAdministrador(evento.target.value)
-              }
-              autoComplete="current-password"
-              minLength={6}
-              required
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="restablecer-contrasena-temporal"
-              className="etiqueta"
-            >
-              {es ? "Nueva contraseña" : "New password"}
-            </label>
-            <CampoContrasena
-              id="restablecer-contrasena-temporal"
-              name="contrasenaTemporal"
-              data-capacitacion="usuarios.contrasena.temporal"
-              value={contrasenaRestablecida}
-              onChange={(evento) =>
-                establecerContrasenaRestablecida(evento.target.value)
-              }
-              autoComplete="new-password"
-              minLength={6}
-              required
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="restablecer-contrasena-confirmacion"
-              className="etiqueta"
-            >
-              {es ? "Confirmar contraseña" : "Confirm password"}
-            </label>
-            <CampoContrasena
-              id="restablecer-contrasena-confirmacion"
-              data-capacitacion="usuarios.contrasena.confirmacion"
-              value={confirmacionRestablecida}
-              onChange={(evento) =>
-                establecerConfirmacionRestablecida(evento.target.value)
-              }
-              autoComplete="new-password"
-              minLength={6}
-              required
-            />
-          </div>
-          <RequisitosContrasena valor={contrasenaRestablecida} />
-          <BotonGenerarContrasena
-            alGenerar={(clave) => {
-              establecerContrasenaRestablecida(clave);
-              establecerConfirmacionRestablecida(clave);
-            }}
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              className="boton-secundario"
-              onClick={() => establecerUsuarioRestablecer(null)}
-            >
-              {t.cancelar}
-            </button>
-            <button
-              className="boton-primario"
-              data-capacitacion="usuarios.contrasena.confirmar"
-            >
-              {es
-                ? "Restablecer y cerrar sesiones"
-                : "Reset and close sessions"}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      )}
+      {!cargando && error && !respuesta && (
+        <div className="panel p-5 text-center">
+          <button className="boton-secundario" onClick={() => void cargar()}>
+            {es ? "Reintentar" : "Try again"}
+          </button>
+        </div>
+      )}
+      {respuesta && (
+        <ListaUsuarios
+          respuesta={respuesta}
+          cargando={cargando}
+          operacionActiva={Boolean(operacion)}
+          usuarioSesionId={usuarioSesion?.id}
+          es={es}
+          editar={abrirEdicion}
+          restablecer={abrirRestablecimiento}
+          alternarEstado={(usuario) => void alternar(usuario)}
+          cambiarPagina={(valor) => {
+            establecerPagina(valor);
+            establecerRespuesta(null);
+          }}
+        />
+      )}
+      <ModalesUsuarios
+        es={es}
+        cancelar={t.cancelar}
+        guardar={t.guardar}
+        nuevoAbierto={modalNuevo}
+        usuarioEditar={usuarioEditar}
+        usuarioRestablecer={usuarioRestablecer}
+        usuarioSesionId={usuarioSesion?.id}
+        error={errorModal}
+        operacion={operacion}
+        contrasenaTemporal={contrasenaTemporal}
+        contrasenaAdministrador={contrasenaAdministrador}
+        contrasenaRestablecida={contrasenaRestablecida}
+        confirmacionRestablecida={confirmacionRestablecida}
+        cerrarNuevo={() => establecerModalNuevo(false)}
+        cerrarEdicion={() => establecerUsuarioEditar(null)}
+        cerrarRestablecimiento={() => establecerUsuarioRestablecer(null)}
+        alCrear={crear}
+        alEditar={editar}
+        alRestablecer={restablecerContrasena}
+        cambiarContrasenaTemporal={establecerContrasenaTemporal}
+        cambiarContrasenaAdministrador={establecerContrasenaAdministrador}
+        cambiarContrasenaRestablecida={establecerContrasenaRestablecida}
+        cambiarConfirmacionRestablecida={establecerConfirmacionRestablecida}
+      />
     </>
   );
 }

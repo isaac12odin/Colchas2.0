@@ -41,6 +41,22 @@ export interface ParametrosPedidos {
   fecha?: string;
 }
 
+async function consultarTodosLosPedidos() {
+  const pedidos: PedidoMovil[] = [];
+  let pagina = 1;
+  let totalPaginas = 1;
+  do {
+    const respuesta = await api<{
+      datos: PedidoMovil[];
+      paginacion?: { totalPaginas: number };
+    }>(`/pedidos?pagina=${pagina}&limite=100`);
+    pedidos.push(...respuesta.datos);
+    totalPaginas = respuesta.paginacion?.totalPaginas ?? 1;
+    pagina += 1;
+  } while (pagina <= totalPaginas);
+  return pedidos;
+}
+
 export function usarPedidosMoviles(
   parametros: ParametrosPedidos,
   es: boolean,
@@ -99,8 +115,7 @@ export function usarPedidosMoviles(
       }
       const remotos = await cargarPedidosPermitidos({
         puedeConsultarProveedores,
-        consultarPedidos: async () =>
-          (await api<{ datos: PedidoMovil[] }>("/pedidos")).datos,
+        consultarPedidos: consultarTodosLosPedidos,
         consultarProveedores: async () =>
           (await api<{ datos: ProveedorMovil[] }>("/proveedores/opciones"))
             .datos,

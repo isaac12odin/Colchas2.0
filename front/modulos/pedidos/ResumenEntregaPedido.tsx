@@ -39,6 +39,18 @@ export function ResumenEntregaPedido({
           ))}
         </div>
         <div className="mt-4 space-y-2 border-t border-slate-700 pt-4 text-sm">
+          <p className="flex justify-between gap-3">
+            <span>{es ? "Tipo de venta" : "Sale type"}</span>
+            <strong>
+              {control.tipo === "CONTADO"
+                ? es
+                  ? "Contado"
+                  : "Cash"
+                : es
+                  ? "Crédito"
+                  : "Credit"}
+            </strong>
+          </p>
           <p className="flex justify-between">
             <span>{es ? "Total" : "Total"}</span>
             <strong>{dinero.format(total)}</strong>
@@ -51,6 +63,16 @@ export function ResumenEntregaPedido({
             <span>{es ? "Se agregará al saldo" : "Added to balance"}</span>
             <strong>{dinero.format(control.financiado)}</strong>
           </p>
+          {control.tipo === "CREDITO" && (
+            <p className="pt-2 text-xs text-slate-300">
+              {es ? "Plan" : "Plan"}: {control.periodicidad.toLowerCase()} ·{" "}
+              {dinero.format(Number(control.montoCuota || 0))} ·{" "}
+              {es ? "primer vencimiento" : "first due"}{" "}
+              {new Date(
+                `${control.primerVencimiento}T12:00:00`,
+              ).toLocaleDateString(es ? "es-MX" : "en-US")}
+            </p>
+          )}
         </div>
       </div>
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
@@ -59,9 +81,13 @@ export function ResumenEntregaPedido({
             ? "Esta acción sí afecta el negocio"
             : "This action changes business records"}
         </strong>
-        {es
-          ? "Se marcará el pedido como Entregado, se creará una venta, se descontarán las piezas del inventario y se registrará el dinero recibido. En crédito, el monto financiado se sumará al saldo del cliente y se creará su plan de pago."
-          : "The order is delivered, a sale is created, stock is reduced, and payment or balance is recorded."}
+        {control.tipo === "CONTADO"
+          ? es
+            ? `Se marcará Entregado, se creará la venta, se descontará inventario y se registrarán ${dinero.format(total)} como cobro completo. El saldo del cliente no aumentará.`
+            : "The order is delivered, stock is reduced, full payment is recorded, and no balance is created."
+          : es
+            ? `Se marcará Entregado, se creará la venta y se descontará inventario. Hoy entran ${dinero.format(Number(control.anticipo || 0))}; ${dinero.format(control.financiado)} se sumarán al saldo y generarán el plan de pagos.`
+            : "The order is delivered, stock is reduced, the deposit is recorded, and the financed amount becomes customer balance."}
       </div>
     </section>
   );

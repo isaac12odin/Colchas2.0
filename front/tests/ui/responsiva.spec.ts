@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("el acceso sigue siendo operable en una pantalla móvil", async ({
   page,
 }) => {
-  await page.route("**/api/auth/sesion", (route) =>
+  await page.route("**/api/**", (route) =>
     route.fulfill({
       status: 401,
       contentType: "application/json",

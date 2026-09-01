@@ -11,6 +11,7 @@ import {
   Plus,
   Route as RouteIcon,
   Search,
+  X,
 } from "lucide-react";
 import { api, ErrorApi } from "@/lib/api";
 import type { Pagina } from "@/lib/tipos";
@@ -25,17 +26,13 @@ import { usarAplicacion } from "@/componentes/proveedores";
 import { FormularioAbonoRapido } from "@/modulos/cobranza/FormularioAbonoRapido";
 import { usarDatosVivos } from "@/lib/usarDatosVivos";
 import { usarAccionInicial } from "@/lib/usarAccionInicial";
+import {
+  TarjetaClienteMovil,
+  type ClienteListadoWeb,
+} from "@/modulos/clientes/TarjetaClienteMovil";
+import { ModalAltaCliente } from "@/modulos/clientes/ModalAltaCliente";
 
-interface Cliente {
-  id: string;
-  nombreCompleto: string;
-  telefono: string;
-  direccion: string;
-  numeroTarjeta: string | null;
-  localidad: { nombre: string; estado: string };
-  saldo: { saldoActual: string; vencidoActual: string } | null;
-  evaluacionesRiesgo: Array<{ nivel: string; puntuacion: number }>;
-}
+type Cliente = ClienteListadoWeb;
 interface Localidad {
   id: string;
   nombre: string;
@@ -50,6 +47,7 @@ export default function PaginaClientes() {
   const { t, idioma, usuario } = usarAplicacion();
   const [pagina, establecerPagina] = useState(1);
   const [buscar, establecerBuscar] = useState("");
+  const [termino, establecerTermino] = useState("");
   const [respuesta, establecerRespuesta] = useState<Pagina<Cliente> | null>(
     null,
   );
@@ -76,6 +74,15 @@ export default function PaginaClientes() {
       .catch((e) => establecerError(e.message));
   }, [pagina, buscar]);
   useEffect(cargar, [cargar]);
+  useEffect(() => {
+    const espera = window.setTimeout(() => {
+      const siguiente = termino.trim();
+      if (siguiente === buscar) return;
+      establecerPagina(1);
+      establecerBuscar(siguiente);
+    }, 350);
+    return () => window.clearTimeout(espera);
+  }, [buscar, termino]);
   usarDatosVivos(cargar);
   useEffect(() => {
     api<{ datos: Localidad[] }>("/localidades")
@@ -226,9 +233,9 @@ export default function PaginaClientes() {
           onSubmit={(e) => {
             e.preventDefault();
             establecerPagina(1);
-            cargar();
+            establecerBuscar(termino.trim());
           }}
-          className="flex gap-2 border-b p-4"
+          className="flex flex-col gap-2 border-b p-4 sm:flex-row"
           data-capacitacion="clientes.busqueda"
         >
           <div className="relative flex-1">
@@ -237,25 +244,56 @@ export default function PaginaClientes() {
               size={18}
             />
             <input
-              className="campo pl-10"
+              className="campo pl-10 pr-10"
               data-capacitacion="clientes.busqueda.campo"
               placeholder={
                 es
                   ? "Nombre, teléfono, dirección, tarjeta o localidad"
                   : "Name, phone, address, card, or location"
               }
-              value={buscar}
-              onChange={(e) => establecerBuscar(e.target.value)}
+              value={termino}
+              onChange={(e) => establecerTermino(e.target.value)}
             />
+            {termino && (
+              <button
+                type="button"
+                className="absolute right-2 top-2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                onClick={() => {
+                  establecerTermino("");
+                  establecerBuscar("");
+                  establecerPagina(1);
+                }}
+                aria-label={es ? "Limpiar búsqueda" : "Clear search"}
+              >
+                <X size={17} />
+              </button>
+            )}
           </div>
           <button
             className="boton-secundario"
             data-capacitacion="clientes.busqueda.ejecutar"
           >
+            <Search size={17} aria-hidden />
             {t.buscar}
           </button>
         </form>
-        <div className="overflow-x-auto">
+        <div className="md:hidden">
+          {respuesta?.datos.map((cliente) => (
+            <TarjetaClienteMovil
+              key={cliente.id}
+              cliente={cliente}
+              es={es}
+              puedeCapturar={puedeCapturar}
+              puedeAbonar={puedeAbonarDirecto}
+              alAsignarTarjeta={() => establecerTarjetaCliente(cliente)}
+              alAbonar={() => {
+                establecerClienteAbono(cliente);
+                establecerAbonoAbierto(true);
+              }}
+            />
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[880px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-950">
               <tr>
@@ -373,151 +411,17 @@ export default function PaginaClientes() {
           />
         )}
       </div>
-      <Modal
+      <ModalAltaCliente
         abierto={modalNuevo}
         cerrar={() => establecerModalNuevo(false)}
-        titulo={es ? "Nuevo cliente" : "New customer"}
-      >
-        <form
-          onSubmit={crear}
-          className="grid gap-4 sm:grid-cols-2"
-          data-capacitacion="clientes.alta.formulario"
-        >
-          <label className="sm:col-span-2">
-            <span className="etiqueta">
-              {es ? "Nombre completo" : "Full name"}
-            </span>
-            <input
-              name="nombreCompleto"
-              className="campo"
-              data-capacitacion="clientes.alta.nombre"
-              required
-              minLength={3}
-            />
-          </label>
-          <label>
-            <span className="etiqueta">{es ? "Teléfono" : "Phone"}</span>
-            <input
-              name="telefono"
-              className="campo"
-              required
-              inputMode="tel"
-              data-capacitacion="clientes.alta.telefono"
-            />
-          </label>
-          <div>
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="etiqueta mb-0">
-                {es ? "Localidad" : "Location"}
-              </span>
-              {usuario?.rol === "ADMINISTRADOR" && (
-                <button
-                  type="button"
-                  className="text-xs font-semibold text-blue-600 hover:underline"
-                  onClick={() => establecerModalLocalidad(true)}
-                  data-capacitacion="clientes.alta.localidad-crear"
-                >
-                  {es ? "+ Crear localidad" : "+ Create location"}
-                </button>
-              )}
-            </div>
-            <input
-              className="campo mb-2"
-              data-capacitacion="clientes.alta.localidad-buscar"
-              value={buscarLocalidad}
-              onChange={(evento) =>
-                establecerBuscarLocalidad(evento.target.value)
-              }
-              placeholder={
-                es
-                  ? "Filtrar localidad por nombre o estado"
-                  : "Filter location by name or state"
-              }
-            />
-            <select
-              name="localidadId"
-              className="campo"
-              data-capacitacion="clientes.alta.localidad"
-              required
-              value={localidadSeleccionada}
-              onChange={(evento) =>
-                establecerLocalidadSeleccionada(evento.target.value)
-              }
-            >
-              <option
-                value=""
-                data-capacitacion="clientes.alta.localidad.opcion"
-              >
-                {localidades.length
-                  ? "—"
-                  : es
-                    ? "Primero crea una localidad"
-                    : "Create a location first"}
-              </option>
-              {localidades
-                .filter((localidad) =>
-                  `${localidad.nombre} ${localidad.estado}`
-                    .toLocaleLowerCase("es-MX")
-                    .includes(buscarLocalidad.toLocaleLowerCase("es-MX")),
-                )
-                .map((l) => (
-                  <option
-                    key={l.id}
-                    value={l.id}
-                    data-capacitacion="clientes.alta.localidad.opcion"
-                  >
-                    {l.nombre}, {l.estado}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <label className="sm:col-span-2">
-            <span className="etiqueta">{es ? "Dirección" : "Address"}</span>
-            <textarea
-              name="direccion"
-              className="campo min-h-24 py-3"
-              data-capacitacion="clientes.alta.direccion"
-              required
-            />
-          </label>
-          <label>
-            <span className="etiqueta">
-              {es
-                ? "Límite de crédito (0 = sin límite)"
-                : "Credit limit (0 = unlimited)"}
-            </span>
-            <input
-              name="limiteCredito"
-              className="campo"
-              data-capacitacion="clientes.alta.limite-credito"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue="0"
-            />
-          </label>
-          <div
-            className="sm:col-span-2 flex justify-end gap-2 pt-2"
-            data-capacitacion="clientes.alta.revision"
-          >
-            <button
-              type="button"
-              className="boton-secundario"
-              onClick={() => establecerModalNuevo(false)}
-              data-capacitacion="clientes.alta.cancelar"
-            >
-              {t.cancelar}
-            </button>
-            <button
-              className="boton-primario disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!localidadSeleccionada}
-              data-capacitacion="clientes.alta.guardar"
-            >
-              {t.guardar}
-            </button>
-          </div>
-        </form>
-      </Modal>
+        localidades={localidades}
+        localidadSeleccionada={localidadSeleccionada}
+        seleccionarLocalidad={establecerLocalidadSeleccionada}
+        busquedaLocalidad={buscarLocalidad}
+        cambiarBusquedaLocalidad={establecerBuscarLocalidad}
+        abrirAltaLocalidad={() => establecerModalLocalidad(true)}
+        guardar={crear}
+      />
       <Modal
         abierto={modalLocalidad}
         cerrar={() => {

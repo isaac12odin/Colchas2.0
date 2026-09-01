@@ -4,6 +4,22 @@ import { api, ErrorApi } from "@/lib/api";
 import type { RutaWeb } from "../tipos";
 import type { ClienteRuta, CobradorRuta, LocalidadRuta } from "./tipos";
 
+async function consultarCobradores() {
+  const cobradores: CobradorRuta[] = [];
+  let pagina = 1;
+  let totalPaginas = 1;
+  do {
+    const respuesta = await api<{
+      datos: CobradorRuta[];
+      paginacion?: { totalPaginas: number };
+    }>(`/usuarios?rol=COBRADOR&activo=true&pagina=${pagina}&limite=100`);
+    cobradores.push(...respuesta.datos);
+    totalPaginas = respuesta.paginacion?.totalPaginas ?? 1;
+    pagina += 1;
+  } while (pagina <= totalPaginas);
+  return { datos: cobradores };
+}
+
 export function usarConstructorRuta({
   abierto,
   ruta,
@@ -52,7 +68,7 @@ export function usarConstructorRuta({
     establecerCargando(true);
     void Promise.all([
       api<{ datos: LocalidadRuta[] }>("/localidades"),
-      api<{ datos: CobradorRuta[] }>("/usuarios"),
+      consultarCobradores(),
       api<{ datos: ClienteRuta[] }>("/rutas/clientes-con-saldo"),
     ])
       .then(([respuestaLocalidades, respuestaUsuarios, respuestaClientes]) => {

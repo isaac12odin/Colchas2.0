@@ -24,6 +24,9 @@ export default function PaginaPerfil() {
   const [contrasenaActual, establecerContrasenaActual] = useState("");
   const [nuevaContrasena, establecerNuevaContrasena] = useState("");
   const [confirmacion, establecerConfirmacion] = useState("");
+  const [contrasenaMfa, establecerContrasenaMfa] = useState("");
+  const [codigoDesactivarMfa, establecerCodigoDesactivarMfa] = useState("");
+  const [procesandoMfa, establecerProcesandoMfa] = useState(false);
   async function cambiar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const form = new FormData(evento.currentTarget);
@@ -52,6 +55,7 @@ export default function PaginaPerfil() {
   }
   async function iniciarMfa() {
     establecerError("");
+    establecerProcesandoMfa(true);
     try {
       establecerConfiguracionMfa(
         await api<{ secreto: string; uri: string }>("/auth/mfa/iniciar", {
@@ -61,24 +65,52 @@ export default function PaginaPerfil() {
       );
     } catch (e) {
       establecerError(e instanceof ErrorApi ? e.message : "Error");
+    } finally {
+      establecerProcesandoMfa(false);
     }
   }
   async function confirmarMfa(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const form = new FormData(evento.currentTarget);
+    establecerError("");
+    establecerProcesandoMfa(true);
     try {
-      await api("/auth/mfa/confirmar", {
+      const respuesta = await api<{
+        usuario: NonNullable<typeof usuario>;
+      }>("/auth/mfa/confirmar", {
         method: "POST",
         body: JSON.stringify({ codigo: form.get("codigo") }),
       });
-      const sesion = await api<{ usuario: NonNullable<typeof usuario> }>(
-        "/auth/sesion",
-      );
-      establecerUsuario(sesion.usuario);
+      establecerUsuario(respuesta.usuario);
       establecerConfiguracionMfa(null);
-      establecerMensaje("Segundo factor habilitado correctamente.");
+      establecerMensaje(
+        es
+          ? "Segundo factor habilitado. Las demás sesiones fueron cerradas."
+          : "Two-factor authentication enabled. Other sessions were signed out.",
+      );
     } catch (e) {
       establecerError(e instanceof ErrorApi ? e.message : "Error");
+    } finally {
+      establecerProcesandoMfa(false);
+    }
+  }
+  async function desactivarMfa(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    establecerError("");
+    establecerProcesandoMfa(true);
+    try {
+      await api("/auth/mfa/deshabilitar", {
+        method: "POST",
+        body: JSON.stringify({
+          contrasena: contrasenaMfa,
+          codigo: codigoDesactivarMfa,
+        }),
+      });
+      await cerrarSesion();
+    } catch (e) {
+      establecerError(e instanceof ErrorApi ? e.message : "Error");
+    } finally {
+      establecerProcesandoMfa(false);
     }
   }
   return (
@@ -153,8 +185,8 @@ export default function PaginaPerfil() {
             <div>
               <label htmlFor="perfil-contrasena-nueva" className="etiqueta">
                 {es
-                  ? "Nueva contraseña (mínimo 6)"
-                  : "New password (minimum 6)"}
+                  ? "Nueva contraseña (mínimo 12)"
+                  : "New password (minimum 12)"}
               </label>
               <CampoContrasena
                 id="perfil-contrasena-nueva"
@@ -165,7 +197,7 @@ export default function PaginaPerfil() {
                 onChange={(evento) =>
                   establecerNuevaContrasena(evento.target.value)
                 }
-                minLength={6}
+                minLength={12}
                 required
               />
             </div>
@@ -185,7 +217,7 @@ export default function PaginaPerfil() {
                 onChange={(evento) =>
                   establecerConfirmacion(evento.target.value)
                 }
-                minLength={6}
+                minLength={12}
                 required
               />
             </div>
@@ -215,28 +247,127 @@ export default function PaginaPerfil() {
             <div className="mb-5 flex items-center gap-3">
               <ShieldCheck className="text-marca-500" />
               <div>
-                <h2 className="font-semibold">Autenticación de dos factores</h2>
+                <h2 className="font-semibold">
+                  {es
+                    ? "Autenticación de dos factores"
+                    : "Two-factor authentication"}
+                </h2>
                 <p className="text-sm text-slate-500">
-                  Protege la cuenta administrativa aunque alguien conozca la
-                  contraseña.
+                  {es
+                    ? "Protege la cuenta administrativa aunque alguien conozca la contraseña."
+                    : "Protects the administrator account even if someone knows the password."}
                 </p>
               </div>
             </div>
             {usuario.mfaHabilitado ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
-                Activo · se solicitará un código nuevo al iniciar sesión.
+              <div className="space-y-4">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+                  {es
+                    ? "Activo · se solicitará un código nuevo al iniciar sesión."
+                    : "Active · a new code will be requested when signing in."}
+                </div>
+                <details className="max-w-lg rounded-lg border p-4">
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    {es
+                      ? "Desactivar segundo factor"
+                      : "Disable two-factor authentication"}
+                  </summary>
+                  <form onSubmit={desactivarMfa} className="mt-4 space-y-4">
+                    <p className="text-sm leading-6 text-slate-500">
+                      {es
+                        ? "Confirma con tu contraseña y el código actual. Por seguridad, cerrarás sesión al terminar."
+                        : "Confirm with your password and current code. For security, you will be signed out afterwards."}
+                    </p>
+                    <div>
+                      <label htmlFor="mfa-contrasena" className="etiqueta">
+                        {es ? "Contraseña actual" : "Current password"}
+                      </label>
+                      <CampoContrasena
+                        id="mfa-contrasena"
+                        value={contrasenaMfa}
+                        onChange={(evento) =>
+                          establecerContrasenaMfa(evento.target.value)
+                        }
+                        autoComplete="current-password"
+                        minLength={6}
+                        required
+                      />
+                    </div>
+                    <label>
+                      <span className="etiqueta">
+                        {es
+                          ? "Código actual de 6 dígitos"
+                          : "Current 6-digit code"}
+                      </span>
+                      <input
+                        value={codigoDesactivarMfa}
+                        onChange={(evento) =>
+                          establecerCodigoDesactivarMfa(
+                            evento.target.value.replace(/\D/g, ""),
+                          )
+                        }
+                        className="campo text-center font-mono tracking-[.35em]"
+                        inputMode="numeric"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        required
+                      />
+                    </label>
+                    <button
+                      disabled={procesandoMfa}
+                      className="boton-secundario border-red-300 text-red-700 dark:text-red-300"
+                    >
+                      {procesandoMfa
+                        ? es
+                          ? "Procesando…"
+                          : "Processing…"
+                        : es
+                          ? "Confirmar y cerrar sesiones"
+                          : "Confirm and sign out"}
+                    </button>
+                  </form>
+                </details>
               </div>
             ) : configuracionMfa ? (
               <form onSubmit={confirmarMfa} className="max-w-lg space-y-4">
                 <p className="text-sm leading-6 text-slate-500">
-                  Agrega manualmente esta clave en Google Authenticator,
-                  Microsoft Authenticator, 1Password o equivalente.
+                  {es
+                    ? "Agrega esta clave en Google Authenticator, Microsoft Authenticator, 1Password o equivalente."
+                    : "Add this key to Google Authenticator, Microsoft Authenticator, 1Password, or an equivalent app."}
                 </p>
-                <div className="rounded-lg bg-slate-950 p-4 text-center font-mono text-sm tracking-widest text-white">
-                  {configuracionMfa.secreto}
+                <div className="rounded-lg bg-slate-950 p-4 text-white">
+                  <p className="break-all text-center font-mono text-sm tracking-widest">
+                    {configuracionMfa.secreto}
+                  </p>
+                  <button
+                    type="button"
+                    className="mx-auto mt-3 block rounded-md border border-slate-600 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(configuracionMfa.secreto)
+                        .then(() =>
+                          establecerMensaje(
+                            es
+                              ? "Clave del autenticador copiada."
+                              : "Authenticator key copied.",
+                          ),
+                        )
+                        .catch(() =>
+                          establecerError(
+                            es
+                              ? "No se pudo copiar automáticamente. Selecciona la clave manualmente."
+                              : "Could not copy automatically. Select the key manually.",
+                          ),
+                        );
+                    }}
+                  >
+                    {es ? "Copiar clave" : "Copy key"}
+                  </button>
                 </div>
                 <label>
-                  <span className="etiqueta">Código actual de 6 dígitos</span>
+                  <span className="etiqueta">
+                    {es ? "Código actual de 6 dígitos" : "Current 6-digit code"}
+                  </span>
                   <input
                     name="codigo"
                     className="campo text-center font-mono tracking-[.35em]"
@@ -246,14 +377,29 @@ export default function PaginaPerfil() {
                     required
                   />
                 </label>
-                <button className="boton-primario">Confirmar y activar</button>
+                <button disabled={procesandoMfa} className="boton-primario">
+                  {procesandoMfa
+                    ? es
+                      ? "Activando…"
+                      : "Enabling…"
+                    : es
+                      ? "Confirmar y activar"
+                      : "Confirm and enable"}
+                </button>
               </form>
             ) : (
               <button
                 className="boton-primario"
+                disabled={procesandoMfa}
                 onClick={() => void iniciarMfa()}
               >
-                Configurar segundo factor
+                {procesandoMfa
+                  ? es
+                    ? "Preparando…"
+                    : "Preparing…"
+                  : es
+                    ? "Configurar segundo factor"
+                    : "Set up two-factor authentication"}
               </button>
             )}
           </section>

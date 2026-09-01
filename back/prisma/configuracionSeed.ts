@@ -7,7 +7,7 @@ const esquema = z.object({
     .transform((valor) => valor.toLowerCase()),
   SEED_ADMIN_PASSWORD: z
     .string({ required_error: "SEED_ADMIN_PASSWORD es obligatorio." })
-    .min(6, "La contraseña inicial debe tener al menos 6 caracteres.")
+    .min(12, "La contraseña inicial debe tener al menos 12 caracteres.")
     .max(200)
     .refine(
       (valor) =>

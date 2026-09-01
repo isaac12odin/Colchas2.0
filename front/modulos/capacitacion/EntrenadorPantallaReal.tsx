@@ -91,7 +91,6 @@ export function EntrenadorPantallaReal({
     guardarBorradorPractica(usuarioId, leccion.id, {
       pasoActual,
       pasoIdActual: paso.id,
-      capturas: {},
       ejecutado: fase === "COMPLETADO",
       terminada: false,
     });
@@ -284,7 +283,6 @@ export function EntrenadorPantallaReal({
         guardarBorradorPractica(usuarioId, leccion.id, {
           pasoActual,
           pasoIdActual: paso.id,
-          capturas: {},
           ejecutado: true,
           terminada: false,
         });
@@ -390,7 +388,6 @@ export function EntrenadorPantallaReal({
     guardarBorradorPractica(usuarioId, leccion.id, {
       pasoActual,
       pasoIdActual: paso.id,
-      capturas: {},
       ejecutado: true,
       terminada: true,
     });

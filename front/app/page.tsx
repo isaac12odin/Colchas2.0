@@ -16,6 +16,7 @@ import type { UsuarioSesion } from "@/lib/tipos";
 import { usarAplicacion } from "@/componentes/proveedores";
 import { obtenerRutaTrasAutenticacionWeb } from "@/lib/permisos";
 import { CampoContrasena } from "@/componentes/CampoContrasena";
+import { VideoAcceso } from "@/componentes/VideoAcceso";
 
 export default function InicioSesion() {
   const {
@@ -87,15 +88,7 @@ export default function InicioSesion() {
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.12fr_.88fr]">
       <section className="relative hidden min-h-screen overflow-hidden bg-slate-950 text-white lg:block">
-        <video
-          className="absolute inset-0 h-full w-full object-cover"
-          src="/brand/vektra-motion.mp4"
-          autoPlay
-          muted
-          loop
-          playsInline
-          aria-label="Animación de Vektra"
-        />
+        <VideoAcceso />
         <div className="absolute inset-0 bg-slate-950/45" />
         <div className="relative flex h-full min-h-screen flex-col justify-between p-10 xl:p-14">
           <Image

@@ -48,7 +48,7 @@ export function PracticaFlujoReal({
   );
   const [capturas, establecerCapturas] = useState<
     Record<string, CapturaPasoPractica>
-  >(inicial?.capturas ?? {});
+  >({});
   const [ejecutado, establecerEjecutado] = useState(
     inicial?.ejecutado ?? false,
   );
@@ -63,11 +63,10 @@ export function PracticaFlujoReal({
   useEffect(() => {
     guardarBorradorPractica(usuarioId, leccion.id, {
       pasoActual,
-      capturas,
       ejecutado,
       terminada: false,
     });
-  }, [capturas, ejecutado, leccion.id, pasoActual, usuarioId]);
+  }, [ejecutado, leccion.id, pasoActual, usuarioId]);
 
   function actualizar(cambios: Partial<CapturaPasoPractica>) {
     establecerCapturas((actuales) => ({
@@ -119,7 +118,6 @@ export function PracticaFlujoReal({
     if (pasoActual === leccion.pasos.length - 1) {
       guardarBorradorPractica(usuarioId, leccion.id, {
         pasoActual,
-        capturas,
         ejecutado: true,
         terminada: true,
       });
@@ -191,7 +189,7 @@ export function PracticaFlujoReal({
             </div>
             <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-[10px] font-black text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
               <ShieldCheck size={14} />
-              {es ? "GUARDADO LOCAL · SIN API" : "LOCAL ONLY · NO API"}
+              {es ? "MEMORIA TEMPORAL · SIN API" : "TEMPORARY MEMORY · NO API"}
             </span>
           </header>
 
@@ -420,8 +418,8 @@ export function PracticaFlujoReal({
                   <div>
                     <strong className="block">
                       {es
-                        ? "Paso ejecutado y guardado localmente"
-                        : "Step completed and saved locally"}
+                        ? "Paso simulado en esta sesión"
+                        : "Step simulated in this session"}
                     </strong>
                     {localizar(paso.explicacion, idioma)}
                   </div>

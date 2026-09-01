@@ -12,6 +12,7 @@ export function usarVentasWeb() {
   );
   const [pagina, establecerPagina] = useState(1);
   const [buscar, establecerBuscar] = useState("");
+  const [consulta, establecerConsulta] = useState("");
   const [modal, establecerModal] = useState(false);
   const [error, establecerError] = useState("");
   const [guardando, establecerGuardando] = useState(false);
@@ -22,13 +23,22 @@ export function usarVentasWeb() {
   const cargar = useCallback(
     () =>
       api<Pagina<VentaWeb>>(
-        `/ventas?pagina=${pagina}&limite=15&buscar=${encodeURIComponent(buscar)}`,
+        `/ventas?pagina=${pagina}&limite=15&buscar=${encodeURIComponent(consulta)}`,
       )
         .then(establecerRespuesta)
         .catch((e) => establecerError(e.message)),
-    [pagina, buscar],
+    [pagina, consulta],
   );
   useEffect(() => void cargar(), [cargar]);
+  useEffect(() => {
+    const espera = window.setTimeout(() => {
+      const siguiente = buscar.trim();
+      if (siguiente === consulta) return;
+      establecerPagina(1);
+      establecerConsulta(siguiente);
+    }, 350);
+    return () => window.clearTimeout(espera);
+  }, [buscar, consulta]);
   usarDatosVivos(cargar);
 
   async function crear(cuerpo: NuevaVentaWeb) {
@@ -66,6 +76,15 @@ export function usarVentasWeb() {
     resultado,
     establecerPagina,
     establecerBuscar,
+    aplicarBusqueda: () => {
+      establecerPagina(1);
+      establecerConsulta(buscar.trim());
+    },
+    limpiarBusqueda: () => {
+      establecerBuscar("");
+      establecerConsulta("");
+      establecerPagina(1);
+    },
     abrirModal: () => {
       establecerResultado(null);
       establecerError("");

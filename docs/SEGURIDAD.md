@@ -3,6 +3,7 @@
 ## Implementado
 
 - Contraseñas Argon2id con 64 MiB de memoria y tres iteraciones.
+- Toda contraseña nueva o temporal exige 12 caracteres; la web genera 16 con `crypto.getRandomValues`. Las contraseñas actuales conservan compatibilidad de acceso para permitir su reemplazo seguro.
 - JWT de acceso de 15 minutos; refresh token rotatorio, registrado como hash y revocable. El consumo y creación sucesora ocurren en una transacción y los clientes comparten una sola renovación en vuelo.
 - En web, tokens en cookies `HttpOnly`, `SameSite=Lax` y `Secure` en producción.
 - Protección CSRF de doble envío para mutaciones web.
@@ -26,6 +27,10 @@
 - Cambio de cuenta móvil compensable: valida la vinculación antes de escribir y restaura tokens/identidad previos ante cualquier fallo.
 - Restricciones de integridad en PostgreSQL para importes, saldos, existencias y cantidades.
 - MFA TOTP con ventana limitada y protección contra reutilización para administradores.
+- Confirmar MFA rota inmediatamente las sesiones y entrega una sesión nueva al navegador actual; cerrar sesión o perderla retira los datos de todas las pestañas abiertas del mismo navegador.
+- Cada solicitud Web lleva `X-Request-Id`; la API valida, refleja y usa el mismo identificador en Pino para correlación sin PII.
+- La auditoría elimina secretos, tokens, hashes, cuerpos base64 y cifrados; además reduce teléfono, correo y dirección tanto al escribir como al consultar historia antigua.
+- La Web aplica CSP, `frame-ancestors`, anti-MIME sniffing, política de referencia y permisos mínimos. `upgrade-insecure-requests` sólo se activa en producción; `unsafe-eval` sólo se permite en desarrollo porque React/Next lo requieren para diagnóstico y se prueba ausente del artefacto final.
 - Cortes firmados con HMAC, fotografía de devoluciones validada por firma binaria y auditoría de reversas.
 - Scripts de respaldo cifrado, verificación y restauración controlada: antes de `pg_restore --clean` consultan `current_database()` y exigen que el nombre conectado termine exactamente en `_restore_test`.
 
@@ -35,7 +40,7 @@ No se agrega un cifrado casero entre JavaScript y la API. En producción se exig
 
 ## Antes de producción
 
-1. Reemplace los secretos de `.env`; no reutilice los valores de ejemplo. El seed exige credenciales administrativas explícitas y aleatorias, no tiene fallback, fuerza el cambio en una cuenta recién creada y conserva la clave de una cuenta existente al repetirse.
+1. Reemplace los secretos de `.env`; no reutilice los valores de ejemplo. El seed exige una contraseña administrativa explícita de al menos 12 caracteres, no tiene fallback, fuerza el cambio en una cuenta recién creada y conserva la clave de una cuenta existente al repetirse.
 2. Use un administrador de secretos y claves independientes `FIELD_ENCRYPTION_KEY`/`SEARCH_HMAC_KEY` con rotación documentada.
 3. Complete el cambio obligatorio de la contraseña inicial y habilite el MFA ya incluido desde **Mi perfil**.
 4. Termine TLS en un proxy, active HSTS y no publique PostgreSQL.

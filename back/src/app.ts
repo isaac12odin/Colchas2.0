@@ -1,4 +1,5 @@
 import express from "express";
+import { randomUUID } from "node:crypto";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
@@ -33,7 +34,23 @@ import { rutasReconciliacion } from "./modulos/reconciliacion/rutas.js";
 export const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
-app.use(pinoHttp({ logger: registro }));
+app.use(
+  pinoHttp({
+    logger: registro,
+    genReqId(req, res) {
+      const encabezado = req.headers["x-request-id"];
+      const recibido = Array.isArray(encabezado) ? encabezado[0] : encabezado;
+      const identificador =
+        recibido && /^[A-Za-z0-9._:-]{8,128}$/.test(recibido)
+          ? recibido
+          : randomUUID();
+      // El mismo valor viaja en la respuesta y en `req.id` de Pino, de modo
+      // que soporte pueda correlacionar navegador, proxy y registro servidor.
+      res.setHeader("X-Request-Id", identificador);
+      return identificador;
+    },
+  }),
+);
 app.use(helmet({ crossOriginResourcePolicy: { policy: "same-site" } }));
 app.use((req, res, next) => {
   if (
@@ -85,7 +102,9 @@ app.use(
       "X-CSRF-Token",
       "Cache-Control",
       "Pragma",
+      "X-Request-Id",
     ],
+    exposedHeaders: ["X-Request-Id"],
   }),
 );
 app.use(express.json({ limit: "11mb" }));

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
@@ -36,10 +37,28 @@ import {
   puedeAccederRutaWeb,
 } from "@/lib/permisos";
 import { usarDatosVivos } from "@/lib/usarDatosVivos";
-import { leccionesCapacitacion } from "@/modulos/capacitacion/catalogo";
-import { EntrenadorPantallaReal } from "@/modulos/capacitacion/EntrenadorPantallaReal";
+import { obtenerPracticaWebSegura } from "@/modulos/capacitacion/indicePracticasWeb";
 import { AccionesRapidas } from "./AccionesRapidas";
+import { BuscadorGlobal } from "./BuscadorGlobal";
 import { usarAplicacion } from "./proveedores";
+
+const CargadorEntrenadorPantallaReal = dynamic(
+  () =>
+    import("@/modulos/capacitacion/CargadorEntrenadorPantallaReal").then(
+      (modulo) => modulo.CargadorEntrenadorPantallaReal,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <aside
+        className="m-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100"
+        aria-live="polite"
+      >
+        Vektra…
+      </aside>
+    ),
+  },
+);
 
 const navegacion: Array<{
   href: string;
@@ -121,17 +140,21 @@ export function Panel({ children }: { children: React.ReactNode }) {
   const ruta = usePathname();
   const parametros = useSearchParams();
   const router = useRouter();
-  const leccionPractica = leccionesCapacitacion.find(
-    ({ id }) => id === parametros.get("practica"),
+  const practicaSolicitada = parametros.get("practica");
+  const practicaSegura = usuario
+    ? obtenerPracticaWebSegura(practicaSolicitada, ruta, usuario.rol)
+    : null;
+  const practicaInvalida = Boolean(
+    !cargandoSesion && usuario && practicaSolicitada && !practicaSegura,
   );
-  const enPracticaReal = Boolean(leccionPractica?.rutaReal);
+  const enPracticaReal = Boolean(practicaSegura);
   const actualizarAlertas = useCallback(() => {
     if (!usuario || usuario.debeCambiarContrasena) return;
     return api<{ totales: { total: number } }>("/alertas")
       .then((respuesta) => establecerTotalAlertas(respuesta.totales.total))
       .catch(() => undefined);
   }, [usuario]);
-  usarDatosVivos(actualizarAlertas, { intervaloMs: 30_000 });
+  usarDatosVivos(actualizarAlertas, { recursos: ["alertas"] });
 
   useEffect(() => {
     if (!cargandoSesion && !usuario) router.replace("/");
@@ -145,29 +168,42 @@ export function Panel({ children }: { children: React.ReactNode }) {
     if (!usuario) return;
     void actualizarAlertas();
   }, [usuario, actualizarAlertas]);
+  useEffect(() => {
+    if (!practicaInvalida) return;
+    const siguientes = new URLSearchParams(parametros.toString());
+    siguientes.delete("practica");
+    const consulta = siguientes.toString();
+    router.replace(consulta ? `${ruta}?${consulta}` : ruta);
+  }, [parametros, practicaInvalida, router, ruta]);
 
   if (cargandoSesion || !usuario)
     return (
       <div className="grid min-h-screen place-items-center text-sm text-slate-600">
-        Cargando Vektra…
+        {idioma === "es" ? "Cargando Vektra…" : "Loading Vektra…"}
       </div>
     );
   if (esRolExclusivoMovil(usuario.rol))
     return (
       <div className="grid min-h-screen place-items-center text-sm text-slate-600">
-        Este puesto utiliza la aplicación móvil de Vektra…
+        {idioma === "es"
+          ? "Este puesto utiliza la aplicación móvil de Vektra…"
+          : "This role uses the Vektra mobile application…"}
       </div>
     );
   if (usuario.debeCambiarContrasena && ruta !== "/perfil")
     return (
       <div className="grid min-h-screen place-items-center text-sm text-slate-600">
-        Protegiendo tu cuenta antes de continuar…
+        {idioma === "es"
+          ? "Protegiendo tu cuenta antes de continuar…"
+          : "Securing your account before continuing…"}
       </div>
     );
   if (!puedeAccederRutaWeb(usuario.rol, ruta))
     return (
       <div className="grid min-h-screen place-items-center text-sm text-slate-600">
-        Aplicando permisos de tu rol…
+        {idioma === "es"
+          ? "Aplicando permisos de tu rol…"
+          : "Applying your role permissions…"}
       </div>
     );
   const opcionesPermitidas = navegacion.filter((opcion) =>
@@ -183,6 +219,13 @@ export function Panel({ children }: { children: React.ReactNode }) {
   const paginaActual = opcionesPermitidas.find(
     (opcion) => ruta === opcion.href || ruta.startsWith(`${opcion.href}/`),
   );
+  const tituloPagina = paginaActual
+    ? t[paginaActual.clave]
+    : ruta === "/perfil"
+      ? idioma === "es"
+        ? "Perfil"
+        : "Profile"
+      : "Vektra";
 
   const enlaceNavegacion = (
     opcion: (typeof navegacion)[number],
@@ -218,10 +261,11 @@ export function Panel({ children }: { children: React.ReactNode }) {
         <button
           className="fixed inset-0 z-30 bg-black/40 lg:hidden"
           onClick={() => establecerAbierto(false)}
-          aria-label="Cerrar menu"
+          aria-label={idioma === "es" ? "Cerrar menú" : "Close menu"}
         />
       )}
       <aside
+        id="menu-principal"
         className={`fixed inset-y-0 left-0 z-40 flex w-[270px] flex-col border-r bg-white transition-transform dark:bg-slate-950 lg:sticky lg:top-0 lg:h-screen lg:w-auto ${abierto ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="flex h-18 items-center justify-between px-5 py-5">
@@ -239,10 +283,12 @@ export function Panel({ children }: { children: React.ReactNode }) {
             />
           </Link>
           <button
-            className="lg:hidden"
+            type="button"
+            className="grid min-h-11 min-w-11 place-items-center rounded-lg lg:hidden"
             onClick={() => establecerAbierto(false)}
+            aria-label={idioma === "es" ? "Cerrar menú" : "Close menu"}
           >
-            <X />
+            <X aria-hidden />
           </button>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-4">
@@ -271,13 +317,39 @@ export function Panel({ children }: { children: React.ReactNode }) {
           )}
         </nav>
         <div className="border-t p-4">
+          <div className="mb-3 grid grid-cols-2 gap-2 lg:hidden">
+            <button
+              type="button"
+              className="boton-secundario px-3"
+              onClick={alternarIdioma}
+              aria-label={t.idioma}
+            >
+              <Languages size={17} /> {idioma === "es" ? "EN" : "ES"}
+            </button>
+            <button
+              type="button"
+              className="boton-secundario px-3"
+              onClick={alternarTema}
+              aria-label={t.tema}
+            >
+              {oscuro ? <Sun size={17} /> : <Moon size={17} />}
+              {oscuro
+                ? idioma === "es"
+                  ? "Claro"
+                  : "Light"
+                : idioma === "es"
+                  ? "Oscuro"
+                  : "Dark"}
+            </button>
+          </div>
           <Link
             href="/perfil"
             className="block rounded-lg p-1 hover:bg-slate-50 dark:hover:bg-slate-900"
           >
             <p className="truncate text-sm font-semibold">{usuario.nombre}</p>
             <p className="mt-0.5 truncate text-xs text-slate-500">
-              {usuario.rol.toLowerCase()} · Perfil
+              {usuario.rol.toLowerCase()} ·{" "}
+              {idioma === "es" ? "Perfil" : "Profile"}
             </p>
           </Link>
           <button
@@ -292,19 +364,41 @@ export function Panel({ children }: { children: React.ReactNode }) {
       <div className="min-w-0">
         <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-white/90 px-4 backdrop-blur dark:bg-slate-950/90 sm:px-7">
           <button
-            className="boton-secundario px-3 lg:hidden"
+            className="boton-secundario relative px-3 lg:hidden"
             onClick={() => establecerAbierto(true)}
+            aria-label={
+              totalAlertas > 0
+                ? idioma === "es"
+                  ? `Abrir menú, ${totalAlertas} alerta${totalAlertas === 1 ? "" : "s"} pendiente${totalAlertas === 1 ? "" : "s"}`
+                  : `Open menu, ${totalAlertas} pending alert${totalAlertas === 1 ? "" : "s"}`
+                : idioma === "es"
+                  ? "Abrir menú"
+                  : "Open menu"
+            }
+            aria-controls="menu-principal"
+            aria-expanded={abierto}
+            data-testid="menu-movil"
           >
-            <Menu size={19} />
+            <Menu aria-hidden size={19} />
+            {totalAlertas > 0 && (
+              <span
+                className="absolute -right-1 -top-1 min-w-4 rounded-full bg-red-600 px-1 text-center text-[9px] font-bold leading-4 text-white"
+                aria-hidden
+                data-testid="menu-movil-alertas"
+              >
+                {totalAlertas > 99 ? "99+" : totalAlertas}
+              </span>
+            )}
           </button>
           <p className="min-w-0 truncate text-sm font-semibold sm:text-base">
-            {paginaActual ? t[paginaActual.clave] : "Vektra"}
+            {tituloPagina}
           </p>
           <div className="ml-auto flex items-center gap-2">
+            <BuscadorGlobal rol={usuario.rol} idioma={idioma} />
             <AccionesRapidas rol={usuario.rol} idioma={idioma} modo="menu" />
             <Link
               href={`/capacitacion?pantalla=${paginaActual?.clave ?? "inicio"}`}
-              className="boton-secundario px-3"
+              className="boton-secundario hidden px-3 sm:inline-flex"
               title={
                 idioma === "es" ? "Aprender esta pantalla" : "Learn this screen"
               }
@@ -317,7 +411,7 @@ export function Panel({ children }: { children: React.ReactNode }) {
             </Link>
             <Link
               href="/alertas"
-              className="boton-secundario relative px-3"
+              className="boton-secundario relative hidden px-3 sm:inline-flex"
               title={t.alertas}
               aria-label={t.alertas}
             >
@@ -354,17 +448,60 @@ export function Panel({ children }: { children: React.ReactNode }) {
             enPracticaReal ? "layout-practica-sin-traslape" : undefined
           }
         >
+          {practicaSegura && (
+            <div
+              className="sticky top-16 z-10 order-1 border-y border-amber-300 bg-amber-100 px-4 py-3 text-amber-950 shadow-sm dark:border-amber-700 dark:bg-amber-950 dark:text-amber-50 xl:col-span-2"
+              role="status"
+              data-testid="banner-practica-segura"
+            >
+              <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide sm:text-sm">
+                  <GraduationCap className="shrink-0" size={19} />
+                  {idioma === "es"
+                    ? "MODO PRÁCTICA · NADA SE GUARDARÁ EN LA BASE DE DATOS"
+                    : "PRACTICE MODE · NOTHING WILL BE SAVED TO THE DATABASE"}
+                </p>
+                <Link
+                  href={ruta}
+                  className="rounded-lg bg-amber-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-black dark:bg-amber-100 dark:text-amber-950"
+                >
+                  {idioma === "es" ? "Salir de práctica" : "Exit practice"}
+                </Link>
+              </div>
+            </div>
+          )}
           <main
             className={`mx-auto w-full max-w-[1500px] p-4 pb-24 sm:p-7 sm:pb-24 lg:pb-7 ${enPracticaReal ? "order-2 xl:order-1" : ""}`}
             data-pantalla-operativa
           >
-            {children}
+            {practicaInvalida ? (
+              <section
+                className="panel mx-auto max-w-xl p-6 text-center"
+                role="alert"
+                data-testid="practica-invalida-bloqueada"
+              >
+                <h1 className="text-xl font-black">
+                  {idioma === "es"
+                    ? "Práctica no reconocida"
+                    : "Unknown practice"}
+                </h1>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  {idioma === "es"
+                    ? "Se retiró el identificador inválido antes de habilitar cualquier acción."
+                    : "The invalid identifier was removed before enabling any action."}
+                </p>
+              </section>
+            ) : (
+              children
+            )}
           </main>
-          {leccionPractica?.rutaReal && (
+          {practicaSegura && (
             <div className="order-1 min-w-0 xl:order-2 xl:py-4">
-              <EntrenadorPantallaReal
+              <CargadorEntrenadorPantallaReal
                 usuarioId={usuario.id}
-                leccion={leccionPractica}
+                rol={usuario.rol}
+                leccionId={practicaSegura.id}
+                ruta={ruta}
                 idioma={idioma}
               />
             </div>

@@ -4,7 +4,7 @@ import { z } from "zod";
 /** Contrato único para contraseñas creadas por el usuario o el administrador. */
 export const esquemaContrasenaSegura = z
   .string()
-  .min(6, "Use al menos 6 caracteres.")
+  .min(12, "Use al menos 12 caracteres.")
   .max(200);
 
 export function crearHashContrasena(contrasena: string) {

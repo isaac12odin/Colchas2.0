@@ -3,8 +3,8 @@ import { Check, Clock3, PackageOpen, Send } from "lucide-react";
 import {
   etiquetaEstadoPedido,
   etiquetaSiguiente,
-  siguienteEstado,
   type PedidoWeb,
+  siguienteEstado,
 } from "./tipos";
 
 const dinero = new Intl.NumberFormat("es-MX", {
@@ -163,17 +163,16 @@ export function TarjetaPedidoWeb({
                 : "Advance"}
             </button>
           )}
-        {puedeEntregar &&
-          ["RECIBIDO_ALMACEN", "LISTO_ENTREGA"].includes(pedido.estado) && (
-            <button
-              className="boton-primario flex-1"
-              onClick={alEntregar}
-              data-capacitacion="pedidos.entrega.abrir"
-            >
-              <Check size={17} />
-              {es ? "Revisar y entregar" : "Review and deliver"}
-            </button>
-          )}
+        {puedeEntregar && pedido.estado === "LISTO_ENTREGA" && (
+          <button
+            className="boton-primario flex-1"
+            onClick={alEntregar}
+            data-capacitacion="pedidos.entrega.abrir"
+          >
+            <Check size={17} />
+            {es ? "Revisar y entregar" : "Review and deliver"}
+          </button>
+        )}
       </div>
       {!puedeAsignarProveedor && pedido.estado === "PENDIENTE_PEDIR" && (
         <p className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">

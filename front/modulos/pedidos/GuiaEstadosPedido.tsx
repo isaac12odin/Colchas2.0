@@ -1,3 +1,5 @@
+import { ChevronDown } from "lucide-react";
+
 export function GuiaEstadosPedido({ es }: { es: boolean }) {
   const etapas = es
     ? [
@@ -22,24 +24,39 @@ export function GuiaEstadosPedido({ es }: { es: boolean }) {
         { titulo: "3. Delivery", texto: "Creates the sale and balance." },
       ];
   return (
-    <section className="panel mb-5 grid gap-2 p-3 sm:grid-cols-3">
-      {etapas.map((etapa, indice) => (
-        <div
-          key={etapa.titulo}
-          className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950"
-        >
-          <strong
-            className={
-              indice === 2
-                ? "text-emerald-700 dark:text-emerald-300"
-                : "text-blue-700 dark:text-blue-300"
-            }
+    <details className="group panel mb-5">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
+        <span>{es ? "Cómo avanza un pedido" : "How an order progresses"}</span>
+        <span className="flex items-center gap-2 text-xs font-medium text-blue-700 dark:text-blue-300">
+          {es ? "Ver 3 etapas" : "See 3 stages"}
+          <ChevronDown
+            className="transition group-open:rotate-180"
+            size={17}
+            aria-hidden="true"
+          />
+        </span>
+      </summary>
+      <section className="grid gap-2 border-t p-3 sm:grid-cols-3">
+        {etapas.map((etapa, indice) => (
+          <div
+            key={etapa.titulo}
+            className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950"
           >
-            {etapa.titulo}
-          </strong>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{etapa.texto}</p>
-        </div>
-      ))}
-    </section>
+            <strong
+              className={
+                indice === 2
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : "text-blue-700 dark:text-blue-300"
+              }
+            >
+              {etapa.titulo}
+            </strong>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              {etapa.texto}
+            </p>
+          </div>
+        ))}
+      </section>
+    </details>
   );
 }

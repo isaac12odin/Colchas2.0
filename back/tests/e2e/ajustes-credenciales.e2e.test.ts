@@ -137,7 +137,7 @@ describe.sequential("ajustes financieros y credenciales", () => {
     const claveAdmin = "AdminSegura!2026";
     const claveAnterior = "AnteriorSegura!2026";
     const claveTemporal = "TemporalNueva!2026";
-    const claveAdminNueva = "admin6";
+    const claveAdminNueva = "AdminNueva!2026";
     try {
       const administrador = await escenario.crearUsuarioAutenticable(
         RolUsuario.ADMINISTRADOR,
@@ -225,6 +225,16 @@ describe.sequential("ajustes financieros y credenciales", () => {
       });
       expect(auditoria).not.toBeNull();
       expect(JSON.stringify(auditoria)).not.toContain(claveTemporal);
+
+      const debil = await request(app)
+        .post(`/api/v1/usuarios/${administrador.id}/restablecer-contrasena`)
+        .set(cabeceras(accesoAdmin.body.accessToken))
+        .send({
+          contrasenaAdministrador: claveAdmin,
+          contrasenaTemporal: "admin6",
+        })
+        .expect(422);
+      expect(debil.body.error.codigo).toBe("DATOS_INVALIDOS");
 
       await request(app)
         .post(`/api/v1/usuarios/${administrador.id}/restablecer-contrasena`)

@@ -1,10 +1,18 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "next/navigation";
-import { Camera, Plus, RotateCcw, Search } from "lucide-react";
+import { Camera, Plus, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { api, ErrorApi } from "@/lib/api";
 import { usarDatosVivos } from "@/lib/usarDatosVivos";
+import { prepararFotografia } from "@/lib/imagenes";
 import type { Pagina } from "@/lib/tipos";
 import {
   EncabezadoPagina,
@@ -16,6 +24,11 @@ import {
 import { usarAplicacion } from "@/componentes/proveedores";
 import { SelectorProductoRemoto } from "@/componentes/SelectoresRemotos";
 import type { ProductoPedido } from "@/modulos/pedidos/tipos";
+import {
+  ResultadoDevolucionRegistrada,
+  type ResultadoDevolucion,
+} from "@/modulos/devoluciones/ResultadoDevolucionRegistrada";
+import { SelectorVentaDevolucion } from "@/modulos/devoluciones/SelectorVentaDevolucion";
 
 interface VentaLista {
   id: string;
@@ -25,7 +38,6 @@ interface VentaLista {
   fechaVenta: string;
   cliente: { nombreCompleto: string } | null;
 }
-
 interface VentaDetalle extends VentaLista {
   cliente:
     | ({
@@ -47,7 +59,6 @@ interface VentaDetalle extends VentaLista {
     detalles: Array<{ detalleVentaId: string; cantidad: number }>;
   }>;
 }
-
 interface Devolucion {
   id: string;
   folio: string;
@@ -63,7 +74,6 @@ interface Devolucion {
   autorizadoPor: { nombre: string };
   usuarioOperador: { nombre: string } | null;
 }
-
 interface OperadorCaja {
   id: string;
   nombre: string;
@@ -74,16 +84,6 @@ const dinero = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
 });
-
-function archivoBase64(archivo: File) {
-  return new Promise<string>((resolver, rechazar) => {
-    const lector = new FileReader();
-    lector.onerror = () =>
-      rechazar(new Error("No se pudo leer la fotografía."));
-    lector.onload = () => resolver(String(lector.result).split(",")[1] ?? "");
-    lector.readAsDataURL(archivo);
-  });
-}
 
 export default function PaginaDevoluciones() {
   const { idioma, usuario } = usarAplicacion();
@@ -111,6 +111,12 @@ export default function PaginaDevoluciones() {
   const [operadores, establecerOperadores] = useState<OperadorCaja[]>([]);
   const [operadorId, establecerOperadorId] = useState("");
   const [error, establecerError] = useState("");
+  const [errorOperacion, establecerErrorOperacion] = useState("");
+  const [guardando, establecerGuardando] = useState(false);
+  const [resultado, establecerResultado] = useState<ResultadoDevolucion | null>(
+    null,
+  );
+  const guardandoRef = useRef(false);
 
   const cargar = useCallback(() => {
     api<Pagina<Devolucion>>(
@@ -145,6 +151,8 @@ export default function PaginaDevoluciones() {
       const detalle = await api<VentaDetalle>(`/ventas/${id}`);
       establecerVenta(detalle);
       establecerCantidades({});
+      establecerResultado(null);
+      establecerErrorOperacion("");
       establecerModal(true);
     } catch (e) {
       establecerError(e instanceof ErrorApi ? e.message : "Error");
@@ -216,15 +224,19 @@ export default function PaginaDevoluciones() {
 
   async function registrar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    if (!venta) return;
+    if (!venta || guardandoRef.current) return;
     const formulario = new FormData(evento.currentTarget);
     const foto = formulario.get("evidencia");
     if (!(foto instanceof File) || foto.size === 0)
-      return establecerError("Adjunte una fotografía de la devolución.");
-    if (foto.size > 2_500_000)
-      return establecerError("La fotografía no puede superar 2.5 MB.");
+      return establecerErrorOperacion(
+        "Adjunte una fotografía de la devolución.",
+      );
+    guardandoRef.current = true;
+    establecerGuardando(true);
+    establecerErrorOperacion("");
     try {
-      await api("/devoluciones", {
+      const evidencia = await prepararFotografia(foto, es, "devolucion");
+      const devolucion = await api<ResultadoDevolucion>("/devoluciones", {
         method: "POST",
         body: JSON.stringify({
           ventaId: venta.id,
@@ -234,11 +246,7 @@ export default function PaginaDevoluciones() {
           metodoReembolso:
             reembolso > 0 ? formulario.get("metodoReembolso") : undefined,
           usuarioOperadorId: reembolso > 0 ? operadorId : undefined,
-          evidencia: {
-            nombre: foto.name,
-            mime: foto.type,
-            base64: await archivoBase64(foto),
-          },
+          evidencia,
           items: venta.detalles
             .filter((detalle) => (cantidades[detalle.id] ?? 0) > 0)
             .map((detalle) => ({
@@ -256,12 +264,37 @@ export default function PaginaDevoluciones() {
               : undefined,
         }),
       });
-      establecerModal(false);
-      establecerVenta(null);
+      establecerResultado(devolucion);
       cargar();
     } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      establecerErrorOperacion(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No se pudo registrar la devolución. Revise los datos e intente de nuevo."
+            : "The return could not be recorded. Review the data and try again.",
+      );
+    } finally {
+      guardandoRef.current = false;
+      establecerGuardando(false);
     }
+  }
+
+  function abrirModal() {
+    establecerResultado(null);
+    establecerErrorOperacion("");
+    establecerVenta(null);
+    establecerCantidades({});
+    establecerModal(true);
+  }
+
+  function cerrarModal() {
+    if (guardandoRef.current) return;
+    establecerModal(false);
+    establecerVenta(null);
+    establecerCantidades({});
+    establecerResultado(null);
+    establecerErrorOperacion("");
   }
 
   return (
@@ -280,7 +313,7 @@ export default function PaginaDevoluciones() {
             <button
               className="boton-primario"
               data-capacitacion="devoluciones.nueva.abrir"
-              onClick={() => establecerModal(true)}
+              onClick={abrirModal}
             >
               <Plus size={17} /> Devolución
             </button>
@@ -378,262 +411,277 @@ export default function PaginaDevoluciones() {
 
       <Modal
         abierto={modal}
-        cerrar={() => {
-          establecerModal(false);
-          establecerVenta(null);
-        }}
-        titulo="Registrar devolución"
+        cerrar={cerrarModal}
+        titulo={
+          resultado
+            ? es
+              ? "Devolución registrada"
+              : "Return recorded"
+            : es
+              ? "Registrar devolución"
+              : "Record return"
+        }
+        bloqueado={guardando}
       >
-        {!venta ? (
-          <div data-capacitacion="devoluciones.venta.seleccion">
-            <label>
-              <span className="etiqueta">Buscar venta confirmada</span>
-              <input
-                className="campo"
-                data-capacitacion="devoluciones.venta.buscar"
-                value={buscarVenta}
-                onChange={(e) => establecerBuscarVenta(e.target.value)}
-                placeholder="Folio o cliente"
-              />
-            </label>
-            <div className="mt-3 max-h-72 divide-y overflow-y-auto rounded-lg border">
-              {ventas.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  data-capacitacion="devoluciones.venta.elegir"
-                  className="flex w-full justify-between p-3 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                  onClick={() => void elegirVenta(item.id)}
-                >
-                  <span>
-                    <strong>{item.folio}</strong>
-                    <small className="block text-slate-500">
-                      {item.cliente?.nombreCompleto ?? "Público general"}
-                    </small>
-                  </span>
-                  <strong>{dinero.format(Number(item.total))}</strong>
-                </button>
-              ))}
-            </div>
-          </div>
+        {resultado ? (
+          <ResultadoDevolucionRegistrada
+            resultado={resultado}
+            folioVenta={venta?.folio}
+            es={es}
+            cerrar={cerrarModal}
+          />
+        ) : !venta ? (
+          <>
+            {errorOperacion && <MensajeError mensaje={errorOperacion} />}
+            <SelectorVentaDevolucion
+              ventas={ventas}
+              buscar={buscarVenta}
+              cambiarBusqueda={establecerBuscarVenta}
+              elegir={(id) => void elegirVenta(id)}
+            />
+          </>
         ) : (
           <form
             onSubmit={registrar}
-            className="space-y-5"
             data-capacitacion="devoluciones.formulario"
+            aria-busy={guardando || undefined}
           >
-            <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">
-              <strong>
-                {venta.folio} ·{" "}
-                {venta.cliente?.nombreCompleto ?? "Público general"}
-              </strong>
-              <p>Total original {dinero.format(Number(venta.total))}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                data-capacitacion="devoluciones.tipo.parcial"
-                className={
-                  tipo === "PARCIAL" ? "boton-primario" : "boton-secundario"
-                }
-                onClick={() => establecerTipo("PARCIAL")}
-              >
-                Parcial
-              </button>
-              <button
-                type="button"
-                data-capacitacion="devoluciones.tipo.total"
-                className={
-                  tipo === "TOTAL" ? "boton-primario" : "boton-secundario"
-                }
-                onClick={seleccionarTotal}
-              >
-                Cancelar venta completa
-              </button>
-              <button
-                type="button"
-                data-capacitacion="devoluciones.tipo.cambio"
-                className={
-                  tipo === "CAMBIO" ? "boton-primario" : "boton-secundario"
-                }
-                onClick={() => establecerTipo("CAMBIO")}
-              >
-                Cambio
-              </button>
-            </div>
-            <div className="space-y-3">
-              {venta.detalles.map((detalle) => {
-                const maximo = disponible(detalle.id, detalle.cantidad);
-                return (
-                  <label
-                    key={detalle.id}
-                    className="grid grid-cols-[1fr_100px] items-end gap-3 rounded-lg border p-3"
-                  >
-                    <span>
-                      <strong className="block text-sm">
-                        {detalle.productoNombre}
-                      </strong>
-                      <small className="text-slate-500">
-                        {detalle.productoSku} · quedan {maximo} ·{" "}
-                        {dinero.format(Number(detalle.precioUnitario))}
-                      </small>
-                    </span>
-                    <span>
-                      <span className="etiqueta">Cantidad</span>
-                      <input
-                        className="campo"
-                        data-capacitacion="devoluciones.cantidad"
-                        type="number"
-                        min="0"
-                        max={maximo}
-                        value={cantidades[detalle.id] ?? 0}
-                        onChange={(e) =>
-                          establecerCantidades((a) => ({
-                            ...a,
-                            [detalle.id]: Number(e.target.value),
-                          }))
-                        }
-                      />
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-            {tipo === "CAMBIO" && (
-              <div
-                className="rounded-xl border border-blue-200 p-4 dark:border-blue-900"
-                data-capacitacion="devoluciones.reemplazo"
-              >
-                <h3 className="mb-3 font-semibold">Pedido de reemplazo</h3>
-                <SelectorProductoRemoto
-                  valor={reemplazo}
-                  alCambiar={establecerReemplazo}
-                  es={es}
-                />
-                <label className="mt-3 block">
-                  <span className="etiqueta">Cantidad del reemplazo</span>
-                  <input
-                    className="campo"
-                    data-capacitacion="devoluciones.reemplazo.cantidad"
-                    type="number"
-                    min="1"
-                    value={cantidadReemplazo}
-                    onChange={(e) =>
-                      establecerCantidadReemplazo(e.target.value)
-                    }
-                    required
-                  />
-                </label>
-                <p className="mt-2 text-xs text-slate-500">
-                  Se creará un pedido pendiente. El nuevo saldo y el stock se
-                  afectarán sólo cuando ese pedido se entregue.
-                </p>
-              </div>
-            )}
-            <div
-              className="grid gap-3 rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-950 sm:grid-cols-3"
-              data-capacitacion="devoluciones.resumen"
-            >
-              <div>
-                <span className="text-xs text-slate-500">Total devuelto</span>
-                <strong className="block">{dinero.format(total)}</strong>
-              </div>
-              <div>
-                <span className="text-xs text-slate-500">Baja del saldo</span>
-                <strong className="block">
-                  {dinero.format(aplicadoSaldo)}
+            <fieldset disabled={guardando} className="space-y-5">
+              <legend className="sr-only">Datos de la devolución</legend>
+              {errorOperacion && <MensajeError mensaje={errorOperacion} />}
+              <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100">
+                <strong>
+                  {venta.folio} ·{" "}
+                  {venta.cliente?.nombreCompleto ?? "Público general"}
                 </strong>
+                <p>Total original {dinero.format(Number(venta.total))}</p>
               </div>
-              <div>
-                <span className="text-xs text-slate-500">Reembolso</span>
-                <strong className="block">{dinero.format(reembolso)}</strong>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  data-capacitacion="devoluciones.tipo.parcial"
+                  className={
+                    tipo === "PARCIAL" ? "boton-primario" : "boton-secundario"
+                  }
+                  onClick={() => establecerTipo("PARCIAL")}
+                >
+                  Parcial
+                </button>
+                <button
+                  type="button"
+                  data-capacitacion="devoluciones.tipo.total"
+                  className={
+                    tipo === "TOTAL" ? "boton-primario" : "boton-secundario"
+                  }
+                  onClick={seleccionarTotal}
+                >
+                  Cancelar venta completa
+                </button>
+                <button
+                  type="button"
+                  data-capacitacion="devoluciones.tipo.cambio"
+                  className={
+                    tipo === "CAMBIO" ? "boton-primario" : "boton-secundario"
+                  }
+                  onClick={() => establecerTipo("CAMBIO")}
+                >
+                  Cambio
+                </button>
               </div>
-            </div>
-            {reembolso > 0 && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label>
-                  <span className="etiqueta">
-                    Método del reembolso entregado
-                  </span>
-                  <select
-                    name="metodoReembolso"
-                    className="campo"
-                    data-capacitacion="devoluciones.reembolso.metodo"
-                    required
-                  >
-                    <option value="EFECTIVO">Efectivo</option>
-                    <option value="TRANSFERENCIA">Transferencia</option>
-                    <option value="TARJETA">Tarjeta</option>
-                    <option value="OTRO">Otro</option>
-                  </select>
-                </label>
-                <label>
-                  <span className="etiqueta">Caja que entrega el dinero</span>
-                  <select
-                    className="campo"
-                    data-capacitacion="devoluciones.reembolso.operador"
-                    value={operadorId}
-                    onChange={(e) => establecerOperadorId(e.target.value)}
-                    required
-                  >
-                    <option value="">Seleccione operador</option>
-                    {operadores.map((operador) => (
-                      <option key={operador.id} value={operador.id}>
-                        {operador.nombre} · {operador.rol.toLowerCase()}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <div className="space-y-3">
+                {venta.detalles.map((detalle) => {
+                  const maximo = disponible(detalle.id, detalle.cantidad);
+                  return (
+                    <label
+                      key={detalle.id}
+                      className="grid grid-cols-[1fr_100px] items-end gap-3 rounded-lg border p-3"
+                    >
+                      <span>
+                        <strong className="block text-sm">
+                          {detalle.productoNombre}
+                        </strong>
+                        <small className="text-slate-500">
+                          {detalle.productoSku} · quedan {maximo} ·{" "}
+                          {dinero.format(Number(detalle.precioUnitario))}
+                        </small>
+                      </span>
+                      <span>
+                        <span className="etiqueta">Cantidad</span>
+                        <input
+                          className="campo"
+                          data-capacitacion="devoluciones.cantidad"
+                          type="number"
+                          min="0"
+                          max={maximo}
+                          value={cantidades[detalle.id] ?? 0}
+                          onChange={(e) =>
+                            establecerCantidades((a) => ({
+                              ...a,
+                              [detalle.id]: Number(e.target.value),
+                            }))
+                          }
+                        />
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
-            )}
-            <label>
-              <span className="etiqueta">Motivo detallado</span>
-              <textarea
-                name="motivo"
-                className="campo min-h-24 py-3"
-                data-capacitacion="devoluciones.motivo"
-                minLength={10}
-                required
-              />
-            </label>
-            <label>
-              <span className="etiqueta">
-                Fotografía de evidencia (máx. 2.5 MB)
-              </span>
-              <input
-                name="evidencia"
-                className="campo py-2"
-                data-capacitacion="devoluciones.foto"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                capture="environment"
-                required
-              />
-            </label>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="boton-secundario"
-                data-capacitacion="devoluciones.venta.cambiar"
-                onClick={() => {
-                  establecerVenta(null);
-                  establecerCantidades({});
-                }}
+              {tipo === "CAMBIO" && (
+                <div
+                  className="rounded-xl border border-blue-200 p-4 dark:border-blue-900"
+                  data-capacitacion="devoluciones.reemplazo"
+                >
+                  <h3 className="mb-3 font-semibold">Pedido de reemplazo</h3>
+                  <SelectorProductoRemoto
+                    valor={reemplazo}
+                    alCambiar={establecerReemplazo}
+                    es={es}
+                  />
+                  <label className="mt-3 block">
+                    <span className="etiqueta">Cantidad del reemplazo</span>
+                    <input
+                      className="campo"
+                      data-capacitacion="devoluciones.reemplazo.cantidad"
+                      type="number"
+                      min="1"
+                      value={cantidadReemplazo}
+                      onChange={(e) =>
+                        establecerCantidadReemplazo(e.target.value)
+                      }
+                      required
+                    />
+                  </label>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Se creará un pedido pendiente. El nuevo saldo y el stock se
+                    afectarán sólo cuando ese pedido se entregue.
+                  </p>
+                </div>
+              )}
+              <div
+                className="grid gap-3 rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-950 sm:grid-cols-3"
+                data-capacitacion="devoluciones.resumen"
               >
-                Cambiar venta
-              </button>
-              <button
-                className="boton-primario"
-                data-capacitacion="devoluciones.guardar"
-                disabled={
-                  total <= 0 ||
-                  (reembolso > 0 && !operadorId) ||
-                  (tipo === "CAMBIO" && !reemplazo)
-                }
-              >
-                <RotateCcw size={17} /> Confirmar reversa
-              </button>
-            </div>
+                <div>
+                  <span className="text-xs text-slate-500">Total devuelto</span>
+                  <strong className="block">{dinero.format(total)}</strong>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500">Baja del saldo</span>
+                  <strong className="block">
+                    {dinero.format(aplicadoSaldo)}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500">Reembolso</span>
+                  <strong className="block">{dinero.format(reembolso)}</strong>
+                </div>
+              </div>
+              {reembolso > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label>
+                    <span className="etiqueta">
+                      Método del reembolso entregado
+                    </span>
+                    <select
+                      name="metodoReembolso"
+                      className="campo"
+                      data-capacitacion="devoluciones.reembolso.metodo"
+                      required
+                    >
+                      <option value="EFECTIVO">Efectivo</option>
+                      <option value="TRANSFERENCIA">Transferencia</option>
+                      <option value="TARJETA">Tarjeta</option>
+                      <option value="OTRO">Otro</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span className="etiqueta">Caja que entrega el dinero</span>
+                    <select
+                      className="campo"
+                      data-capacitacion="devoluciones.reembolso.operador"
+                      value={operadorId}
+                      onChange={(e) => establecerOperadorId(e.target.value)}
+                      required
+                    >
+                      <option value="">Seleccione operador</option>
+                      {operadores.map((operador) => (
+                        <option key={operador.id} value={operador.id}>
+                          {operador.nombre} · {operador.rol.toLowerCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+              <label>
+                <span className="etiqueta">Motivo detallado</span>
+                <textarea
+                  name="motivo"
+                  className="campo min-h-24 py-3"
+                  data-capacitacion="devoluciones.motivo"
+                  minLength={10}
+                  required
+                />
+              </label>
+              <label>
+                <span className="etiqueta">
+                  {es
+                    ? "Fotografía de evidencia (se reduce automáticamente)"
+                    : "Evidence photo (automatically reduced)"}
+                </span>
+                <input
+                  name="evidencia"
+                  className="campo py-2"
+                  data-capacitacion="devoluciones.foto"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  required
+                />
+              </label>
+              <p className="sr-only" aria-live="assertive">
+                {guardando
+                  ? es
+                    ? "Registrando la devolución. No cierre esta ventana."
+                    : "Recording the return. Do not close this window."
+                  : ""}
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="boton-secundario"
+                  data-capacitacion="devoluciones.venta.cambiar"
+                  onClick={() => {
+                    establecerVenta(null);
+                    establecerCantidades({});
+                  }}
+                >
+                  Cambiar venta
+                </button>
+                <button
+                  className="boton-primario"
+                  data-capacitacion="devoluciones.guardar"
+                  disabled={
+                    guardando ||
+                    total <= 0 ||
+                    (reembolso > 0 && !operadorId) ||
+                    (tipo === "CAMBIO" && !reemplazo)
+                  }
+                >
+                  {guardando ? (
+                    <>
+                      <RefreshCw className="animate-spin" size={17} />
+                      {es ? "Registrando…" : "Recording…"}
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw size={17} />
+                      {es ? "Confirmar reversa" : "Confirm reversal"}
+                    </>
+                  )}
+                </button>
+              </div>
+            </fieldset>
           </form>
         )}
       </Modal>

@@ -24,22 +24,22 @@ describe("credenciales iniciales sin fallback", () => {
     ).toThrow(/credencial conocida/);
   });
 
-  it("acepta una credencial de al menos seis caracteres", () => {
+  it("acepta una credencial de al menos doce caracteres", () => {
     expect(
       leerConfiguracionSeed({
         SEED_ADMIN_EMAIL: "ADMIN@EMPRESA.TEST",
-        SEED_ADMIN_PASSWORD: "admin6",
+        SEED_ADMIN_PASSWORD: "Admin-Nueva-2026!",
       }),
     ).toMatchObject({ correo: "admin@empresa.test" });
   });
 
-  it("rechaza menos de seis caracteres", () => {
+  it("rechaza menos de doce caracteres", () => {
     expect(() =>
       leerConfiguracionSeed({
         SEED_ADMIN_EMAIL: "admin@empresa.test",
-        SEED_ADMIN_PASSWORD: "12345",
+        SEED_ADMIN_PASSWORD: "Corta2026!",
       }),
-    ).toThrow(/al menos 6/);
+    ).toThrow(/al menos 12/);
   });
 
   it("crea la ruta inicial para operación administrativa sin cobrador", () => {

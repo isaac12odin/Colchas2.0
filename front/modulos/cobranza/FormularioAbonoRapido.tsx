@@ -30,6 +30,24 @@ const dinero = new Intl.NumberFormat("es-MX", {
   currency: "MXN",
 });
 
+async function consultarPedidosDelCliente(clienteId: string) {
+  const pedidos: PedidoWeb[] = [];
+  let pagina = 1;
+  let totalPaginas = 1;
+  do {
+    const respuesta = await api<{
+      datos: PedidoWeb[];
+      paginacion?: { totalPaginas: number };
+    }>(
+      `/pedidos?clienteId=${encodeURIComponent(clienteId)}&pagina=${pagina}&limite=100`,
+    );
+    pedidos.push(...respuesta.datos);
+    totalPaginas = respuesta.paginacion?.totalPaginas ?? 1;
+    pagina += 1;
+  } while (pagina <= totalPaginas);
+  return pedidos;
+}
+
 export function FormularioAbonoRapido({
   clienteInicial = null,
   es,
@@ -69,13 +87,11 @@ export function FormularioAbonoRapido({
     }
     establecerCargandoPedidos(true);
     establecerErrorPedidos("");
-    void api<{ datos: PedidoWeb[] }>(
-      `/pedidos?clienteId=${encodeURIComponent(cliente.id)}`,
-    )
+    void consultarPedidosDelCliente(cliente.id)
       .then((respuesta) => {
         if (!vigente) return;
         establecerPedidos(
-          respuesta.datos.filter(
+          respuesta.filter(
             (pedido) => !["ENTREGADO", "CANCELADO"].includes(pedido.estado),
           ),
         );

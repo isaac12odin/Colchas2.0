@@ -168,3 +168,67 @@ test("los accesos rápidos abren el formulario exacto y limpian la URL", async (
   ).toBeVisible();
   await expect(page).toHaveURL(/\/clientes$/);
 });
+
+test("alertas no ofrece acciones fuera del rol y cambia completamente de idioma", async ({
+  page,
+}) => {
+  await page.route("**/api/**", async (route) => {
+    const ruta = new URL(route.request().url()).pathname;
+    if (ruta.endsWith("/auth/sesion"))
+      return json(route, {
+        usuario: {
+          id: "vendedora-alertas",
+          nombre: "Vendedora Alertas",
+          correo: "vendedora-alertas@nexo.test",
+          rol: "VENDEDOR",
+          debeCambiarContrasena: false,
+          mfaHabilitado: false,
+        },
+      });
+    if (ruta.endsWith("/alertas"))
+      return json(route, {
+        actualizadoEn: "2026-09-01T12:00:00.000Z",
+        totales: {
+          bajoInventario: 1,
+          clientesVencidos: 0,
+          pedidosAtrasados: 0,
+          rutasIncompletas: 1,
+          total: 2,
+        },
+        productos: [
+          {
+            id: "producto-alerta",
+            nombre: "Colcha de práctica",
+            sku: "ALERTA-01",
+            existencia: 1,
+            existenciaMinima: 3,
+          },
+        ],
+        clientes: [],
+        pedidos: [],
+        rutas: [{ id: "ruta-alerta", nombre: "Ruta Centro", pendientes: 2 }],
+      });
+    return json(route, { error: { mensaje: `Sin mock para ${ruta}` } }, 404);
+  });
+
+  await page.goto("/alertas");
+  await expect(
+    page.getByRole("heading", { name: "Alertas empresariales" }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("alertas-categorias-activas").getByRole("link"),
+  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Inventario" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Rutas" })).toHaveCount(0);
+  await expect(
+    page.getByText("Consulta informativa; tu rol no realiza esta acción."),
+  ).toHaveCount(2);
+
+  await page.getByTitle("English").click();
+  await expect(
+    page.getByRole("heading", { name: "Business alerts" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("For reference; your role does not perform this action."),
+  ).toHaveCount(2);
+});

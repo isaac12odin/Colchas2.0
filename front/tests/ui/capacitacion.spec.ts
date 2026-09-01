@@ -19,6 +19,19 @@ async function json(route: Route, cuerpo: unknown, estado = 200) {
 
 async function preparar(page: Page) {
   const mutaciones: string[] = [];
+  await page.addInitScript(() => {
+    const estado = window as unknown as {
+      __mutacionesPracticaPrueba?: unknown[];
+    };
+    estado.__mutacionesPracticaPrueba = [];
+    window.addEventListener(
+      "nexo:capacitacion:mutacion-local",
+      (evento: Event) =>
+        estado.__mutacionesPracticaPrueba?.push(
+          (evento as CustomEvent<unknown>).detail,
+        ),
+    );
+  });
   await page.route("**/api/**", async (route) => {
     const solicitud = route.request();
     const ruta = new URL(solicitud.url()).pathname;
@@ -43,6 +56,17 @@ async function preparar(page: Page) {
     return json(route, { error: { mensaje: `Sin mock para ${ruta}` } }, 404);
   });
   return mutaciones;
+}
+
+async function leerMutacionesPractica(page: Page) {
+  return page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __mutacionesPracticaPrueba?: Array<Record<string, unknown>>;
+        }
+      ).__mutacionesPracticaPrueba ?? [],
+  );
 }
 
 test("la capacitación usa el módulo real, bloquea lo ajeno y guarda la acción sólo localmente", async ({
@@ -79,6 +103,9 @@ test("la capacitación usa el módulo real, bloquea lo ajeno y guarda la acción
 
   await expect(page).toHaveURL(
     /\/configuracion\?practica=configuracion-localidades/,
+  );
+  await expect(page.getByTestId("banner-practica-segura")).toContainText(
+    "MODO PRÁCTICA · NADA SE GUARDARÁ EN LA BASE DE DATOS",
   );
   await expect(
     page.getByRole("heading", { name: "Configuración empresarial" }),
@@ -129,19 +156,14 @@ test("la capacitación usa el módulo real, bloquea lo ajeno y guarda la acción
   await page.getByTestId("continuar-practica-real").click();
   await expect(page).toHaveURL(/\/capacitacion\?pantalla=configuracion/);
 
-  const accionesLocales = await page.evaluate(() =>
-    JSON.parse(
+  expect(
+    await page.evaluate(() =>
       localStorage.getItem(
         "nexo:capacitacion:capacitacion-admin-0001:acciones:v2",
-      ) ?? "[]",
+      ),
     ),
-  );
-  expect(accionesLocales.length).toBeGreaterThanOrEqual(4);
-  const escriturasLocales = await page.evaluate(() =>
-    JSON.parse(
-      localStorage.getItem("nexo:capacitacion:mutaciones-reales:v3") ?? "[]",
-    ),
-  );
+  ).toBeNull();
+  const escriturasLocales = await leerMutacionesPractica(page);
   expect(escriturasLocales).toMatchObject([
     {
       metodo: "POST",
@@ -155,6 +177,83 @@ test("la capacitación usa el módulo real, bloquea lo ajeno y guarda la acción
     page.getByText("COMPLETADA", { exact: true }).first(),
   ).toBeVisible();
   expect(mutaciones).toEqual([]);
+});
+
+test("un identificador desconocido se retira antes de habilitar la práctica", async ({
+  page,
+}) => {
+  const mutaciones = await preparar(page);
+  await page.goto("/ventas?practica=leccion-inventada");
+
+  await expect(page).toHaveURL(/\/ventas$/);
+  await expect(page.getByTestId("banner-practica-segura")).toHaveCount(0);
+  await expect(page.getByTestId("entrenador-pantalla-real")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Ventas", exact: true }),
+  ).toBeVisible();
+  expect(mutaciones).toEqual([]);
+});
+
+test("limpia borradores legacy con capturas y sólo conserva progreso versionado", async ({
+  page,
+}) => {
+  await preparar(page);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "nexo:capacitacion:usuario-anterior:practica:clientes-alta:v3",
+      JSON.stringify({
+        capturas: {
+          0: {
+            primario: "María Dato Sensible",
+            secundario: "2225550199",
+            archivo: "identificacion-privada.pdf",
+          },
+        },
+      }),
+    );
+    localStorage.setItem(
+      "vektra:capacitacion:v3:progreso:capacitacion-admin-0001",
+      JSON.stringify({
+        version: 3,
+        usuarioId: "capacitacion-admin-0001",
+        completadas: [],
+        actualizadoEn: new Date().toISOString(),
+      }),
+    );
+  });
+  await page.goto("/capacitacion");
+  await expect(page.getByTestId("centro-capacitacion")).toBeVisible();
+
+  const persistencia = await page.evaluate(() => ({
+    local: Object.fromEntries(
+      Array.from({ length: localStorage.length }, (_, indice) => {
+        const clave = localStorage.key(indice)!;
+        return [clave, localStorage.getItem(clave)];
+      }),
+    ),
+    sesion: Object.fromEntries(
+      Array.from({ length: sessionStorage.length }, (_, indice) => {
+        const clave = sessionStorage.key(indice)!;
+        return [clave, sessionStorage.getItem(clave)];
+      }),
+    ),
+  }));
+  const serializado = JSON.stringify(persistencia);
+  expect(serializado).not.toContain("María Dato Sensible");
+  expect(serializado).not.toContain("2225550199");
+  expect(serializado).not.toContain("identificacion-privada.pdf");
+  expect(Object.keys(persistencia.local)).not.toContain(
+    "nexo:capacitacion:usuario-anterior:practica:clientes-alta:v3",
+  );
+  const progreso = Object.entries(persistencia.local).find(([clave]) =>
+    clave.startsWith("vektra:capacitacion:v3:progreso:"),
+  );
+  expect(progreso).toBeDefined();
+  expect(JSON.parse(progreso![1] ?? "{}")).toMatchObject({
+    version: 3,
+    usuarioId: administrador.id,
+    completadas: [],
+  });
 });
 
 test("recepción y preparación avanzan dos estados reales sólo en memoria local", async ({
@@ -250,11 +349,7 @@ test("recepción y preparación avanzan dos estados reales sólo en memoria loca
     "El estado final se simula sólo en este navegador",
   );
 
-  const mutacionesLocales = await page.evaluate(() =>
-    JSON.parse(
-      localStorage.getItem("nexo:capacitacion:mutaciones-reales:v3") ?? "[]",
-    ),
-  );
+  const mutacionesLocales = await leerMutacionesPractica(page);
   expect(mutacionesLocales).toMatchObject([
     {
       metodo: "PATCH",

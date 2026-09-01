@@ -9,7 +9,11 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, limpiarEstadoApi } from "@/lib/api";
+import {
+  notificarSesionInvalidada,
+  suscribirSesionInvalidada,
+} from "@/lib/eventosDatos";
 import { Idioma, textos } from "@/lib/i18n";
 import type { UsuarioSesion } from "@/lib/tipos";
 
@@ -26,6 +30,17 @@ interface ContextoAplicacion {
 }
 
 const Contexto = createContext<ContextoAplicacion | null>(null);
+let sesionInicialEnCurso: Promise<{ usuario: UsuarioSesion }> | null = null;
+
+function consultarSesionInicial() {
+  if (sesionInicialEnCurso) return sesionInicialEnCurso;
+  sesionInicialEnCurso = api<{ usuario: UsuarioSesion }>(
+    "/auth/sesion",
+  ).finally(() => {
+    sesionInicialEnCurso = null;
+  });
+  return sesionInicialEnCurso;
+}
 
 export function Proveedores({ children }: { children: React.ReactNode }) {
   const [usuario, establecerUsuario] = useState<UsuarioSesion | null>(null);
@@ -35,6 +50,7 @@ export function Proveedores({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
+    let montado = true;
     const idiomaGuardado = localStorage.getItem("idioma") as Idioma | null;
     const temaGuardado = localStorage.getItem("tema") === "oscuro";
     if (idiomaGuardado && textos[idiomaGuardado]) {
@@ -43,11 +59,28 @@ export function Proveedores({ children }: { children: React.ReactNode }) {
     }
     establecerOscuro(temaGuardado);
     document.documentElement.classList.toggle("dark", temaGuardado);
-    api<{ usuario: UsuarioSesion }>("/auth/sesion")
-      .then((respuesta) => establecerUsuario(respuesta.usuario))
-      .catch(() => establecerUsuario(null))
-      .finally(() => establecerCargando(false));
-  }, []);
+    const cancelarSesionInvalidada = suscribirSesionInvalidada(() => {
+      if (!montado) return;
+      limpiarEstadoApi();
+      establecerUsuario(null);
+      establecerCargando(false);
+      router.replace("/");
+    });
+    consultarSesionInicial()
+      .then((respuesta) => {
+        if (montado) establecerUsuario(respuesta.usuario);
+      })
+      .catch(() => {
+        if (montado) establecerUsuario(null);
+      })
+      .finally(() => {
+        if (montado) establecerCargando(false);
+      });
+    return () => {
+      montado = false;
+      cancelarSesionInvalidada();
+    };
+  }, [router]);
 
   const alternarTema = useCallback(() => {
     establecerOscuro((actual) => {
@@ -69,6 +102,8 @@ export function Proveedores({ children }: { children: React.ReactNode }) {
     await api("/auth/cerrar-sesion", { method: "POST", body: "{}" }).catch(
       () => undefined,
     );
+    limpiarEstadoApi();
+    notificarSesionInvalidada({ motivo: "CIERRE_SESION" });
     establecerUsuario(null);
     router.replace("/");
   }, [router]);

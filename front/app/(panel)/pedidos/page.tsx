@@ -9,16 +9,17 @@ import {
   EstadoVacio,
   MensajeError,
   Modal,
+  Paginador,
 } from "@/componentes/ui";
-import { FiltrosPedidos } from "@/modulos/pedidos/FiltrosPedidos";
+import { usarAccionInicial } from "@/lib/usarAccionInicial";
 import { ConfirmarAvancePedido } from "@/modulos/pedidos/ConfirmarAvancePedido";
+import { FiltrosPedidos } from "@/modulos/pedidos/FiltrosPedidos";
 import { FormularioEntregaPedido } from "@/modulos/pedidos/FormularioEntregaPedido";
 import { FormularioGestionPedido } from "@/modulos/pedidos/FormularioGestionPedido";
 import { FormularioNuevoPedido } from "@/modulos/pedidos/FormularioNuevoPedido";
 import { GuiaEstadosPedido } from "@/modulos/pedidos/GuiaEstadosPedido";
 import { TarjetaPedidoWeb } from "@/modulos/pedidos/TarjetaPedidoWeb";
 import { usarPedidosWeb } from "@/modulos/pedidos/usarPedidosWeb";
-import { usarAccionInicial } from "@/lib/usarAccionInicial";
 
 export default function PaginaPedidos() {
   const { t, idioma, usuario } = usarAplicacion();
@@ -29,7 +30,8 @@ export default function PaginaPedidos() {
     "VENDEDOR",
     "COBRADOR",
   ].includes(usuario?.rol ?? "");
-  const control = usarPedidosWeb();
+  const [pedidoDestacado, establecerPedidoDestacado] = useState("");
+  const control = usarPedidosWeb(pedidoDestacado);
   const puedeAlmacen =
     usuario?.rol === "ADMINISTRADOR" || usuario?.rol === "ALMACENISTA";
   const puedeAsignarProveedor = [
@@ -42,7 +44,6 @@ export default function PaginaPedidos() {
   const puedeCrearProducto = usuario?.rol === "ADMINISTRADOR";
   const puedeCrearProveedor =
     usuario?.rol === "ADMINISTRADOR" || usuario?.rol === "ALMACENISTA";
-  const [pedidoDestacado, establecerPedidoDestacado] = useState("");
   const pedidoAbierto = useRef("");
   usarAccionInicial((accion) => {
     if (accion === "nuevo" && puedeCrear) control.abrirModal();
@@ -62,15 +63,24 @@ export default function PaginaPedidos() {
     if (pedido.estado === "PENDIENTE_PEDIR" && puedeAsignarProveedor) {
       control.abrirGestion(pedido);
     } else if (
-      ["RECIBIDO_ALMACEN", "LISTO_ENTREGA"].includes(pedido.estado) &&
-      puedeEntregar
+      ["PEDIDO_PROVEEDOR", "RECIBIDO_ALMACEN"].includes(pedido.estado) &&
+      puedeAlmacen
     ) {
+      control.abrirAvance(pedido);
+    } else if (pedido.estado === "LISTO_ENTREGA" && puedeEntregar) {
       control.abrirEntrega(pedido);
     }
     const url = new URL(window.location.href);
     url.searchParams.delete("pedido");
     window.history.replaceState(window.history.state, "", url.pathname);
-  }, [pedidoDestacado, control, puedeAsignarProveedor, puedeEntregar]);
+    establecerPedidoDestacado("");
+  }, [
+    pedidoDestacado,
+    control,
+    puedeAsignarProveedor,
+    puedeAlmacen,
+    puedeEntregar,
+  ]);
 
   return (
     <>
@@ -98,38 +108,76 @@ export default function PaginaPedidos() {
       <GuiaEstadosPedido es={es} />
       <FiltrosPedidos
         estado={control.estado}
+        buscar={control.buscar}
         es={es}
         alCambiar={control.establecerEstado}
+        alBuscar={control.establecerBuscar}
+        alAplicarBusqueda={control.aplicarBusqueda}
+        alLimpiarBusqueda={control.limpiarBusqueda}
       />
-      <div
-        className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-        data-capacitacion="pedidos.listado"
-      >
-        {control.pedidos.map((pedido) => (
-          <TarjetaPedidoWeb
-            key={pedido.id}
-            pedido={pedido}
-            es={es}
-            puedeAlmacen={puedeAlmacen}
-            puedeAsignarProveedor={puedeAsignarProveedor}
-            puedeEntregar={puedeEntregar}
-            destacado={pedido.id === pedidoDestacado}
-            alGestionar={() => control.abrirGestion(pedido)}
-            alAvanzar={() => control.abrirAvance(pedido)}
-            alEntregar={() => control.abrirEntrega(pedido)}
-          />
-        ))}
-      </div>
-      {control.pedidos.length === 0 && (
-        <div className="panel">
-          <EstadoVacio
-            texto={
-              es
-                ? "No hay pedidos en este estado."
-                : "No orders in this status."
-            }
-          />
+      {control.cargando && !control.respuesta && (
+        <div
+          className="panel p-8 text-center text-sm text-slate-500"
+          role="status"
+        >
+          {es ? "Cargando pedidos…" : "Loading orders…"}
         </div>
+      )}
+      {!control.cargando && control.error && !control.respuesta && (
+        <div className="panel p-5 text-center">
+          <button className="boton-secundario" onClick={control.reintentar}>
+            {es ? "Reintentar" : "Try again"}
+          </button>
+        </div>
+      )}
+      {control.respuesta && (
+        <section
+          className="space-y-4"
+          aria-busy={control.cargando || undefined}
+        >
+          <p className="text-sm text-slate-500" aria-live="polite">
+            {es
+              ? `${control.respuesta.paginacion.total} pedido${control.respuesta.paginacion.total === 1 ? "" : "s"}`
+              : `${control.respuesta.paginacion.total} order${control.respuesta.paginacion.total === 1 ? "" : "s"}`}
+          </p>
+          <div
+            className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+            data-capacitacion="pedidos.listado"
+          >
+            {control.pedidos.map((pedido) => (
+              <TarjetaPedidoWeb
+                key={pedido.id}
+                pedido={pedido}
+                es={es}
+                puedeAlmacen={puedeAlmacen}
+                puedeAsignarProveedor={puedeAsignarProveedor}
+                puedeEntregar={puedeEntregar}
+                destacado={pedido.id === pedidoDestacado}
+                alGestionar={() => control.abrirGestion(pedido)}
+                alAvanzar={() => control.abrirAvance(pedido)}
+                alEntregar={() => control.abrirEntrega(pedido)}
+              />
+            ))}
+          </div>
+          {!control.cargando && control.pedidos.length === 0 && (
+            <div className="panel">
+              <EstadoVacio
+                texto={
+                  es
+                    ? "No se encontraron pedidos con estos filtros."
+                    : "No orders match these filters."
+                }
+              />
+            </div>
+          )}
+          <div className="panel overflow-hidden">
+            <Paginador
+              pagina={control.respuesta.paginacion.pagina}
+              totalPaginas={control.respuesta.paginacion.totalPaginas}
+              cambiar={control.cambiarPagina}
+            />
+          </div>
+        </section>
       )}
       <Modal
         abierto={control.modal}

@@ -25,6 +25,7 @@ describe.sequential("conciliación y restricciones físicas", () => {
       );
       const categoriaId = await escenario.categoriaProductoId();
       const sku = `REC-${escenario.marca}`;
+      escenario.registrarProductoEsperado(sku);
       const creado = await request(app)
         .post("/api/v1/inventario/productos")
         .set(cabeceras(administrador.token))

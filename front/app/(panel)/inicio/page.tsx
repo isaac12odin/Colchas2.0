@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Banknote,
   Boxes,
   CircleDollarSign,
   ClockAlert,
   PackageCheck,
+  RefreshCw,
   Users,
 } from "lucide-react";
 
@@ -68,20 +69,53 @@ export default function PaginaInicio() {
   const { idioma, usuario } = usarAplicacion();
   const [periodo, establecerPeriodo] = useState("MES");
   const [resumen, establecerResumen] = useState<Resumen | null>(null);
+  const [cargando, establecerCargando] = useState(false);
   const [error, establecerError] = useState("");
+  const solicitudActual = useRef(0);
+  const controladorActual = useRef<AbortController | null>(null);
   const es = idioma === "es";
   const puedeVerResumen =
     usuario?.rol === "ADMINISTRADOR" || usuario?.rol === "CONTABLE";
 
-  const cargar = useCallback(() => {
-    if (!puedeVerResumen) return;
+  const cargar = useCallback(async () => {
+    if (!puedeVerResumen) {
+      establecerCargando(false);
+      return;
+    }
+    const solicitud = ++solicitudActual.current;
+    controladorActual.current?.abort();
+    const controlador = new AbortController();
+    controladorActual.current = controlador;
     establecerError("");
-    return api<Resumen>(`/reportes/resumen?periodo=${periodo}`)
-      .then(establecerResumen)
-      .catch((e) => establecerError(e.message));
-  }, [periodo, puedeVerResumen]);
+    establecerCargando(true);
+    try {
+      const respuesta = await api<Resumen>(
+        `/reportes/resumen?periodo=${periodo}`,
+        { signal: controlador.signal },
+      );
+      if (solicitud === solicitudActual.current) establecerResumen(respuesta);
+    } catch (e) {
+      if (controlador.signal.aborted) return;
+      if (solicitud === solicitudActual.current)
+        establecerError(
+          e instanceof Error
+            ? e.message
+            : es
+              ? "No fue posible actualizar el resumen."
+              : "The overview could not be updated.",
+        );
+    } finally {
+      if (solicitud === solicitudActual.current && !controlador.signal.aborted)
+        establecerCargando(false);
+    }
+  }, [es, periodo, puedeVerResumen]);
 
-  useEffect(() => void cargar(), [cargar]);
+  useEffect(() => {
+    // Nunca se muestran cifras del periodo anterior bajo una etiqueta nueva.
+    establecerResumen(null);
+    void cargar();
+    return () => controladorActual.current?.abort();
+  }, [cargar]);
   usarDatosVivos(cargar);
 
   if (!usuario) return null;
@@ -131,7 +165,11 @@ export default function PaginaInicio() {
               <select
                 className="campo w-full min-w-40 sm:w-auto"
                 value={periodo}
-                onChange={(e) => establecerPeriodo(e.target.value)}
+                onChange={(e) => {
+                  establecerResumen(null);
+                  establecerError("");
+                  establecerPeriodo(e.target.value);
+                }}
                 data-capacitacion="inicio.resumen.periodo"
               >
                 <option
@@ -162,12 +200,48 @@ export default function PaginaInicio() {
             </label>
           </div>
           {error && <MensajeError mensaje={error} />}
-          {!resumen ? (
-            <div className="panel p-10 text-center text-sm text-slate-600 dark:text-slate-300">
-              {es ? "Actualizando resumen…" : "Updating overview…"}
+          {cargando && !resumen ? (
+            <div
+              className="panel p-10 text-center text-sm text-slate-600 dark:text-slate-300"
+              role="status"
+            >
+              {es ? "Consultando el periodo…" : "Loading this period…"}
             </div>
-          ) : (
-            <>
+          ) : error && !resumen ? (
+            <div className="panel p-6 text-center">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                {es
+                  ? "No mostramos cifras anteriores porque podrían corresponder a otro periodo."
+                  : "Previous figures are hidden because they may belong to another period."}
+              </p>
+              <button
+                type="button"
+                className="boton-secundario mt-4"
+                onClick={() => void cargar()}
+              >
+                <RefreshCw aria-hidden size={17} />
+                {es ? "Reintentar consulta" : "Try again"}
+              </button>
+            </div>
+          ) : !resumen ? null : (
+            <div aria-busy={cargando || undefined}>
+              {cargando && (
+                <p
+                  className="mb-3 text-right text-xs font-medium text-blue-700 dark:text-blue-300"
+                  role="status"
+                >
+                  {es
+                    ? "Confirmando cifras actuales…"
+                    : "Confirming current figures…"}
+                </p>
+              )}
+              {error && (
+                <p className="mb-3 text-right text-xs text-amber-700 dark:text-amber-300">
+                  {es
+                    ? "Se muestra la última información confirmada de este periodo."
+                    : "Showing the last confirmed information for this period."}
+                </p>
+              )}
               <div
                 className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
                 data-capacitacion="inicio.resumen.indicadores"
@@ -221,7 +295,7 @@ export default function PaginaInicio() {
                   {es ? "Prioridad sugerida" : "Suggested priority"}
                 </strong>
                 <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  {resumen.cartera.saldo === 0
+                  {resumen.cartera.saldo === 0 || resumen.cartera.vencido === 0
                     ? es
                       ? "La cartera está al corriente. Revisa pedidos y existencias bajas."
                       : "Receivables are current. Review orders and low stock."
@@ -230,7 +304,7 @@ export default function PaginaInicio() {
                       : `${Math.round((resumen.cartera.vencido / resumen.cartera.saldo) * 100)}% of receivables are overdue. Prioritize routes and high-risk customers.`}
                 </p>
               </div>
-            </>
+            </div>
           )}
         </section>
       )}

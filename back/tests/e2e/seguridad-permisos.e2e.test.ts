@@ -389,11 +389,13 @@ describe.sequential("seguridad de sesión", () => {
         inicio.body.secreto,
         contadorActual - 1n,
       );
-      await request(app)
+      const confirmacion = await request(app)
         .post("/api/v1/auth/mfa/confirmar")
         .set(cabeceras(token))
         .send({ codigo: codigoAnterior })
-        .expect(204);
+        .expect(200);
+      expect(confirmacion.body.usuario.mfaHabilitado).toBe(true);
+      expect(confirmacion.body.accessToken).toEqual(expect.any(String));
 
       const requerido = await request(app)
         .post("/api/v1/auth/iniciar-sesion")
@@ -519,6 +521,10 @@ describe.sequential("continuidad administrativa", () => {
       expect(respuestas.map((respuesta) => respuesta.status).sort()).toEqual([
         200, 422,
       ]);
+      expect(
+        respuestas.find((respuesta) => respuesta.status === 422)?.body.error
+          .codigo,
+      ).toBe("AUTORIZACION_REVOCADA");
       expect(
         await prisma.usuario.count({
           where: {

@@ -1,10 +1,11 @@
 import { Fragment, useState } from "react";
-import { ChevronDown, ChevronUp, Search } from "lucide-react";
+import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 
 import { EstadoVacio, Paginador } from "@/componentes/ui";
 import { api } from "@/lib/api";
 import type { ControlVentasWeb } from "./usarVentasWeb";
 import type { VentaDetalleWeb } from "./tipos";
+import { TarjetaVentaMovil } from "./TarjetaVentaMovil";
 
 const dinero = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -41,31 +42,62 @@ export function TablaVentas({
   return (
     <div className="panel overflow-hidden" data-capacitacion="ventas.lista">
       <form
-        className="flex gap-2 border-b p-4"
+        className="flex flex-col gap-2 border-b p-4 sm:flex-row"
         onSubmit={(evento) => {
           evento.preventDefault();
-          control.cargar();
+          control.aplicarBusqueda();
         }}
         data-capacitacion="ventas.busqueda"
       >
-        <div className="relative flex-1">
+        <div className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-3 text-slate-400" size={18} />
           <input
-            className="campo pl-10"
+            className="campo pl-10 pr-10"
             data-capacitacion="ventas.busqueda.campo"
             value={control.buscar}
             onChange={(evento) => control.establecerBuscar(evento.target.value)}
             placeholder={es ? "Folio o cliente" : "Invoice or customer"}
           />
+          {control.buscar && (
+            <button
+              type="button"
+              className="absolute right-2 top-2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              onClick={control.limpiarBusqueda}
+              aria-label={es ? "Limpiar búsqueda" : "Clear search"}
+            >
+              <X size={17} />
+            </button>
+          )}
         </div>
         <button
-          className="boton-secundario"
+          className="boton-secundario sm:w-auto"
           data-capacitacion="ventas.busqueda.ejecutar"
         >
+          <Search size={17} aria-hidden />
           {buscarTexto}
         </button>
       </form>
-      <div className="overflow-x-auto">
+      <div className="md:hidden">
+        {control.respuesta?.datos.map((venta) => (
+          <TarjetaVentaMovil
+            key={venta.id}
+            venta={venta}
+            es={es}
+            abierta={detalle?.id === venta.id}
+            cargando={cargandoId === venta.id}
+            alAlternar={() => void alternarDetalle(venta.id)}
+          >
+            {detalle?.id === venta.id && (
+              <DetalleVenta
+                venta={detalle}
+                es={es}
+                mostrarCostos={mostrarCostos}
+              />
+            )}
+          </TarjetaVentaMovil>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-950">
             <tr>

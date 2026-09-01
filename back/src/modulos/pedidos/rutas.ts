@@ -6,6 +6,7 @@ import { autenticar, permitirPermiso } from "../../seguridad/middlewares.js";
 import { rolTienePermiso } from "../../seguridad/permisos.js";
 import { ErrorAplicacion } from "../../compartido/errores.js";
 import { validarFechaPlaneada } from "../../compartido/fechas.js";
+import { crearPagina, esquemaPaginacion } from "../../compartido/paginacion.js";
 import { entregarPedido, esquemaEntregaPedido } from "./servicio.js";
 import {
   asegurarClienteAsignado,
@@ -30,41 +31,114 @@ export const esquemaPedido = z.object({
     .min(1),
 });
 
+export const esquemaConsultaPedidos = esquemaPaginacion.extend({
+  estado: z.nativeEnum(EstadoPedido).optional(),
+  clienteId: z.string().uuid().optional(),
+  pedidoId: z.string().uuid().optional(),
+});
+
 rutasPedidos.get(
   "/",
   permitirPermiso("PEDIDOS_CONSULTAR"),
   async (req, res) => {
-    const { estado, clienteId } = z
-      .object({
-        estado: z.nativeEnum(EstadoPedido).optional(),
-        clienteId: z.string().uuid().optional(),
-      })
-      .parse(req.query);
-    const datos = await prisma.pedidoVenta.findMany({
-      where: {
-        ...(estado ? { estado } : {}),
-        ...(clienteId ? { clienteId } : {}),
-        cliente: filtroClientesDelActor(req.usuario!),
-      },
-      include: {
-        cliente: {
-          select: { id: true, nombreCompleto: true, numeroTarjeta: true },
-        },
-        items: {
-          include: {
-            producto: { select: { id: true, nombre: true, sku: true } },
-            proveedor: { select: { id: true, nombre: true } },
-            detalleCompra: {
-              select: { id: true, compra: { select: { folio: true } } },
+    const { pagina, limite, buscar, estado, clienteId, pedidoId } =
+      esquemaConsultaPedidos.parse(req.query);
+    const filtroTexto = buscar
+      ? {
+          OR: [
+            { folio: { contains: buscar, mode: "insensitive" as const } },
+            {
+              cliente: {
+                nombreCompleto: {
+                  contains: buscar,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+            {
+              cliente: {
+                numeroTarjeta: {
+                  contains: buscar,
+                  mode: "insensitive" as const,
+                },
+              },
+            },
+            ...(buscar.replace(/\D/g, "").length >= 4
+              ? [
+                  {
+                    cliente: {
+                      telefonoUltimos4: {
+                        contains: buscar.replace(/\D/g, "").slice(-4),
+                      },
+                    },
+                  },
+                ]
+              : []),
+            {
+              items: {
+                some: {
+                  OR: [
+                    {
+                      descripcion: {
+                        contains: buscar,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                    {
+                      producto: {
+                        nombre: {
+                          contains: buscar,
+                          mode: "insensitive" as const,
+                        },
+                      },
+                    },
+                    {
+                      producto: {
+                        sku: {
+                          contains: buscar,
+                          mode: "insensitive" as const,
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        }
+      : {};
+    const where = {
+      ...(estado ? { estado } : {}),
+      ...(clienteId ? { clienteId } : {}),
+      ...(pedidoId ? { id: pedidoId } : {}),
+      cliente: filtroClientesDelActor(req.usuario!),
+      ...filtroTexto,
+    };
+    const [datos, total] = await prisma.$transaction([
+      prisma.pedidoVenta.findMany({
+        where,
+        include: {
+          cliente: {
+            select: { id: true, nombreCompleto: true, numeroTarjeta: true },
+          },
+          items: {
+            include: {
+              producto: { select: { id: true, nombre: true, sku: true } },
+              proveedor: { select: { id: true, nombre: true } },
+              detalleCompra: {
+                select: { id: true, compra: { select: { folio: true } } },
+              },
             },
           },
+          venta: { select: { id: true, folio: true } },
         },
-        venta: { select: { id: true, folio: true } },
-      },
-      orderBy: [{ estado: "asc" }, { fechaCompromiso: "asc" }],
-      take: 200,
-    });
-    res.json({ datos });
+        orderBy: [{ estado: "asc" }, { fechaCompromiso: "asc" }, { id: "asc" }],
+        skip: (pagina - 1) * limite,
+        take: limite,
+      }),
+      prisma.pedidoVenta.count({ where }),
+    ]);
+    res.json(crearPagina(datos, total, pagina, limite));
   },
 );
 

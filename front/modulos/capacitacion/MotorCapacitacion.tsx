@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -29,15 +30,38 @@ import {
   leccionesParaRol,
   puntosPorLeccion,
 } from "./catalogo";
-import { PracticaFlujoReal } from "./PracticaFlujoReal";
 import {
   guardarProgresoCapacitacion,
   leerProgresoCapacitacion,
   registrarAccionPracticaLocal,
 } from "./progreso";
 import { contextoDeLeccion, rutaAprendizajeParaRol } from "./rutasAprendizaje";
-import { SimuladorCriticoWeb } from "./simuladores/SimuladorCriticoWeb";
 import { type LeccionCapacitacion, localizar } from "./tipos";
+
+const PracticaFlujoReal = dynamic(
+  () =>
+    import("./PracticaFlujoReal").then((modulo) => modulo.PracticaFlujoReal),
+  { loading: () => <CargandoPractica /> },
+);
+
+const SimuladorCriticoWeb = dynamic(
+  () =>
+    import("./simuladores/SimuladorCriticoWeb").then(
+      (modulo) => modulo.SimuladorCriticoWeb,
+    ),
+  { loading: () => <CargandoPractica /> },
+);
+
+function CargandoPractica() {
+  return (
+    <div
+      className="grid min-h-72 place-items-center p-8 text-sm font-bold text-slate-600 dark:text-slate-300"
+      aria-live="polite"
+    >
+      Vektra…
+    </div>
+  );
+}
 
 const etiquetasRol: Record<Rol, { es: string; en: string }> = {
   ADMINISTRADOR: { es: "Administrador", en: "Administrator" },
@@ -191,8 +215,8 @@ export function MotorCapacitacion() {
               <span>
                 <strong>{es ? "Simulador seguro:" : "Safe simulator:"}</strong>{" "}
                 {es
-                  ? "consulta la pantalla real, pero intercepta cada escritura y la guarda sólo en este navegador; no modifica la base de datos."
-                  : "it loads the real screen, but intercepts every write and stores it only in this browser; the database is not changed."}
+                  ? "consulta la pantalla real, pero intercepta cada escritura y conserva únicamente estado temporal sin datos capturados; no modifica la base de datos."
+                  : "it loads the real screen, but intercepts every write and keeps only temporary state without entered data; the database is not changed."}
               </span>
             </div>
           </div>
@@ -656,8 +680,8 @@ function SimuladorLeccion({
             <div>
               <p className="text-[10px] font-black uppercase tracking-[.18em] text-blue-600">
                 {es
-                  ? "Flujo operativo simulado · guardado local · sin afectar datos"
-                  : "Simulated operational flow · local save · no data affected"}
+                  ? "Flujo operativo simulado · memoria temporal · sin afectar datos"
+                  : "Simulated operational flow · temporary memory · no data affected"}
               </p>
               <h2 className="mt-1 text-xl font-black sm:text-2xl">
                 {localizar(leccion.titulo, idioma)}

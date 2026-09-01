@@ -29,6 +29,8 @@ export function SelectorBuscable({
   alCambiar,
   alBuscar,
   sinResultados,
+  ayuda,
+  textoCambiar,
   prefijoCapacitacion,
 }: {
   nombre: string;
@@ -39,6 +41,8 @@ export function SelectorBuscable({
   alCambiar: (id: string) => void;
   alBuscar?: (texto: string) => void;
   sinResultados: string;
+  ayuda?: string;
+  textoCambiar: string;
   prefijoCapacitacion?: string;
 }) {
   const [texto, establecerTexto] = useState("");
@@ -49,8 +53,13 @@ export function SelectorBuscable({
       .filter(
         (opcion) => !termino || normalizar(opcion.busqueda).includes(termino),
       )
-      .slice(0, 8);
+      .slice(0, termino ? 8 : 3);
   }, [opciones, texto]);
+
+  function elegir(opcion: OpcionBuscable) {
+    alCambiar(opcion.id);
+    establecerTexto("");
+  }
 
   return (
     <div
@@ -95,7 +104,7 @@ export function SelectorBuscable({
               prefijoCapacitacion ? `${prefijoCapacitacion}.cambiar` : undefined
             }
           >
-            Cambiar
+            {textoCambiar}
           </button>
         </div>
       )}
@@ -115,6 +124,19 @@ export function SelectorBuscable({
               }}
               placeholder={placeholder}
               autoComplete="off"
+              onKeyDown={(evento) => {
+                if (evento.key !== "Enter" || visibles.length === 0) return;
+                const termino = normalizar(texto.trim());
+                const exacta = visibles.find(
+                  (opcion) =>
+                    normalizar(opcion.titulo) === termino ||
+                    normalizar(opcion.busqueda).split(/\s+/).includes(termino),
+                );
+                if (exacta || visibles.length === 1) {
+                  evento.preventDefault();
+                  elegir(exacta ?? visibles[0]);
+                }
+              }}
               data-capacitacion={
                 prefijoCapacitacion
                   ? `${prefijoCapacitacion}.buscar`
@@ -135,10 +157,7 @@ export function SelectorBuscable({
                 type="button"
                 key={opcion.id}
                 className="block min-h-11 w-full rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-                onClick={() => {
-                  alCambiar(opcion.id);
-                  establecerTexto("");
-                }}
+                onClick={() => elegir(opcion)}
                 data-capacitacion={
                   prefijoCapacitacion
                     ? `${prefijoCapacitacion}.opcion`
@@ -173,6 +192,9 @@ export function SelectorBuscable({
               </p>
             )}
           </div>
+          {!texto.trim() && opciones.length > visibles.length && ayuda && (
+            <p className="mt-2 text-xs text-slate-500">{ayuda}</p>
+          )}
         </>
       )}
     </div>

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, ErrorApi } from "@/lib/api";
 import { usarDatosVivos } from "@/lib/usarDatosVivos";
+import type { Pagina } from "@/lib/tipos";
 import type {
   CategoriaProducto,
   CatalogosProducto,
@@ -15,9 +16,33 @@ import {
   type ProductoPedido,
 } from "./tipos";
 
-export function usarPedidosWeb() {
-  const [pedidos, establecerPedidos] = useState<PedidoWeb[]>([]);
+const LIMITE_PEDIDOS = 12;
+
+function normalizarPagina(
+  respuesta: Pagina<PedidoWeb> | { datos: PedidoWeb[] },
+  pagina: number,
+): Pagina<PedidoWeb> {
+  if ("paginacion" in respuesta) return respuesta;
+  return {
+    datos: respuesta.datos,
+    paginacion: {
+      pagina,
+      limite: LIMITE_PEDIDOS,
+      total: respuesta.datos.length,
+      totalPaginas: 1,
+    },
+  };
+}
+
+export function usarPedidosWeb(pedidoId = "") {
+  const [respuesta, establecerRespuesta] = useState<Pagina<PedidoWeb> | null>(
+    null,
+  );
   const [estado, establecerEstado] = useState("");
+  const [buscar, establecerBuscar] = useState("");
+  const [consulta, establecerConsulta] = useState("");
+  const [pagina, establecerPagina] = useState(1);
+  const [cargando, establecerCargando] = useState(true);
   const [modal, establecerModal] = useState(false);
   const [gestion, establecerGestion] = useState<PedidoWeb | null>(null);
   const [entrega, establecerEntrega] = useState<PedidoWeb | null>(null);
@@ -30,16 +55,43 @@ export function usarPedidosWeb() {
   >([]);
   const [catalogosProducto, establecerCatalogosProducto] =
     useState<CatalogosProducto>({ marcas: [], categorias: [] });
+  const solicitudActual = useRef(0);
 
-  const cargar = useCallback(
-    () =>
-      api<{ datos: PedidoWeb[] }>(
-        `/pedidos${estado ? `?estado=${estado}` : ""}`,
-      )
-        .then((respuesta) => establecerPedidos(respuesta.datos))
-        .catch((e) => establecerError(e.message)),
-    [estado],
-  );
+  const cargar = useCallback(async () => {
+    const solicitud = ++solicitudActual.current;
+    const parametros = new URLSearchParams({
+      pagina: String(pedidoId ? 1 : pagina),
+      limite: String(pedidoId ? 1 : LIMITE_PEDIDOS),
+    });
+    if (estado) parametros.set("estado", estado);
+    if (consulta) parametros.set("buscar", consulta);
+    if (pedidoId) parametros.set("pedidoId", pedidoId);
+    establecerCargando(true);
+    establecerError("");
+    try {
+      const datos = await api<Pagina<PedidoWeb> | { datos: PedidoWeb[] }>(
+        `/pedidos?${parametros.toString()}`,
+      );
+      if (solicitud === solicitudActual.current) {
+        const paginaRecibida = normalizarPagina(datos, pedidoId ? 1 : pagina);
+        if (!pedidoId && pagina > paginaRecibida.paginacion.totalPaginas) {
+          establecerPagina(paginaRecibida.paginacion.totalPaginas);
+          establecerRespuesta(null);
+        } else {
+          establecerRespuesta(paginaRecibida);
+        }
+      }
+    } catch (e) {
+      if (solicitud === solicitudActual.current)
+        establecerError(
+          e instanceof ErrorApi
+            ? e.message
+            : "No fue posible cargar los pedidos.",
+        );
+    } finally {
+      if (solicitud === solicitudActual.current) establecerCargando(false);
+    }
+  }, [consulta, estado, pagina, pedidoId]);
 
   useEffect(() => void cargar(), [cargar]);
   usarDatosVivos(cargar);
@@ -75,12 +127,7 @@ export function usarPedidosWeb() {
           fechaCompromiso: datos.fechaCompromiso
             ? new Date(`${datos.fechaCompromiso}T12:00:00`).toISOString()
             : undefined,
-          items: [
-            {
-              productoId: datos.productoId,
-              cantidad: datos.cantidad,
-            },
-          ],
+          items: datos.items,
         }),
       });
       establecerModal(false);
@@ -227,8 +274,12 @@ export function usarPedidosWeb() {
   }
 
   return {
-    pedidos,
+    pedidos: respuesta?.datos ?? [],
+    respuesta,
     estado,
+    buscar,
+    pagina,
+    cargando,
     modal,
     gestion,
     entrega,
@@ -238,7 +289,28 @@ export function usarPedidosWeb() {
     error,
     guardando,
     guardandoProducto,
-    establecerEstado,
+    establecerBuscar,
+    establecerEstado: (nuevoEstado: string) => {
+      establecerEstado(nuevoEstado);
+      establecerPagina(1);
+      establecerRespuesta(null);
+    },
+    aplicarBusqueda: () => {
+      establecerConsulta(buscar.trim());
+      establecerPagina(1);
+      establecerRespuesta(null);
+    },
+    limpiarBusqueda: () => {
+      establecerBuscar("");
+      establecerConsulta("");
+      establecerPagina(1);
+      establecerRespuesta(null);
+    },
+    cambiarPagina: (nuevaPagina: number) => {
+      establecerPagina(nuevaPagina);
+      establecerRespuesta(null);
+    },
+    reintentar: cargar,
     abrirModal: () => {
       establecerError("");
       establecerModal(true);

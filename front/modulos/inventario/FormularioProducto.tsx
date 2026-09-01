@@ -90,15 +90,19 @@ export function FormularioProducto({
       )}
 
       <div className="mt-6 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between">
-        <button type="button" className="boton-secundario" onClick={alCancelar}>
+        <button
+          type="button"
+          className="boton-secundario justify-center"
+          onClick={alCancelar}
+        >
           {cancelar}
         </button>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           {control.paso > 1 && (
             <button
               key="continuar-producto"
               type="button"
-              className="boton-secundario"
+              className="boton-secundario justify-center"
               onClick={control.anterior}
               data-capacitacion="inventario.producto.atras"
             >
@@ -108,7 +112,7 @@ export function FormularioProducto({
           {control.paso < 3 ? (
             <button
               type="button"
-              className="boton-primario"
+              className="boton-primario justify-center"
               disabled={!puedeSeguir}
               onClick={control.siguiente}
               data-capacitacion={`inventario.producto.continuar-${control.paso}`}
@@ -119,7 +123,7 @@ export function FormularioProducto({
             <button
               key="guardar-producto"
               type="submit"
-              className="boton-primario"
+              className="boton-primario justify-center"
               disabled={guardando || !control.existenciaValida}
               data-capacitacion="inventario.producto.guardar"
             >

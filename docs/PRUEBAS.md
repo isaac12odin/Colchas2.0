@@ -48,6 +48,14 @@ Ejecuta Playwright en Chromium, Firefox y WebKit. La matriz incluye escritorio, 
 
 `npm run validar:todo` ejecuta todas las suites descubiertas antes de compilar producción; use su resumen como conteo auditable de la liberación.
 
+### Smoke del artefacto Web de producción
+
+```bash
+npm run test:web:produccion
+```
+
+Compila con `next build`, levanta exactamente el artefacto con `next start` y comprueba acceso, recursos estáticos y encabezados de seguridad. Es una validación distinta del modo desarrollo: entre otras cosas confirma que `upgrade-insecure-requests` esté activo en producción sin romper WebKit durante las pruebas locales.
+
 Por seguridad, el comando sólo acepta PostgreSQL en `localhost`, `127.0.0.1` o `::1`, exige el sufijo `_test` y se niega a correr con `NODE_ENV=production`. Para una base remota desechable debe confirmarse conscientemente:
 
 ```bash

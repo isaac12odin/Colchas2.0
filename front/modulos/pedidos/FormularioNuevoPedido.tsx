@@ -5,8 +5,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { IndicadorPasosOperacion } from "@/componentes/AsistenteOperacion";
 import { FormularioProducto } from "@/modulos/inventario/FormularioProducto";
 import type {
-  CategoriaProducto,
   CatalogosProducto,
+  CategoriaProducto,
   DatosProductoWeb,
 } from "@/modulos/inventario/tipos";
 import { PasoClienteNuevoPedido } from "./PasoClienteNuevoPedido";
@@ -17,8 +17,7 @@ import { usarFormularioNuevoPedido } from "./usarFormularioNuevoPedido";
 
 export interface NuevoPedidoWeb {
   clienteId: string;
-  productoId: string;
-  cantidad: number;
+  items: Array<{ productoId: string; cantidad: number }>;
   fechaCompromiso?: string;
 }
 
@@ -72,7 +71,7 @@ export function FormularioNuevoPedido({
           alGuardar={async (datos) => {
             const creado = await alCrearProducto(datos);
             if (!creado) return;
-            control.establecerProducto(creado);
+            control.agregarProducto(creado);
             control.establecerCreandoProducto(false);
           }}
         />
@@ -81,9 +80,7 @@ export function FormularioNuevoPedido({
   }
 
   const puedeContinuar =
-    control.paso === 1
-      ? Boolean(control.cliente)
-      : Boolean(control.producto && control.cantidadValida);
+    control.paso === 1 ? Boolean(control.cliente) : control.cantidadValida;
   return (
     <div data-capacitacion="pedidos.nuevo.formulario">
       <IndicadorPasosOperacion
@@ -94,7 +91,7 @@ export function FormularioNuevoPedido({
             descripcion: es ? "Quién lo solicitó" : "Who requested it",
           },
           {
-            titulo: es ? "2. Producto" : "2. Product",
+            titulo: es ? "2. Productos" : "2. Products",
             descripcion: es ? "Qué y cuánto" : "What and how many",
           },
           {
@@ -116,10 +113,14 @@ export function FormularioNuevoPedido({
       {control.paso === 3 && <ResumenNuevoPedido control={control} es={es} />}
 
       <div className="mt-6 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between">
-        <button type="button" className="boton-secundario" onClick={alCancelar}>
+        <button
+          type="button"
+          className="boton-secundario justify-center"
+          onClick={alCancelar}
+        >
           {cancelar}
         </button>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           {control.paso > 1 && (
             <button
               type="button"
@@ -143,14 +144,22 @@ export function FormularioNuevoPedido({
             <button
               type="button"
               className="boton-primario"
-              disabled={guardando || !control.cliente || !control.producto}
+              disabled={
+                guardando ||
+                !control.cliente ||
+                !control.cantidadValida ||
+                !control.fechaCompromisoValida
+              }
               onClick={() =>
                 control.cliente &&
-                control.producto &&
+                control.cantidadValida &&
+                control.fechaCompromisoValida &&
                 void alEnviar({
                   clienteId: control.cliente.id,
-                  productoId: control.producto.id,
-                  cantidad: Number(control.cantidad),
+                  items: control.lineas.map((linea) => ({
+                    productoId: linea.producto.id,
+                    cantidad: Number(linea.cantidad),
+                  })),
                   ...(control.fechaCompromiso
                     ? { fechaCompromiso: control.fechaCompromiso }
                     : {}),

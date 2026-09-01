@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Boxes, Plus, Search, Trash2 } from "lucide-react";
-
+import { useSearchParams } from "next/navigation";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { usarAplicacion } from "@/componentes/proveedores";
 import {
   EncabezadoPagina,
@@ -12,8 +12,9 @@ import {
   Paginador,
 } from "@/componentes/ui";
 import { api, ErrorApi } from "@/lib/api";
-import { usarDatosVivos } from "@/lib/usarDatosVivos";
 import type { Pagina } from "@/lib/tipos";
+import { usarAccionInicial } from "@/lib/usarAccionInicial";
+import { usarDatosVivos } from "@/lib/usarDatosVivos";
 import { FormularioProducto } from "@/modulos/inventario/FormularioProducto";
 import { GuiaAlmacen } from "@/modulos/inventario/GuiaAlmacen";
 import { TarjetaProducto } from "@/modulos/inventario/TarjetaProducto";
@@ -23,16 +24,17 @@ import type {
   DatosProductoWeb,
   ProductoInventario,
 } from "@/modulos/inventario/tipos";
-import { usarAccionInicial } from "@/lib/usarAccionInicial";
 
 export default function PaginaInventario() {
+  const parametros = useSearchParams();
   const { t, idioma, usuario } = usarAplicacion();
   const es = idioma === "es";
+  const busquedaUrl = parametros.get("buscar") ?? "";
   const [respuesta, establecerRespuesta] =
     useState<Pagina<ProductoInventario> | null>(null);
   const [pagina, establecerPagina] = useState(1);
-  const [buscar, establecerBuscar] = useState("");
-  const [termino, establecerTermino] = useState("");
+  const [buscar, establecerBuscar] = useState(busquedaUrl);
+  const [termino, establecerTermino] = useState(busquedaUrl);
   const [nuevo, establecerNuevo] = useState(false);
   const [productoEditar, establecerProductoEditar] =
     useState<ProductoInventario | null>(null);
@@ -41,6 +43,12 @@ export default function PaginaInventario() {
     useState<ProductoInventario | null>(null);
   const [guardando, establecerGuardando] = useState(false);
   const [error, establecerError] = useState("");
+  const [errorOperacion, establecerErrorOperacion] = useState("");
+  const [tipoAjuste, establecerTipoAjuste] = useState<"AGREGAR" | "RETIRAR">(
+    "AGREGAR",
+  );
+  const [cantidadAjuste, establecerCantidadAjuste] = useState("");
+  const [motivoAjuste, establecerMotivoAjuste] = useState("");
   const [catalogos, establecerCatalogos] = useState<CatalogosProducto>({
     marcas: [],
     categorias: [],
@@ -52,6 +60,11 @@ export default function PaginaInventario() {
   usarAccionInicial((accion) => {
     if (accion === "nuevo" && puedeGestionar) establecerNuevo(true);
   });
+  useEffect(() => {
+    establecerTermino(busquedaUrl);
+    establecerBuscar(busquedaUrl);
+    establecerPagina(1);
+  }, [busquedaUrl]);
   const cargar = useCallback(() => {
     establecerError("");
     return api<Pagina<ProductoInventario>>(
@@ -71,7 +84,7 @@ export default function PaginaInventario() {
 
   async function guardarProducto(datos: DatosProductoWeb) {
     establecerGuardando(true);
-    establecerError("");
+    establecerErrorOperacion("");
     try {
       if (productoEditar) {
         await api(`/inventario/productos/${productoEditar.id}`, {
@@ -88,7 +101,7 @@ export default function PaginaInventario() {
       }
       await cargar();
     } catch (e) {
-      establecerError(
+      establecerErrorOperacion(
         e instanceof ErrorApi
           ? e.message
           : es
@@ -115,7 +128,7 @@ export default function PaginaInventario() {
       }));
       return categoria;
     } catch (e) {
-      establecerError(
+      establecerErrorOperacion(
         e instanceof ErrorApi
           ? e.message
           : es
@@ -129,17 +142,28 @@ export default function PaginaInventario() {
   async function guardarAjuste(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     if (!ajuste) return;
+    const cantidad = Number(cantidadAjuste);
+    const delta = tipoAjuste === "AGREGAR" ? cantidad : -cantidad;
+    if (
+      !Number.isInteger(cantidad) ||
+      cantidad <= 0 ||
+      ajuste.existencia + delta < 0 ||
+      motivoAjuste.trim().length < 3
+    )
+      return;
     establecerGuardando(true);
-    const valores = Object.fromEntries(new FormData(evento.currentTarget));
+    establecerErrorOperacion("");
     try {
       await api(`/inventario/productos/${ajuste.id}/ajuste`, {
         method: "POST",
-        body: JSON.stringify(valores),
+        body: JSON.stringify({ cantidad: delta, notas: motivoAjuste.trim() }),
       });
       establecerAjuste(null);
+      establecerCantidadAjuste("");
+      establecerMotivoAjuste("");
       await cargar();
     } catch (e) {
-      establecerError(
+      establecerErrorOperacion(
         e instanceof ErrorApi
           ? e.message
           : es
@@ -152,7 +176,9 @@ export default function PaginaInventario() {
   }
 
   async function darDeBaja() {
-    if (!productoBaja) return;
+    if (!productoBaja || guardando) return;
+    establecerGuardando(true);
+    establecerErrorOperacion("");
     try {
       await api(`/inventario/productos/${productoBaja.id}`, {
         method: "DELETE",
@@ -160,16 +186,35 @@ export default function PaginaInventario() {
       establecerProductoBaja(null);
       await cargar();
     } catch (e) {
-      establecerError(
+      establecerErrorOperacion(
         e instanceof ErrorApi
           ? e.message
           : es
             ? "No fue posible dar de baja el producto."
             : "The product could not be deactivated.",
       );
-      establecerProductoBaja(null);
+    } finally {
+      establecerGuardando(false);
     }
   }
+
+  function abrirAjuste(producto: ProductoInventario) {
+    establecerErrorOperacion("");
+    establecerTipoAjuste("AGREGAR");
+    establecerCantidadAjuste("");
+    establecerMotivoAjuste("");
+    establecerAjuste(producto);
+  }
+
+  const cantidadAjusteNumero = Number(cantidadAjuste || 0);
+  const deltaAjuste =
+    tipoAjuste === "AGREGAR" ? cantidadAjusteNumero : -cantidadAjusteNumero;
+  const existenciaDespuesAjuste = (ajuste?.existencia ?? 0) + deltaAjuste;
+  const ajusteValido =
+    Number.isInteger(cantidadAjusteNumero) &&
+    cantidadAjusteNumero > 0 &&
+    existenciaDespuesAjuste >= 0 &&
+    motivoAjuste.trim().length >= 3;
 
   return (
     <>
@@ -184,7 +229,10 @@ export default function PaginaInventario() {
           puedeGestionar ? (
             <button
               className="boton-primario"
-              onClick={() => establecerNuevo(true)}
+              onClick={() => {
+                establecerErrorOperacion("");
+                establecerNuevo(true);
+              }}
               data-capacitacion="inventario.producto.abrir"
             >
               <Plus size={18} /> {es ? "Nuevo producto" : "New product"}
@@ -273,9 +321,15 @@ export default function PaginaInventario() {
               producto={producto}
               es={es}
               puedeGestionar={puedeGestionar}
-              alEditar={() => establecerProductoEditar(producto)}
-              alAjustar={() => establecerAjuste(producto)}
-              alDarDeBaja={() => establecerProductoBaja(producto)}
+              alEditar={() => {
+                establecerErrorOperacion("");
+                establecerProductoEditar(producto);
+              }}
+              alAjustar={() => abrirAjuste(producto)}
+              alDarDeBaja={() => {
+                establecerErrorOperacion("");
+                establecerProductoBaja(producto);
+              }}
             />
           ))}
         </div>
@@ -318,6 +372,7 @@ export default function PaginaInventario() {
         titulo={es ? "Nuevo producto" : "New product"}
         ancho="amplio"
       >
+        {errorOperacion && <MensajeError mensaje={errorOperacion} />}
         <FormularioProducto
           es={es}
           guardando={guardando}
@@ -336,6 +391,7 @@ export default function PaginaInventario() {
         titulo={`${es ? "Editar" : "Edit"} · ${productoEditar?.nombre ?? ""}`}
         ancho="amplio"
       >
+        {errorOperacion && <MensajeError mensaje={errorOperacion} />}
         {productoEditar && (
           <FormularioProducto
             key={productoEditar.id}
@@ -357,6 +413,7 @@ export default function PaginaInventario() {
         cerrar={() => establecerAjuste(null)}
         titulo={`${es ? "Ajustar existencia" : "Adjust stock"} · ${ajuste?.nombre ?? ""}`}
       >
+        {errorOperacion && <MensajeError mensaje={errorOperacion} />}
         <form
           onSubmit={guardarAjuste}
           className="space-y-4"
@@ -369,17 +426,49 @@ export default function PaginaInventario() {
             {es ? "Existencia actual" : "Current stock"}:{" "}
             <strong className="text-lg">{ajuste?.existencia}</strong>
           </div>
+          <fieldset>
+            <legend className="etiqueta">
+              {es ? "¿Qué necesitas hacer?" : "What do you need to do?"}
+            </legend>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className={
+                  tipoAjuste === "AGREGAR"
+                    ? "boton-primario justify-center"
+                    : "boton-secundario justify-center"
+                }
+                aria-pressed={tipoAjuste === "AGREGAR"}
+                onClick={() => establecerTipoAjuste("AGREGAR")}
+              >
+                {es ? "Agregar" : "Add"}
+              </button>
+              <button
+                type="button"
+                className={
+                  tipoAjuste === "RETIRAR"
+                    ? "boton-primario justify-center"
+                    : "boton-secundario justify-center"
+                }
+                aria-pressed={tipoAjuste === "RETIRAR"}
+                onClick={() => establecerTipoAjuste("RETIRAR")}
+              >
+                {es ? "Retirar" : "Remove"}
+              </button>
+            </div>
+          </fieldset>
           <label>
-            <span className="etiqueta">
-              {es
-                ? "Cantidad (+ entrada / − salida)"
-                : "Quantity (+ in / − out)"}
-            </span>
+            <span className="etiqueta">{es ? "Piezas" : "Units"}</span>
             <input
-              name="cantidad"
               className="campo"
               data-capacitacion="inventario.ajuste.cantidad"
               type="number"
+              min="1"
+              step="1"
+              value={cantidadAjuste}
+              onChange={(evento) =>
+                establecerCantidadAjuste(evento.target.value)
+              }
               required
               autoFocus
             />
@@ -389,13 +478,34 @@ export default function PaginaInventario() {
               {es ? "Motivo obligatorio" : "Required reason"}
             </span>
             <textarea
-              name="notas"
               className="campo min-h-24 py-3"
               data-capacitacion="inventario.ajuste.motivo"
+              value={motivoAjuste}
+              onChange={(evento) => establecerMotivoAjuste(evento.target.value)}
               required
               minLength={3}
             />
           </label>
+          <div
+            className={`rounded-xl border p-4 text-sm ${
+              existenciaDespuesAjuste < 0
+                ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100"
+                : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"
+            }`}
+            aria-live="polite"
+          >
+            <span>{es ? "Existencia después" : "Stock after change"}</span>
+            <strong className="ml-2 text-lg">
+              {ajuste?.existencia ?? 0} → {existenciaDespuesAjuste}
+            </strong>
+            {existenciaDespuesAjuste < 0 && (
+              <p className="mt-1 text-xs font-semibold">
+                {es
+                  ? "No puedes retirar más piezas de las existentes."
+                  : "You cannot remove more units than are in stock."}
+              </p>
+            )}
+          </div>
           <div
             className="flex justify-end gap-2"
             data-capacitacion="inventario.ajuste.revision"
@@ -410,7 +520,7 @@ export default function PaginaInventario() {
             </button>
             <button
               className="boton-primario"
-              disabled={guardando}
+              disabled={guardando || !ajusteValido}
               data-capacitacion="inventario.ajuste.guardar"
             >
               {guardando
@@ -430,6 +540,7 @@ export default function PaginaInventario() {
         cerrar={() => establecerProductoBaja(null)}
         titulo={es ? "Dar de baja producto" : "Deactivate product"}
       >
+        {errorOperacion && <MensajeError mensaje={errorOperacion} />}
         <div
           className="space-y-4"
           data-capacitacion="inventario.baja.formulario"
@@ -454,9 +565,17 @@ export default function PaginaInventario() {
             <button
               className="boton-primario bg-red-600 hover:bg-red-700"
               onClick={() => void darDeBaja()}
+              disabled={guardando}
               data-capacitacion="inventario.baja.confirmar"
             >
-              <Trash2 size={17} /> {es ? "Dar de baja" : "Deactivate"}
+              <Trash2 size={17} />{" "}
+              {guardando
+                ? es
+                  ? "Dando de baja…"
+                  : "Deactivating…"
+                : es
+                  ? "Confirmar baja"
+                  : "Confirm deactivation"}
             </button>
           </div>
         </div>

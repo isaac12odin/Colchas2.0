@@ -1,7 +1,7 @@
 "use client";
 
 import { Edit3, Plus, Search, Truck } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { usarAplicacion } from "@/componentes/proveedores";
 import {
   EncabezadoPagina,
@@ -53,6 +53,23 @@ const dinero = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
 });
+
+async function consultarPedidosPendientesCompra() {
+  const pedidos: PedidoPendienteCompra[] = [];
+  let pagina = 1;
+  let totalPaginas = 1;
+  do {
+    const respuesta = await api<{
+      datos: PedidoPendienteCompra[];
+      paginacion?: { totalPaginas: number };
+    }>(`/pedidos?estado=PEDIDO_PROVEEDOR&pagina=${pagina}&limite=100`);
+    pedidos.push(...respuesta.datos);
+    totalPaginas = respuesta.paginacion?.totalPaginas ?? 1;
+    pagina += 1;
+  } while (pagina <= totalPaginas);
+  return pedidos;
+}
+
 export default function PaginaCompras() {
   const { idioma } = usarAplicacion();
   const es = idioma === "es";
@@ -69,7 +86,12 @@ export default function PaginaCompras() {
     Proveedor | "nuevo" | null
   >(null);
   const [guardandoCompra, establecerGuardandoCompra] = useState(false);
+  const [guardandoProveedor, establecerGuardandoProveedor] = useState(false);
+  const [proveedorCambioEstado, establecerProveedorCambioEstado] =
+    useState<Proveedor | null>(null);
+  const [errorProveedor, establecerErrorProveedor] = useState("");
   const [error, establecerError] = useState("");
+  const guardandoProveedorRef = useRef(false);
   usarAccionInicial((accion) => {
     if (accion === "nueva") establecerModalCompra(true);
     if (accion === "proveedor") {
@@ -89,8 +111,8 @@ export default function PaginaCompras() {
         establecerProveedores(r.datos);
       })
       .catch((e) => establecerError(e.message));
-    api<{ datos: PedidoPendienteCompra[] }>("/pedidos?estado=PEDIDO_PROVEEDOR")
-      .then((r) => establecerPedidos(r.datos))
+    consultarPedidosPendientesCompra()
+      .then(establecerPedidos)
       .catch(() => undefined);
   }, [pagina, buscar]);
   useEffect(cargar, [cargar]);
@@ -114,7 +136,21 @@ export default function PaginaCompras() {
 
   async function guardarProveedor(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    const valores = Object.fromEntries(new FormData(evento.currentTarget));
+    if (guardandoProveedorRef.current) return;
+    const formulario = new FormData(evento.currentTarget);
+    const textoOpcional = (campo: string) =>
+      String(formulario.get(campo) ?? "").trim() || null;
+    const valores = {
+      nombre: String(formulario.get("nombre") ?? "").trim(),
+      contacto: textoOpcional("contacto"),
+      telefono: textoOpcional("telefono"),
+      correo: textoOpcional("correo"),
+      rfc: textoOpcional("rfc"),
+      notas: textoOpcional("notas"),
+    };
+    guardandoProveedorRef.current = true;
+    establecerGuardandoProveedor(true);
+    establecerErrorProveedor("");
     try {
       if (proveedorEditar === "nuevo")
         await api("/proveedores", {
@@ -129,19 +165,42 @@ export default function PaginaCompras() {
       establecerProveedorEditar(null);
       cargar();
     } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      establecerErrorProveedor(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No fue posible guardar el proveedor."
+            : "The supplier could not be saved.",
+      );
+    } finally {
+      guardandoProveedorRef.current = false;
+      establecerGuardandoProveedor(false);
     }
   }
 
   async function alternarProveedor(proveedor: Proveedor) {
+    if (guardandoProveedorRef.current) return;
+    guardandoProveedorRef.current = true;
+    establecerGuardandoProveedor(true);
+    establecerErrorProveedor("");
     try {
       await api(`/proveedores/${proveedor.id}`, {
         method: "PATCH",
         body: JSON.stringify({ activo: !proveedor.activo }),
       });
+      establecerProveedorCambioEstado(null);
       cargar();
     } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      establecerErrorProveedor(
+        e instanceof ErrorApi
+          ? e.message
+          : es
+            ? "No fue posible cambiar el estado del proveedor."
+            : "The supplier status could not be changed.",
+      );
+    } finally {
+      guardandoProveedorRef.current = false;
+      establecerGuardandoProveedor(false);
     }
   }
 
@@ -155,11 +214,12 @@ export default function PaginaCompras() {
             : "Stock receipts with cost, supplier, and order traceability."
         }
         accion={
-          <div className="flex gap-2">
+          <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-2">
             <button
               className="boton-secundario"
               onClick={() => {
                 establecerPestana("proveedores");
+                establecerErrorProveedor("");
                 establecerProveedorEditar("nuevo");
               }}
               data-capacitacion="compras.proveedor.abrir-nuevo"
@@ -181,6 +241,9 @@ export default function PaginaCompras() {
         }
       />
       {error && <MensajeError mensaje={error} />}
+      {errorProveedor && !proveedorEditar && !proveedorCambioEstado && (
+        <MensajeError mensaje={errorProveedor} />
+      )}
       <div className="mb-5 flex gap-2">
         <button
           className={
@@ -208,7 +271,7 @@ export default function PaginaCompras() {
           data-capacitacion="compras.listado"
         >
           <form
-            className="flex gap-2 border-b p-4"
+            className="flex flex-col gap-2 border-b p-4 sm:flex-row"
             onSubmit={(e) => {
               e.preventDefault();
               establecerPagina(1);
@@ -309,8 +372,17 @@ export default function PaginaCompras() {
                   </p>
                 </div>
                 <button
+                  type="button"
                   className="boton-secundario px-3"
-                  onClick={() => establecerProveedorEditar(proveedor)}
+                  onClick={() => {
+                    establecerErrorProveedor("");
+                    establecerProveedorEditar(proveedor);
+                  }}
+                  aria-label={
+                    es
+                      ? `Editar proveedor ${proveedor.nombre}`
+                      : `Edit supplier ${proveedor.nombre}`
+                  }
                   data-capacitacion="compras.proveedor.editar"
                 >
                   <Edit3 size={16} />
@@ -329,8 +401,14 @@ export default function PaginaCompras() {
                 </p>
               </div>
               <button
+                type="button"
                 className="mt-4 text-xs font-semibold text-blue-600"
-                onClick={() => void alternarProveedor(proveedor)}
+                disabled={guardandoProveedor}
+                onClick={() => {
+                  if (proveedor.activo)
+                    establecerProveedorCambioEstado(proveedor);
+                  else void alternarProveedor(proveedor);
+                }}
                 data-capacitacion="compras.proveedor.estado"
               >
                 {proveedor.activo ? "Dar de baja" : "Reactivar"}
@@ -360,10 +438,12 @@ export default function PaginaCompras() {
       <Modal
         abierto={Boolean(proveedorEditar)}
         cerrar={() => establecerProveedorEditar(null)}
+        bloqueado={guardandoProveedor}
         titulo={
           proveedorEditar === "nuevo" ? "Nuevo proveedor" : "Editar proveedor"
         }
       >
+        {errorProveedor && <MensajeError mensaje={errorProveedor} />}
         <form
           onSubmit={guardarProveedor}
           className="grid gap-4 sm:grid-cols-2"
@@ -445,22 +525,76 @@ export default function PaginaCompras() {
               data-capacitacion="compras.proveedor.notas"
             />
           </label>
-          <div className="sm:col-span-2 flex justify-end gap-2">
+          <div className="flex flex-col-reverse gap-2 sm:col-span-2 sm:flex-row sm:justify-end">
             <button
               type="button"
               className="boton-secundario"
               onClick={() => establecerProveedorEditar(null)}
+              disabled={guardandoProveedor}
             >
               Cancelar
             </button>
             <button
               className="boton-primario"
+              disabled={guardandoProveedor}
               data-capacitacion="compras.proveedor.guardar"
             >
-              Guardar
+              {guardandoProveedor
+                ? es
+                  ? "Guardando…"
+                  : "Saving…"
+                : es
+                  ? "Guardar proveedor"
+                  : "Save supplier"}
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        abierto={Boolean(proveedorCambioEstado)}
+        cerrar={() => establecerProveedorCambioEstado(null)}
+        bloqueado={guardandoProveedor}
+        titulo={es ? "Dar de baja proveedor" : "Deactivate supplier"}
+      >
+        {errorProveedor && <MensajeError mensaje={errorProveedor} />}
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            <strong className="block text-base">
+              {proveedorCambioEstado?.nombre}
+            </strong>
+            {es
+              ? "Ya no podrá elegirse en compras ni pedidos nuevos. Su historial permanecerá intacto y podrás reactivarlo después."
+              : "It will no longer be available for new purchases or orders. History remains intact and it can be reactivated later."}
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              className="boton-secundario"
+              disabled={guardandoProveedor}
+              onClick={() => establecerProveedorCambioEstado(null)}
+            >
+              {es ? "Conservar activo" : "Keep active"}
+            </button>
+            <button
+              type="button"
+              className="boton-primario bg-red-600 hover:bg-red-700"
+              disabled={guardandoProveedor || !proveedorCambioEstado}
+              onClick={() =>
+                proveedorCambioEstado &&
+                void alternarProveedor(proveedorCambioEstado)
+              }
+            >
+              {guardandoProveedor
+                ? es
+                  ? "Dando de baja…"
+                  : "Deactivating…"
+                : es
+                  ? "Confirmar baja"
+                  : "Confirm deactivation"}
+            </button>
+          </div>
+        </div>
       </Modal>
     </>
   );

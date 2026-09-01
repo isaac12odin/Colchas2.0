@@ -1,8 +1,30 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useId, useRef } from "react";
 import { usarAplicacion } from "./proveedores";
+
+let modalesBloqueandoScroll = 0;
+let overflowAnterior = "";
+let paddingAnterior = "";
+
+function bloquearScrollDocumento() {
+  if (modalesBloqueandoScroll === 0) {
+    overflowAnterior = document.body.style.overflow;
+    paddingAnterior = document.body.style.paddingRight;
+    const anchoBarra = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    if (anchoBarra > 0) document.body.style.paddingRight = `${anchoBarra}px`;
+  }
+  modalesBloqueandoScroll += 1;
+  return () => {
+    modalesBloqueandoScroll = Math.max(0, modalesBloqueandoScroll - 1);
+    if (modalesBloqueandoScroll === 0) {
+      document.body.style.overflow = overflowAnterior;
+      document.body.style.paddingRight = paddingAnterior;
+    }
+  };
+}
 
 export function EncabezadoPagina({
   titulo,
@@ -72,34 +94,132 @@ export function Modal({
   cerrar,
   titulo,
   ancho = "normal",
+  bloqueado = false,
   children,
 }: {
   abierto: boolean;
   cerrar: () => void;
   titulo: string;
   ancho?: "normal" | "amplio" | "pantalla";
+  /** Impide cerrar una operación que todavía está confirmándose. */
+  bloqueado?: boolean;
   children: ReactNode;
 }) {
+  const { idioma } = usarAplicacion();
+  const tituloId = useId();
+  const dialogoRef = useRef<HTMLDivElement>(null);
+  const fondoRef = useRef<HTMLDivElement>(null);
+  const cerrarRef = useRef(cerrar);
+  const bloqueadoRef = useRef(bloqueado);
+
+  useEffect(() => {
+    cerrarRef.current = cerrar;
+    bloqueadoRef.current = bloqueado;
+  }, [cerrar, bloqueado]);
+
+  useEffect(() => {
+    if (!abierto) return;
+
+    const focoAnterior =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const liberarScroll = bloquearScrollDocumento();
+    const obtenerEnfocables = () =>
+      Array.from(
+        dialogoRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter(
+        (elemento) =>
+          elemento.getAttribute("aria-hidden") !== "true" &&
+          !elemento.hasAttribute("hidden"),
+      );
+    const esModalSuperior = () => {
+      const modales = document.querySelectorAll("[data-modal-operativo]");
+      return modales.item(modales.length - 1) === fondoRef.current;
+    };
+    const enfocar = requestAnimationFrame(() => {
+      const preferido =
+        dialogoRef.current?.querySelector<HTMLElement>("[autofocus]") ??
+        obtenerEnfocables()[0] ??
+        dialogoRef.current;
+      preferido?.focus();
+    });
+    const atenderTeclado = (evento: KeyboardEvent) => {
+      if (!esModalSuperior()) return;
+      if (evento.key === "Escape") {
+        evento.preventDefault();
+        evento.stopPropagation();
+        if (!bloqueadoRef.current) cerrarRef.current();
+        return;
+      }
+      if (evento.key !== "Tab") return;
+      const enfocables = obtenerEnfocables();
+      if (enfocables.length === 0) {
+        evento.preventDefault();
+        dialogoRef.current?.focus();
+        return;
+      }
+      const primero = enfocables[0];
+      const ultimo = enfocables[enfocables.length - 1];
+      if (evento.shiftKey && document.activeElement === primero) {
+        evento.preventDefault();
+        ultimo.focus();
+      } else if (
+        !evento.shiftKey &&
+        (document.activeElement === ultimo ||
+          !dialogoRef.current?.contains(document.activeElement))
+      ) {
+        evento.preventDefault();
+        primero.focus();
+      }
+    };
+
+    document.addEventListener("keydown", atenderTeclado, true);
+    return () => {
+      cancelAnimationFrame(enfocar);
+      document.removeEventListener("keydown", atenderTeclado, true);
+      liberarScroll();
+      if (focoAnterior?.isConnected) focoAnterior.focus();
+    };
+  }, [abierto]);
+
   if (!abierto) return null;
   return (
     <div
+      ref={fondoRef}
       className="fixed inset-0 z-50 grid place-items-end bg-black/45 p-0 sm:place-items-center sm:p-5"
       data-modal-operativo
     >
-      <button
+      <div
         className="absolute inset-0"
-        onClick={cerrar}
-        aria-label="Cerrar"
+        onClick={() => {
+          if (!bloqueado) cerrar();
+        }}
+        aria-hidden="true"
         data-modal-fondo
       />
       <div
+        ref={dialogoRef}
         role="dialog"
         aria-modal="true"
-        className={`relative max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 sm:rounded-2xl sm:p-7 ${ancho === "pantalla" ? "sm:max-w-7xl" : ancho === "amplio" ? "sm:max-w-4xl" : "sm:max-w-2xl"}`}
+        aria-labelledby={tituloId}
+        aria-busy={bloqueado || undefined}
+        tabIndex={-1}
+        className={`relative max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl supports-[height:100dvh]:max-h-[92dvh] dark:bg-slate-900 sm:rounded-2xl sm:p-7 ${ancho === "pantalla" ? "sm:max-w-7xl" : ancho === "amplio" ? "sm:max-w-4xl" : "sm:max-w-2xl"}`}
       >
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">{titulo}</h2>
-          <button className="boton-secundario px-3" onClick={cerrar}>
+          <h2 id={tituloId} className="text-xl font-semibold">
+            {titulo}
+          </h2>
+          <button
+            type="button"
+            className="boton-secundario px-3"
+            onClick={cerrar}
+            disabled={bloqueado}
+            aria-label={idioma === "es" ? "Cerrar ventana" : "Close dialog"}
+          >
             <X size={18} />
           </button>
         </div>

@@ -79,7 +79,16 @@ systemctl enable --now nexo-respaldo.timer nexo-reconciliacion.timer
 systemctl list-timers 'nexo-*'
 ```
 
-`BACKUP_REMOTE` y rclone deben apuntar a una cuenta externa al VPS. Una configuración instalada sin copia y alerta comprobadas no cierra el P1 operativo.
+El servicio `migracion` de `/etc/nexo/compose.yml` debe montar también
+`/respaldos:/respaldos`; de lo contrario, el contenedor efímero eliminará el
+archivo al terminar. Antes de habilitar el temporizador ejecute manualmente un
+respaldo y su verificación, y confirme en el host la pareja PostgreSQL +
+imágenes con sus huellas y versión mayor.
+
+`BACKUP_REMOTE` y rclone deben apuntar a una cuenta externa al VPS. El timer
+mantiene la copia local aun cuando falte ese destino y deja una advertencia
+explícita en el journal, pero una configuración sin copia externa y alerta
+comprobadas no cierra el P1 operativo.
 
 ## Rollback
 

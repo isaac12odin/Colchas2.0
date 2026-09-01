@@ -35,10 +35,11 @@ function blobABase64(blob: Blob): Promise<string> {
   });
 }
 
-/** Reduce automáticamente una foto de cámara antes de enviarla a la API. */
-export async function prepararFotoProducto(
+/** Reduce automáticamente una fotografía antes de enviarla a la API. */
+export async function prepararFotografia(
   archivo: File,
   es = true,
+  nombrePredeterminado = "foto",
 ): Promise<ImagenListaParaApi> {
   if (
     !(["image/jpeg", "image/png", "image/webp"] as string[]).includes(
@@ -88,11 +89,15 @@ export async function prepararFotoProducto(
       );
 
     return {
-      nombre: `${archivo.name.replace(/\.[^.]+$/, "") || "producto"}.webp`,
+      nombre: `${archivo.name.replace(/\.[^.]+$/, "") || nombrePredeterminado}.webp`,
       mime: "image/webp",
       base64: await blobABase64(resultado),
     };
   } finally {
     imagen.close();
   }
+}
+
+export function prepararFotoProducto(archivo: File, es = true) {
+  return prepararFotografia(archivo, es, "producto");
 }

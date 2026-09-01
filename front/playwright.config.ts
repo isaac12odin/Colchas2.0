@@ -24,37 +24,37 @@ export default defineConfig({
     {
       name: "firefox-escritorio",
       use: { ...devices["Desktop Firefox"] },
-      testMatch: /compatibilidad\.spec\.ts/,
+      testMatch: /(compatibilidad|buscador-global-compatibilidad)\.spec\.ts/,
     },
     {
       name: "webkit-escritorio",
       use: { ...devices["Desktop Safari"] },
-      testMatch: /compatibilidad\.spec\.ts/,
+      testMatch: /(compatibilidad|buscador-global-compatibilidad)\.spec\.ts/,
     },
     {
       name: "android-grande",
       use: { ...devices["Pixel 7"] },
-      testMatch: /responsiva\.spec\.ts/,
+      testMatch: /(responsiva|buscador-global-responsiva)\.spec\.ts/,
     },
     {
       name: "android-pequeno",
       use: { ...devices["Pixel 5"] },
-      testMatch: /responsiva\.spec\.ts/,
+      testMatch: /(responsiva|buscador-global-responsiva)\.spec\.ts/,
     },
     {
       name: "iphone-pequeno",
       use: { ...devices["iPhone SE"] },
-      testMatch: /responsiva\.spec\.ts/,
+      testMatch: /(responsiva|buscador-global-responsiva)\.spec\.ts/,
     },
     {
       name: "iphone-grande",
       use: { ...devices["iPhone 15"] },
-      testMatch: /responsiva\.spec\.ts/,
+      testMatch: /(responsiva|buscador-global-responsiva)\.spec\.ts/,
     },
     {
       name: "tablet",
       use: { ...devices["iPad Mini"] },
-      testMatch: /responsiva\.spec\.ts/,
+      testMatch: /(responsiva|buscador-global-responsiva)\.spec\.ts/,
     },
   ],
   webServer: omitirServidor

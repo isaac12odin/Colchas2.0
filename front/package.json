@@ -8,7 +8,9 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:ui": "playwright test",
-    "test:ui:headed": "playwright test --headed"
+    "test:ui:headed": "playwright test --headed",
+    "preparar:standalone": "node scripts/preparar-standalone.mjs",
+    "test:produccion": "npm run build && npm run preparar:standalone && playwright test --config=playwright.produccion.config.ts"
   },
   "dependencies": {
     "lucide-react": "0.511.0",

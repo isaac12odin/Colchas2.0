@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../../infraestructura/prisma.js";
 import { autenticar, permitirPermiso } from "../../seguridad/middlewares.js";
 import { crearPagina, esquemaPaginacion } from "../../compartido/paginacion.js";
+import { sanearDatosAuditoria } from "../../compartido/auditoria.js";
 
 export const rutasAuditoria = Router();
 rutasAuditoria.use(autenticar, permitirPermiso("AUDITORIA_CONSULTAR"));
@@ -42,5 +43,16 @@ rutasAuditoria.get("/", async (req, res) => {
     }),
     prisma.auditoria.count({ where }),
   ]);
-  res.json(crearPagina(datos, total, pagina, limite));
+  res.json(
+    crearPagina(
+      datos.map((registro) => ({
+        ...registro,
+        datosAntes: sanearDatosAuditoria(registro.datosAntes),
+        datosDespues: sanearDatosAuditoria(registro.datosDespues),
+      })),
+      total,
+      pagina,
+      limite,
+    ),
+  );
 });

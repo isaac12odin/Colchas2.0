@@ -72,8 +72,8 @@ export const pedidoEntregar = definirLeccionWeb({
       "Ejemplo: total $1,200, anticipo $300, saldo $900.",
       "Selecciona Crédito.",
       "El formulario muestra los campos del plan.",
-      "pedidos.entrega.tipo-venta",
-      "select",
+      "pedidos.entrega.tipo-credito",
+      "click",
     ),
     paso(
       "entrega-anticipo",

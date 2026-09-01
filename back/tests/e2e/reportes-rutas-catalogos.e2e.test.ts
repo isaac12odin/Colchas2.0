@@ -5,6 +5,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { app } from "../../src/app.js";
+import { fechaMexicoISO } from "../../src/compartido/fechas.js";
 import { prisma } from "../../src/infraestructura/prisma.js";
 import {
   asegurarBaseDePruebas,
@@ -268,7 +269,7 @@ describe.sequential("reportes y exportaciones", () => {
       });
       const proveedor = await escenario.crearProveedor();
       const fecha = new Date();
-      const fechaIso = fecha.toISOString().slice(0, 10);
+      const fechaIso = fechaMexicoISO(fecha);
       await request(app)
         .post("/api/v1/ventas")
         .set(cabeceras(admin.token))

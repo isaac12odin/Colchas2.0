@@ -118,7 +118,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Confirma MFA con TOTP */
+    /**
+     * Confirma MFA con TOTP
+     * @description Revoca las sesiones anteriores y entrega una sesión rotada al cliente que confirmó el código.
+     */
     post: operations["postAuthMfaConfirmar"];
     delete?: never;
     options?: never;
@@ -2809,7 +2812,15 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+        "application/json": {
+          /** Format: byte */
+          archivoBase64: string;
+        };
+      };
+    };
     responses: {
       201: components["responses"]["Exito"];
       409: components["responses"]["Error"];

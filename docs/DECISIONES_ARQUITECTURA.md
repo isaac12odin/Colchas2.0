@@ -12,23 +12,25 @@ Este documento conserva el **por qué** de la arquitectura de Nexo. No sustituye
 
 ## Índice
 
-| ID      | Decisión                                                     | Estado   |
-| ------- | ------------------------------------------------------------ | -------- |
-| ADR-001 | Monolito modular en un monorepo                              | ACEPTADA |
-| ADR-002 | PostgreSQL como fuente de verdad transaccional               | ACEPTADA |
-| ADR-003 | Libros append-only y proyecciones de lectura                 | ACEPTADA |
-| ADR-004 | Transacciones cortas y candados explícitos por agregado      | ACEPTADA |
-| ADR-005 | El servidor decide precios, saldos y alcance                 | ACEPTADA |
-| ADR-006 | RBAC más autorización por fila en la capa de aplicación      | ACEPTADA |
-| ADR-007 | Outbox SQLCipher con cadena HMAC anclada en servidor         | ACEPTADA |
-| ADR-008 | Fotografías históricas, bajas lógicas y movimientos inversos | ACEPTADA |
-| ADR-009 | Un pedido no es venta hasta su entrega                       | ACEPTADA |
-| ADR-010 | Web y móvil independientes con una API canónica              | ACEPTADA |
-| ADR-011 | Imagen backend aislada del monorepo de compilación           | ACEPTADA |
-| ADR-012 | Catálogo genérico para múltiples rubros                      | ACEPTADA |
-| ADR-013 | Fotos de catálogo privadas y fuera de respuestas masivas     | ACEPTADA |
-| ADR-014 | Lecturas operativas siempre frescas en Web                   | ACEPTADA |
-| ADR-015 | Proyección local prioritaria durante trabajo móvil pendiente | ACEPTADA |
+| ID      | Decisión                                                     | Estado                 |
+| ------- | ------------------------------------------------------------ | ---------------------- |
+| ADR-001 | Monolito modular en un monorepo                              | ACEPTADA               |
+| ADR-002 | PostgreSQL como fuente de verdad transaccional               | ACEPTADA               |
+| ADR-003 | Libros append-only y proyecciones de lectura                 | ACEPTADA               |
+| ADR-004 | Transacciones cortas y candados explícitos por agregado      | ACEPTADA               |
+| ADR-005 | El servidor decide precios, saldos y alcance                 | ACEPTADA               |
+| ADR-006 | RBAC más autorización por fila en la capa de aplicación      | ACEPTADA               |
+| ADR-007 | Outbox SQLCipher con cadena HMAC anclada en servidor         | ACEPTADA               |
+| ADR-008 | Fotografías históricas, bajas lógicas y movimientos inversos | ACEPTADA               |
+| ADR-009 | Un pedido no es venta hasta su entrega                       | ACEPTADA               |
+| ADR-010 | Web y móvil independientes con una API canónica              | ACEPTADA               |
+| ADR-011 | Imagen backend aislada del monorepo de compilación           | ACEPTADA               |
+| ADR-012 | Catálogo genérico para múltiples rubros                      | ACEPTADA               |
+| ADR-013 | Fotos de catálogo privadas y fuera de respuestas masivas     | ACEPTADA               |
+| ADR-014 | Lecturas operativas siempre frescas en Web                   | SUSTITUIDA por ADR-016 |
+| ADR-015 | Proyección local prioritaria durante trabajo móvil pendiente | ACEPTADA               |
+| ADR-016 | Frescura Web con invalidación selectiva por recurso          | ACEPTADA               |
+| ADR-017 | Capacitación Web aislada de la API operativa                 | ACEPTADA               |
 
 ## ADR-001 — Monolito modular en un monorepo
 
@@ -446,7 +448,7 @@ Se requieran varias réplicas de API, múltiples fotos/variantes por producto o 
 
 ## ADR-014 — Lecturas operativas siempre frescas en Web
 
-- **Estado:** ACEPTADA
+- **Estado:** SUSTITUIDA por ADR-016
 - **Fecha:** 2026-08-20
 
 ### Contexto
@@ -510,3 +512,74 @@ Mientras existan movimientos pendientes, una pantalla puede mostrar una proyecci
 ### Revisar cuando
 
 Se necesite edición colaborativa simultánea de una misma ruta en varios teléfonos. Entonces deberá incorporarse una estrategia explícita de merge por entidad y versión, conservando idempotencia, autorización por cartera y evidencia de conflictos.
+
+## ADR-016 — Frescura Web con invalidación selectiva por recurso
+
+- **Estado:** ACEPTADA
+- **Fecha:** 2026-09-01
+- **Sustituye:** ADR-014
+
+### Contexto
+
+El refresco global del ADR-014 cumplió su objetivo de evitar información vieja, pero cualquier mutación despertaba todas las pantallas suscritas y cada una también consultaba por foco, visibilidad y cada 30 segundos. Al crecer clientes, inventario, pedidos y alertas, el costo dejó de corresponder con el dato realmente modificado.
+
+### Decisión
+
+Las lecturas autenticadas conservan `no-store`, deduplicación y protección contra respuestas fuera de orden. Cada consulta se registra bajo recursos normalizados y una mutación publica únicamente los recursos afectados y sus dependencias conocidas. Foco, reconexión y regreso a la pestaña siguen revalidando; un sondeo de 120 segundos queda como red de seguridad, no como mecanismo principal.
+
+Una respuesta `401` intenta una sola rotación compartida. Si no es posible, se abortan solicitudes activas, se limpian datos en memoria, se invalida el contexto global y la interfaz vuelve al acceso. Cambios e invalidaciones de sesión se propagan entre pestañas con un canal efímero que sólo transporta recursos e identificadores técnicos, nunca cuerpos operativos. Cada solicitud lleva un identificador correlacionable que la API devuelve sin incluir PII.
+
+### Motivo
+
+Se conserva la fuente de verdad en PostgreSQL y la percepción de información actual sin multiplicar consultas no relacionadas. La sesión deja de ser un estado que cada pantalla interpreta por separado.
+
+### Consecuencias
+
+El mapa recurso→dependencias debe ampliarse al introducir un módulo nuevo. El sondeo de respaldo puede retrasar hasta dos minutos un cambio externo cuya relación no se haya declarado, pero foco/reconexión y la acción local lo actualizan antes en los recorridos normales.
+
+### Invariantes
+
+- Ninguna respuesta operativa autenticada se comparte mediante caché HTTP.
+- Una mutación confirmada invalida al menos su propio recurso.
+- Una respuesta anterior no puede reemplazar otra posterior de la misma consulta.
+- Un `401` definitivo retira inmediatamente la información sensible visible.
+- Cerrar sesión en una pestaña invalida las demás pestañas del mismo origen.
+- Invalidar lecturas jamás repite una mutación.
+
+### Revisar cuando
+
+Existan varias personas editando simultáneamente el mismo agregado, el sondeo represente más de 20 % de las consultas o la frescura p95 externa supere 10 segundos. Entonces se evaluará SSE/WebSocket conservando claves de recurso, autorización y fallback por reconexión.
+
+## ADR-017 — Capacitación Web aislada de la API operativa
+
+- **Estado:** ACEPTADA
+- **Fecha:** 2026-09-01
+
+### Contexto
+
+Los recorridos deben parecerse a las pantallas reales sin crear ventas, abonos, devoluciones ni cortes. Un parámetro de URL no es una frontera de seguridad: aceptar cualquier `?practica=` dentro del cliente HTTP puede devolver éxitos ficticios en una pantalla operativa y confundir al usuario sobre lo realmente confirmado.
+
+### Decisión
+
+Una práctica sólo existe si su ID pertenece al catálogo mínimo, corresponde a la ruta y rol actuales, el entrenador seguro está montado y la mutación coincide con una lista explícita de método/ruta. Un identificador desconocido se retira y nunca intercepta solicitudes. Las mutaciones y campos capturados viven únicamente en memoria; el progreso persistido contiene IDs y estados no sensibles, se separa por usuario y elimina formatos legacy.
+
+El código pesado de capacitación se carga bajo demanda. Durante una práctica válida se muestra permanentemente que nada será guardado y salir elimina el contexto simulado.
+
+### Motivo
+
+La similitud visual no debe mezclar el sandbox educativo con el transporte financiero real. La lista positiva permite revisar exactamente qué se simula y evita que una ruta nueva quede interceptada por accidente.
+
+### Consecuencias
+
+Cada lección que practique una escritura nueva debe declarar explícitamente su contrato simulado y añadir pruebas negativa/positiva. No se persisten formularios de práctica entre cierres del navegador.
+
+### Invariantes
+
+- `?practica=` por sí solo nunca modifica el comportamiento de `POST`, `PATCH` o `DELETE`.
+- Una práctica no realiza peticiones de escritura a `/api/`.
+- Contraseñas, teléfonos, direcciones, importes y notas de práctica no llegan a almacenamiento persistente.
+- La pantalla identifica el modo práctica antes de habilitar acciones simuladas.
+
+### Revisar cuando
+
+La capacitación requiera escenarios compartidos o evaluación remota. Cualquier backend educativo deberá usar origen, base y credenciales independientes; nunca reutilizará la API ni PostgreSQL de operación.

@@ -15,6 +15,7 @@
     "typecheck": "npm run typecheck -w back && npm run typecheck -w front && npm run typecheck -w movil",
     "test": "npm run test -w back && npm run test -w movil",
     "test:web": "npm run test:ui -w front",
+    "test:web:produccion": "npm run test:produccion -w front",
     "test:robustas": "npm run test:robustas -w back",
     "validar:todo": "npm run format:check && npm run lint && npm run arquitectura:check && npm run openapi:check && npm run typecheck && npm test && npm run test:robustas && npm run test:web && npm run build",
     "format": "prettier --write .",

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   Download,
   Edit3,
@@ -39,15 +39,6 @@ interface Auditoria {
   usuario: { nombre: string; correo: string } | null;
 }
 
-function archivoBase64(archivo: File) {
-  return new Promise<string>((resolver, rechazar) => {
-    const lector = new FileReader();
-    lector.onerror = () => rechazar(new Error("No se pudo leer el Excel."));
-    lector.onload = () => resolver(String(lector.result).split(",")[1] ?? "");
-    lector.readAsDataURL(archivo);
-  });
-}
-
 export default function PaginaConfiguracion() {
   const [pestana, establecerPestana] = useState<
     "localidades" | "importacion" | "auditoria"
@@ -65,17 +56,22 @@ export default function PaginaConfiguracion() {
     number
   > | null>(null);
   const [cargando, establecerCargando] = useState(false);
+  const [estadoImportacion, establecerEstadoImportacion] = useState("");
   const [error, establecerError] = useState("");
+  const controladorImportacion = useRef<AbortController | null>(null);
 
   const cargar = useCallback(() => {
-    api<{ datos: Localidad[] }>("/localidades?incluirInactivas=true")
-      .then((r) => establecerLocalidades(r.datos))
-      .catch((e) => establecerError(e.message));
-    api<Pagina<Auditoria>>(`/auditoria?pagina=${pagina}&limite=20`)
-      .then(establecerAuditoria)
-      .catch((e) => establecerError(e.message));
-  }, [pagina]);
-  useEffect(cargar, [cargar]);
+    establecerError("");
+    if (pestana === "localidades")
+      return api<{ datos: Localidad[] }>("/localidades?incluirInactivas=true")
+        .then((r) => establecerLocalidades(r.datos))
+        .catch((e) => establecerError(e.message));
+    if (pestana === "auditoria")
+      return api<Pagina<Auditoria>>(`/auditoria?pagina=${pagina}&limite=20`)
+        .then(establecerAuditoria)
+        .catch((e) => establecerError(e.message));
+  }, [pagina, pestana]);
+  useEffect(() => void cargar(), [cargar]);
   usarDatosVivos(cargar);
 
   async function guardarLocalidad(evento: FormEvent<HTMLFormElement>) {
@@ -120,22 +116,46 @@ export default function PaginaConfiguracion() {
     const formulario = new FormData(evento.currentTarget);
     const archivo = formulario.get("archivo");
     if (!(archivo instanceof File) || archivo.size === 0) return;
+    if (archivo.size > 7_500_000) {
+      establecerError("El Excel no puede superar 7.5 MB.");
+      return;
+    }
+    if (!archivo.name.toLocaleLowerCase("es-MX").endsWith(".xlsx")) {
+      establecerError("Selecciona la plantilla XLSX de Vektra.");
+      return;
+    }
+    const controlador = new AbortController();
+    controladorImportacion.current = controlador;
     establecerCargando(true);
     establecerError("");
+    establecerResultado(null);
+    establecerEstadoImportacion(
+      `Subiendo ${archivo.name} (${(archivo.size / 1_048_576).toFixed(2)} MB)…`,
+    );
     try {
       const respuesta = await api<{ resumen: Record<string, number> }>(
         "/importaciones/excel",
         {
           method: "POST",
-          body: JSON.stringify({ archivoBase64: await archivoBase64(archivo) }),
+          headers: {
+            "Content-Type": archivo.type || "application/octet-stream",
+          },
+          body: archivo,
+          signal: controlador.signal,
+          tiempoMaximoMs: 120_000,
         },
       );
       establecerResultado(respuesta.resumen);
+      establecerEstadoImportacion("");
       cargar();
     } catch (e) {
-      establecerError(e instanceof ErrorApi ? e.message : "Error");
+      if (controlador.signal.aborted)
+        establecerError("Importación cancelada. No se guardó ningún dato.");
+      else establecerError(e instanceof ErrorApi ? e.message : "Error");
     } finally {
+      controladorImportacion.current = null;
       establecerCargando(false);
+      establecerEstadoImportacion("");
     }
   }
 
@@ -276,7 +296,25 @@ export default function PaginaConfiguracion() {
                 <Upload size={17} />{" "}
                 {cargando ? "Validando…" : "Importar de forma segura"}
               </button>
+              {cargando && (
+                <button
+                  type="button"
+                  className="boton-secundario"
+                  onClick={() => controladorImportacion.current?.abort()}
+                >
+                  Cancelar importación
+                </button>
+              )}
             </form>
+            {estadoImportacion && (
+              <p
+                className="mt-4 text-sm font-medium text-blue-700 dark:text-blue-300"
+                role="status"
+              >
+                {estadoImportacion} Después validaremos todas las hojas antes de
+                guardar.
+              </p>
+            )}
             {resultado && (
               <div
                 className="mt-5 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
