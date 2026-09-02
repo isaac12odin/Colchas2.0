@@ -29,7 +29,8 @@ export default defineConfig({
     {
       name: "webkit-escritorio",
       use: { ...devices["Desktop Safari"] },
-      testMatch: /(compatibilidad|buscador-global-compatibilidad)\.spec\.ts/,
+      testMatch:
+        /(compatibilidad|buscador-global-compatibilidad|capacitacion-responsiva)\.spec\.ts/,
     },
     {
       name: "android-grande",

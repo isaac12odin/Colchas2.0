@@ -45,6 +45,7 @@ export function ControlesEntrenador({
       data-testid={
         flotante ? "controles-practica-flotantes" : "controles-practica-fijos"
       }
+      role="group"
       aria-label={es ? "Controles de la práctica" : "Practice controls"}
     >
       <div className="mx-auto max-w-xl">
@@ -55,19 +56,30 @@ export function ControlesEntrenador({
           </span>
         </div>
         {fase === "EJEMPLO" ? (
-          <button
-            type="button"
-            className="boton-primario w-full justify-center"
-            onClick={alMostrarObjetivo}
-            data-testid={
-              flotante
-                ? "mostrar-objetivo-practica-flotante"
-                : "mostrar-objetivo-practica"
-            }
-          >
-            <LocateFixed size={18} />
-            {es ? "Entendido, mostrarme dónde" : "Got it, show me where"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="boton-secundario px-3"
+              onClick={alAnterior}
+              disabled={pasoActual === 0}
+              aria-label={es ? "Paso anterior" : "Previous step"}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              type="button"
+              className="boton-primario flex-1 justify-center"
+              onClick={alMostrarObjetivo}
+              data-testid={
+                flotante
+                  ? "mostrar-objetivo-practica-flotante"
+                  : "mostrar-objetivo-practica"
+              }
+            >
+              <LocateFixed size={18} />
+              {es ? "Entendido, mostrarme dónde" : "Got it, show me where"}
+            </button>
+          </div>
         ) : (
           <div className="flex gap-2">
             <button
