@@ -1,4 +1,4 @@
-FROM node:22-alpine AS compilacion
+FROM node:26-alpine AS compilacion
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY back/package.json back/package.json
@@ -10,7 +10,7 @@ ARG INTERNAL_API_URL=http://back:4000
 ENV INTERNAL_API_URL=$INTERNAL_API_URL
 RUN npm run build -w front
 
-FROM node:22-alpine AS ejecucion
+FROM node:26-alpine AS ejecucion
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
